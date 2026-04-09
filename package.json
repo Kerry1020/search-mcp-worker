@@ -1,0 +1,8 @@
+{
+  "name": "search-mcp-worker",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.81.0"
+  }
+}
