@@ -1,0 +1,7 @@
+name = "search-mcp-worker"
+main = "src/index.js"
+compatibility_date = "2026-04-08"
+
+[[routes]]
+pattern = "search-mcp.qdp.qzz.io/*"
+zone_name = "qdp.qzz.io"
