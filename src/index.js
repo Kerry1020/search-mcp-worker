@@ -210,6 +210,8 @@ function parseYahooHtml(text, maxResults) {
     const url = decodeHtml(m[1]);
     const title = stripHtml(m[2]);
     if (!url || !title || out.some((x) => x.url === url)) continue;
+    if (/^https?:\/\/(?:search\.)?yahoo\.com\//i.test(url)) continue;
+    if (/\b(?:settings|home|sign\s?in|mail)\b/i.test(title)) continue;
     out.push({ rank: out.length + 1, url, title, snippet: '' });
     if (out.length >= maxResults) break;
   }
@@ -401,7 +403,8 @@ async function searchWikipedia(query, limit = 5, lang = 'auto') {
   for (const oneLang of languages) {
     const url = `https://${oneLang}.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}&limit=${limit}&namespace=0&format=json&origin=*`;
     const { res, text } = await fetchText(url, { headers: { 'user-agent': 'Mozilla/5.0 OpenClaw Search MCP' } });
-    const data = JSON.parse(text || '[]');
+    let data;
+  try { data = JSON.parse(text || '[]'); } catch { data = []; }
     const titles = Array.isArray(data?.[1]) ? data[1] : [];
     const snippets = Array.isArray(data?.[2]) ? data[2] : [];
     const urls = Array.isArray(data?.[3]) ? data[3] : [];
@@ -421,9 +424,10 @@ async function searchReddit(query, subreddit, limit = 5, sort = 'relevance') {
   const q = normalizeQuery(query);
   if (!q) return { ok: true, status: 200, query: q, subreddit: subreddit || null, results: [] };
   const base = subreddit ? `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.json` : 'https://www.reddit.com/search.json';
-  const url = `${base}?q=${encodeURIComponent(q)}&limit=${limit}&sort=${encodeURIComponent(sort)}&restrict_sr=${subreddit ? 'on' : 'off'}`;
-  const { res, text } = await fetchText(url, { headers: { 'user-agent': 'Mozilla/5.0 OpenClaw Search MCP' } });
-  const data = JSON.parse(text || '{}');
+  const url = `${base}?q=${encodeURIComponent(q)}&limit=${limit}&sort=${encodeURIComponent(sort)}&restrict_sr=${subreddit ? 'on' : 'off'}&raw_json=1`;
+  const { res, text } = await fetchText(url, { headers: { 'user-agent': 'Mozilla/5.0 OpenClaw Search MCP', 'accept': 'application/json' } });
+  let data;
+  try { data = JSON.parse(text || '{}'); } catch { data = {}; }
   const results = ((((data || {}).data || {}).children) || []).map((item, i) => {
     const d = item.data || {};
     return {
@@ -483,9 +487,10 @@ async function fetchUrl(url, maxChars = 6000) {
 }
 
 async function fetchRedditPost(url, maxComments = 5) {
-  const jsonUrl = url.replace(/\/$/, '') + '.json';
-  const { res, text } = await fetchText(jsonUrl, { headers: { 'user-agent': 'Mozilla/5.0 OpenClaw Search MCP' } });
-  const data = JSON.parse(text || '[]');
+  const jsonUrl = url.replace(/\/$/, '') + '.json?raw_json=1';
+  const { res, text } = await fetchText(jsonUrl, { headers: { 'user-agent': 'Mozilla/5.0 OpenClaw Search MCP', 'accept': 'application/json' } });
+  let data;
+  try { data = JSON.parse(text || '[]'); } catch { data = []; }
   const post = (((data[0] || {}).data || {}).children || [])[0]?.data || {};
   const comments = ((((data[1] || {}).data || {}).children) || []).slice(0, maxComments).map((c) => ({ author: c?.data?.author || null, body: (c?.data?.body || '').slice(0, 500), score: c?.data?.score ?? null }));
   return {
