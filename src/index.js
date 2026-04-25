@@ -48,6 +48,45 @@ var TOOLS = [
     description: "Search the web via Yandex HTML results. Useful as an extra fallback when other engines fail.",
     inputSchema: querySchema({ language: true })
   },
+
+  {
+    name: "search_naver",
+    description: "Search Korean web results via Naver.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_sogou",
+    description: "Search Chinese web results via Sogou.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_qwant",
+    description: "Search the web via Qwant (privacy-focused, EU-based). Good for French and European results.",
+    inputSchema: querySchema({ language: true })
+  },
+  {
+    name: "search_ecosia",
+    description: "Search the web via Ecosia. Privacy-friendly, good European fallback.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_archive",
+    description: "Search the Internet Archive (Wayback Machine + archive.org items). Returns archived URLs and snapshot availability.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query or URL to look up in the archive" },
+        limit: { type: "number", description: "Maximum results, default 5, max 10" },
+        mode: { type: "string", description: "Search mode: 'search' for archive items, 'wayback' for URL snapshots, default 'search'" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_brave",
+    description: "Search the web via Brave Search. Independent index, good privacy-focused alternative.",
+    inputSchema: querySchema()
+  },
   {
     name: "debug_capture_search_html",
     description: "Fetch a live search page and return a bounded HTML sample focused on result markers for parser debugging.",
@@ -218,6 +257,18 @@ async function callTool(params) {
       return toolResult(await searchBaidu(args), formatSearchResponse);
     case "search_yandex":
       return toolResult(await searchYandex(args), formatSearchResponse);
+    case "search_naver":
+      return toolResult(await searchNaver(args), formatSearchResponse);
+    case "search_sogou":
+      return toolResult(await searchSogou(args), formatSearchResponse);
+    case "search_qwant":
+      return toolResult(await searchQwant(args), formatSearchResponse);
+    case "search_ecosia":
+      return toolResult(await searchEcosia(args), formatSearchResponse);
+    case "search_archive":
+      return toolResult(await searchArchive(args), formatSearchResponse);
+    case "search_brave":
+      return toolResult(await searchBrave(args), formatSearchResponse);
     case "debug_capture_search_html":
       return toolResult(await debugCaptureSearchHtml(args), formatDebugCaptureResponse);
     case "search_wikipedia":
@@ -242,7 +293,7 @@ function isBadSearchResult(result) {
 }
 __name(isBadSearchResult, "isBadSearchResult");
 async function searchAuto(args) {
-  const requested = Array.isArray(args.engines) ? args.engines : ["duckduckgo", "bing", "yahoo", "google", "yandex", "baidu", "wikipedia"];
+  const requested = Array.isArray(args.engines) ? args.engines : ["duckduckgo", "bing", "yahoo", "google", "brave", "yandex", "baidu", "naver", "sogou", "qwant", "ecosia", "wikipedia"];
   const engines = requested.map((name) => String(name).toLowerCase()).filter(Boolean);
   const attempts = [];
   for (const engine of engines) {
@@ -255,6 +306,12 @@ async function searchAuto(args) {
       else if (engine === "yandex") result = await searchYandex(args);
       else if (engine === "baidu") result = await searchBaidu(args);
       else if (engine === "wikipedia") result = await searchWikipedia(args);
+    else if (engine === "naver") result = await searchNaver(args);
+    else if (engine === "sogou") result = await searchSogou(args);
+    else if (engine === "qwant") result = await searchQwant(args);
+    else if (engine === "ecosia") result = await searchEcosia(args);
+    else if (engine === "archive") result = await searchArchive(args);
+    else if (engine === "brave") result = await searchBrave(args);
       else continue;
       attempts.push({ engine, ok: !isBadSearchResult(result), result_count: Array.isArray(result.results) ? result.results.length : 0 });
       if (!isBadSearchResult(result)) {
@@ -431,6 +488,123 @@ async function searchYandex(args) {
   return searchResult({ source: "yandex", query, limit, results, language, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
 }
 __name(searchYandex, "searchYandex");
+
+async function searchNaver(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const { text, response } = await fetchTextWithResponse(`https://search.naver.com/search.naver?query=${encodeURIComponent(query)}&where=web`);
+  const diagnosis = diagnoseSearchHtml("naver", text, response.url);
+  let results = [];
+  const re = /<a[^>]+href="([^"]+)"[^>]*class="[^"]*link_tit[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of text.matchAll(re)) {
+    if (results.length >= limit) break;
+    const url = decodeHtml(match[1]);
+    if (isNoiseUrl(url)) continue;
+    results.push({ title: cleanText(match[2]), url, snippet: "" });
+  }
+  if (!results.length) results = extractGenericLinks(text, limit, "https://search.naver.com");
+  return searchResult({ source: "naver", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+}
+__name(searchNaver, "searchNaver");
+
+async function searchSogou(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const { text, response } = await fetchTextWithResponse(`https://www.sogou.com/web?query=${encodeURIComponent(query)}`);
+  const diagnosis = diagnoseSearchHtml("sogou", text, response.url);
+  let results = [];
+  const re = /<h3[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of text.matchAll(re)) {
+    if (results.length >= limit) break;
+    const url = decodeHtml(match[1]);
+    if (isNoiseUrl(url) || url.includes("sogou.com")) continue;
+    results.push({ title: cleanText(match[2]), url, snippet: "" });
+  }
+  if (!results.length) results = extractGenericLinks(text, limit, "https://www.sogou.com");
+  return searchResult({ source: "sogou", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+}
+__name(searchSogou, "searchSogou");
+
+async function searchQwant(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const language = /^[a-z-]{2,12}$/i.test(args.language || "") ? args.language : "en";
+  const { text, response } = await fetchTextWithResponse(`https://www.qwant.com/?q=${encodeURIComponent(query)}&locale=${encodeURIComponent(language)}&t=web`);
+  const diagnosis = diagnoseSearchHtml("qwant", text, response.url);
+  let results = extractGenericLinks(text, limit, "https://www.qwant.com");
+  return searchResult({ source: "qwant", query, limit, results, language, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+}
+__name(searchQwant, "searchQwant");
+
+async function searchEcosia(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const { text, response } = await fetchTextWithResponse(`https://www.ecosia.org/search?q=${encodeURIComponent(query)}`);
+  const diagnosis = diagnoseSearchHtml("ecosia", text, response.url);
+  let results = [];
+  const re = /<a[^>]+href="([^"]+)"[^>]*class="[^"]*result__link[^"]*"[^>]*>|<article[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>/gi;
+  for (const match of text.matchAll(re)) {
+    if (results.length >= limit) break;
+    const url = decodeHtml(match[1] || match[2]);
+    if (isNoiseUrl(url) || url.includes("ecosia.org")) continue;
+    results.push({ url, snippet: "" });
+  }
+  if (!results.length) results = extractGenericLinks(text, limit, "https://www.ecosia.org");
+  return searchResult({ source: "ecosia", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+}
+__name(searchEcosia, "searchEcosia");
+
+async function searchArchive(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const mode = args.mode === "wayback" ? "wayback" : "search";
+  if (mode === "wayback") {
+    const url = query.startsWith("http") ? query : `https://${query}`;
+    try {
+      const data = await fetchJson(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`);
+      const snapshots = data?.archived_snapshots?.closest ? [{
+        title: `Wayback snapshot: ${url}`,
+        url: `https://web.archive.org/web/${data.archived_snapshots.closest.timestamp}/${data.archived_snapshots.closest.url}`,
+        snippet: `Status: ${data.archived_snapshots.closest.status}, Timestamp: ${data.archived_snapshots.closest.timestamp}`
+      }] : [];
+      return searchResult({ source: "archive_wayback", query: url, limit, results: snapshots });
+    } catch (e) {
+      return searchResult({ source: "archive_wayback", query: url, limit, results: [], error: e?.message || "wayback lookup failed" });
+    }
+  }
+  const { text } = await fetchTextWithResponse(`https://archive.org/search?query=${encodeURIComponent(query)}`);
+  let results = [];
+  const re = /<a[^>]+href="\/details\/([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of text.matchAll(re)) {
+    if (results.length >= limit) break;
+    const id = match[1].split(/[?"']/)[0];
+    const title = cleanText(match[2]);
+    if (!id || !title) continue;
+    results.push({ title, url: `https://archive.org/details/${id}`, snippet: "" });
+  }
+  if (!results.length) results = extractGenericLinks(text, limit, "https://archive.org");
+  return searchResult({ source: "archive", query, limit, results });
+}
+__name(searchArchive, "searchArchive");
+
+async function searchBrave(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const { text, response } = await fetchTextWithResponse(`https://search.brave.com/search?q=${encodeURIComponent(query)}`);
+  const diagnosis = diagnoseSearchHtml("brave", text, response.url);
+  let results = [];
+  const re = /<a[^>]+href="([^"]+)"[^>]*class="[^"]*result-header[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of text.matchAll(re)) {
+    if (results.length >= limit) break;
+    const url = decodeHtml(match[1]);
+    if (isNoiseUrl(url) || url.includes("brave.com")) continue;
+    results.push({ title: cleanText(match[2]), url, snippet: "" });
+  }
+  if (!results.length) results = extractGenericLinks(text, limit, "https://search.brave.com");
+  return searchResult({ source: "brave", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+}
+__name(searchBrave, "searchBrave");
+
 async function searchWikipedia(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
