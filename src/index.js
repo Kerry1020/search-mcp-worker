@@ -990,26 +990,16 @@ async function searchDevto(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const data = await fetchJson(`https://dev.to/api/articles?per_page=${limit}&tag=${encodeURIComponent(query)}`);
+    const data = await fetchJson(`https://dev.to/api/articles?per_page=${limit}&q=${encodeURIComponent(query)}`);
     let results = [];
-    for (const art of data) {
+    for (const article of (Array.isArray(data) ? data : [])) {
       if (results.length >= limit) break;
-      results.push({ title: art.title || "", url: art.url || "", snippet: `${art.positive_reactions_count || 0} reactions | ${(art.tag_list || []).join(", ")}` });
-    }
-    if (!results.length) {
-      const data2 = await fetchJson(`https://dev.to/api/articles/latest?per_page=${limit}`);
-      for (const art of data2) {
-        if (results.length >= limit) break;
-        if ((art.title || "").toLowerCase().includes(query.toLowerCase()) || (art.description || "").toLowerCase().includes(query.toLowerCase())) {
-          results.push({ title: art.title || "", url: art.url || "", snippet: (art.description || "").substring(0, 150) });
-        }
-      }
+      results.push({ title: article.title || "", url: article.url || "", snippet: `${article.description || ""} | reactions: ${article.positive_reactions_count || 0} | comments: ${article.comments_count || 0}` });
     }
     return searchResult({ source: "devto", query, limit, results });
-  } catch (e) {
-    return searchResult({ source: "devto", query, limit, results: [], error: e?.message || "failed" });
-  }
+  } catch (e) { return searchError("devto", query, limit, e); }
 }
+__name(searchDevto, "searchDevto")
 __name(searchDevto, "searchDevto");
 
 async function searchMastodon(args) {
@@ -1129,26 +1119,41 @@ __name(searchBingNews, "searchBingNews");
 async function searchPapersWithCode(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
+  // Try Semantic Scholar first, fall back to CrossRef
+  let results = [];
   try {
-    const { text } = await fetchTextWithResponse(`https://paperswithcode.com/api/v1/search/?q=${encodeURIComponent(query)}`);
-    let results = [];
-    // paperswithcode returns HTML, extract paper links
-    const re = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-    const seen = new Set();
-    for (const match of text.matchAll(re)) {
-      if (results.length >= limit) break;
-      const url = match[1];
-      const title = cleanText(match[2]);
-      if (seen.has(url) || !title || title.length < 5 || !url.includes("paperswithcode")) continue;
-      seen.add(url);
-      results.push({ title, url, snippet: "" });
+    const resp = await fetch(`https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${limit}&fields=title,authors,year,abstract`);
+    if (resp.ok) {
+      const data = await resp.json();
+      for (const paper of (data.data || [])) {
+        if (results.length >= limit) break;
+        const authors = (paper.authors || []).map(a => a.name || "").join(", ");
+        const year = paper.year || "";
+        results.push({ title: paper.title || "", url: `https://www.semanticscholar.org/paper/${paper.paperId || ""}`, snippet: `${authors}${year ? " (" + year + ")" : ""}` });
+      }
     }
-    if (!results.length) results = extractGenericLinks(text, limit, "https://paperswithcode.com");
-    return searchResult({ source: "paperswithcode", query, limit, results });
-  } catch (e) {
-    return searchResult({ source: "paperswithcode", query, limit, results: [], error: e?.message || "failed" });
+  } catch {}
+  // CrossRef fallback
+  if (!results.length) {
+    try {
+      const data = await fetchJson(`https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=${limit}`);
+      for (const item of (data.message?.items || [])) {
+        if (results.length >= limit) break;
+        const title = (item.title || [""])[0];
+        const author = (item.author || []).map(a => `${a.given || ""} ${a.family || ""}`.trim()).join(", ");
+        const year = (item.published?.["date-parts"] || [[null]])[0][0] || "";
+        const doi = item.DOI || "";
+        results.push({ title, url: doi ? `https://doi.org/${doi}` : "", snippet: `${author}${year ? " (" + year + ")" : ""}` });
+      }
+    } catch {}
   }
+  return searchResult({ source: "paperswithcode", query, limit, results });
 }
+__name(searchPapersWithCode, "searchPapersWithCode")
+__name(searchPapersWithCode, "searchPapersWithCode")
+__name(searchPapersWithCode, "searchPapersWithCode")
+__name(searchPapersWithCode, "searchPapersWithCode")
+__name(searchPapersWithCode, "searchPapersWithCode")
 __name(searchPapersWithCode, "searchPapersWithCode");
 
 async function searchSecEdgar(args) {
@@ -1267,34 +1272,21 @@ async function searchPypi(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    // PyPI JSON API for single package or search via warehouse
+    const data = await fetchJson(`https://pypi.org/search/?q=${encodeURIComponent(query)}&format=json`);
+    let results = [];
+    for (const item of (data.items || data.results || [])) {
+      if (results.length >= limit) break;
+      results.push({ title: `${item.name || item.project}@${item.version || ""}`, url: `https://pypi.org/project/${item.name || item.project}/`, snippet: item.summary || "" });
+    }
+    if (results.length) return searchResult({ source: "pypi", query, limit, results });
+  } catch {}
+  try {
     const data = await fetchJson(`https://pypi.org/pypi/${encodeURIComponent(query)}/json`);
     const info = data?.info || {};
-    return searchResult({ source: "pypi", query, limit, results: [{
-      title: `${info.name || query}@${info.version || "?"}`,
-      url: info.project_url || info.package_url || `https://pypi.org/project/${query}`,
-      snippet: `${info.summary || ""} | License: ${info.license || "?"}`
-    }]});
-  } catch {
-    // Fallback: try searching multiple packages
-    try {
-      const { text } = await fetchTextWithResponse(`https://pypi.org/search/?q=${encodeURIComponent(query)}`);
-      let results = [];
-      const re = /<a[^>]+href="\/project\/([^/]+)\/"[^>]*>([\s\S]*?)<\/a>/gi;
-      const seen = new Set();
-      for (const match of text.matchAll(re)) {
-        if (results.length >= limit) break;
-        const name = match[1];
-        if (seen.has(name)) continue;
-        seen.add(name);
-        results.push({ title: name, url: `https://pypi.org/project/${name}/`, snippet: cleanText(match[2]) });
-      }
-      return searchResult({ source: "pypi", query, limit, results });
-    } catch (e2) {
-      return searchResult({ source: "pypi", query, limit, results: [], error: e2?.message || "failed" });
-    }
-  }
+    return searchResult({ source: "pypi", query, limit, results: [{ title: `${info.name}@${info.version}`, url: info.project_url || `https://pypi.org/project/${query}/`, snippet: info.summary || "" }] });
+  } catch (e) { return searchError("pypi", query, limit, e); }
 }
+__name(searchPypi, "searchPypi")
 __name(searchPypi, "searchPypi");
 
 async function findRss(args) {
