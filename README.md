@@ -20,6 +20,13 @@ A Cloudflare Worker exposing an MCP server for multi-engine web search, GitHub l
 | `search_wikipedia` | Search Wikipedia and return page summaries. |
 | `search_archive` | Search the Internet Archive. Supports item search and Wayback Machine URL snapshots. |
 
+### Academic
+
+| Tool | Description |
+|------|-------------|
+| `search_arxiv` | Search arXiv preprints. Returns titles, authors, abstracts, PDF links. |
+| `search_pubmed` | Search biomedical literature on PubMed. Returns titles, authors, PMIDs. |
+
 ### GitHub
 
 | Tool | Description |
@@ -49,6 +56,17 @@ Supported language-specific engines:
 - **Chinese**: Baidu, Sogou
 - **Korean**: Naver
 - **Russian/Multi-lang**: Yandex
+- **Regional**: DuckDuckGo supports region codes (e.g. `de-de`, `fr-fr`, `jp-jp`)
+
+### Academic Search
+
+| Tool | Description |
+|------|-------------|
+| `search_arxiv` | Search arXiv preprints. Returns titles, authors, abstracts, and PDF links. |
+| `search_pubmed` | Search biomedical literature on PubMed. Returns titles, authors, PMIDs. |
+
+### Archive
+
 - **Archive**: Internet Archive (item search + Wayback Machine snapshots)
 
 The MCP endpoint follows standard JSON-RPC (`/mcp`).
