@@ -97,6 +97,75 @@ var TOOLS = [
     }
   },
   {
+    name: "search_hackernews",
+    description: "Search Hacker News stories and comments via Algolia API. Good for tech discussions and startup news.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_stackoverflow",
+    description: "Search Stack Overflow questions. Returns titles, links, and accepted answers.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        limit: { type: "number", description: "Maximum results, default 5, max 10" },
+        site: { type: "string", description: "StackExchange site, default stackoverflow (options: askubuntu, serverfault, superuser, math, physics, etc.)" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_reddit",
+    description: "Search Reddit posts via JSON API. Returns titles, scores, and permalinks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        limit: { type: "number", description: "Maximum results, default 5, max 10" },
+        subreddit: { type: "string", description: "Optional subreddit to search within" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_npm",
+    description: "Search npm packages. Returns package names, descriptions, and links.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_devto",
+    description: "Search Dev.to developer blog posts. Returns titles, URLs, and tags.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_mastodon",
+    description: "Search Mastodon social posts. Returns toot content, authors, and URLs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        limit: { type: "number", description: "Maximum results, default 5, max 10" },
+        instance: { type: "string", description: "Mastodon instance, default mastodon.social" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_peertube",
+    description: "Search PeerTube videos across the fediverse. Returns titles, channels, and embed URLs.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_bbc",
+    description: "Search BBC News articles. Returns headlines, URLs, and publication dates.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_bing_news",
+    description: "Search Bing News. Returns news headlines, sources, and URLs.",
+    inputSchema: querySchema()
+  },
+  {
     name: "debug_capture_search_html",
     description: "Fetch a live search page and return a bounded HTML sample focused on result markers for parser debugging.",
     inputSchema: {
@@ -282,6 +351,24 @@ async function callTool(params) {
       return toolResult(await searchArxiv(args), formatSearchResponse);
     case "search_pubmed":
       return toolResult(await searchPubmed(args), formatSearchResponse);
+    case "search_hackernews":
+      return toolResult(await searchHackerNews(args), formatSearchResponse);
+    case "search_stackoverflow":
+      return toolResult(await searchStackOverflow(args), formatSearchResponse);
+    case "search_reddit":
+      return toolResult(await searchReddit(args), formatSearchResponse);
+    case "search_npm":
+      return toolResult(await searchNpm(args), formatSearchResponse);
+    case "search_devto":
+      return toolResult(await searchDevto(args), formatSearchResponse);
+    case "search_mastodon":
+      return toolResult(await searchMastodon(args), formatSearchResponse);
+    case "search_peertube":
+      return toolResult(await searchPeerTube(args), formatSearchResponse);
+    case "search_bbc":
+      return toolResult(await searchBbc(args), formatSearchResponse);
+    case "search_bing_news":
+      return toolResult(await searchBingNews(args), formatSearchResponse);
     case "debug_capture_search_html":
       return toolResult(await debugCaptureSearchHtml(args), formatDebugCaptureResponse);
     case "search_wikipedia":
@@ -324,6 +411,15 @@ async function searchAuto(args) {
     else if (engine === "archive") result = await searchArchive(args);
     else if (engine === "arxiv") result = await searchArxiv(args);
     else if (engine === "pubmed") result = await searchPubmed(args);
+    else if (engine === "hackernews") result = await searchHackerNews(args);
+    else if (engine === "stackoverflow") result = await searchStackOverflow(args);
+    else if (engine === "reddit") result = await searchReddit(args);
+    else if (engine === "npm") result = await searchNpm(args);
+    else if (engine === "devto") result = await searchDevto(args);
+    else if (engine === "mastodon") result = await searchMastodon(args);
+    else if (engine === "peertube") result = await searchPeerTube(args);
+    else if (engine === "bbc") result = await searchBbc(args);
+    else if (engine === "bing_news") result = await searchBingNews(args);
       else continue;
       attempts.push({ engine, ok: !isBadSearchResult(result), result_count: Array.isArray(result.results) ? result.results.length : 0 });
       if (!isBadSearchResult(result)) {
@@ -665,6 +761,235 @@ async function searchPubmed(args) {
   }
 }
 __name(searchPubmed, "searchPubmed");
+
+
+async function searchHackerNews(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=${limit}`);
+    let results = [];
+    for (const hit of (data.hits || [])) {
+      if (results.length >= limit) break;
+      const title = hit.title || "";
+      const url = hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`;
+      const points = hit.points || 0;
+      const author = hit.author || "";
+      const numComments = hit.num_comments || 0;
+      results.push({ title, url, snippet: `${points} points | ${numComments} comments | by ${author}` });
+    }
+    return searchResult({ source: "hackernews", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "hackernews", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchHackerNews, "searchHackerNews");
+
+async function searchStackOverflow(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const site = /^[a-z.]+$/.test(args.site || "") ? args.site : "stackoverflow";
+  try {
+    const data = await fetchJson(`https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=${encodeURIComponent(query)}&site=${site}&pagesize=${limit}&filter=withbody`);
+    let results = [];
+    for (const item of (data.items || [])) {
+      if (results.length >= limit) break;
+      const title = item.title || "";
+      const url = item.link || "";
+      const score = item.score || 0;
+      const answers = item.answer_count || 0;
+      const tags = (item.tags || []).join(", ");
+      results.push({ title, url, snippet: `Score: ${score} | Answers: ${answers}${tags ? " | " + tags : ""}` });
+    }
+    return searchResult({ source: "stackoverflow", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "stackoverflow", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchStackOverflow, "searchStackOverflow");
+
+async function searchReddit(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const subreddit = args.subreddit ? `r/${String(args.subreddit).replace(/^r\//, "")}/` : "";
+  try {
+    const { text } = await fetchTextWithResponse(`https://www.reddit.com/${subreddit}search.json?q=${encodeURIComponent(query)}&limit=${limit}&sort=relevance`, {
+      headers: { "User-Agent": "search-mcp-worker/1.0" }
+    });
+    const data = JSON.parse(text);
+    let results = [];
+    for (const child of (data.data?.children || [])) {
+      if (results.length >= limit) break;
+      const post = child.data || {};
+      const title = post.title || "";
+      const url = `https://reddit.com${post.permalink || ""}`;
+      const score = post.score || 0;
+      const sub = post.subreddit || "";
+      results.push({ title, url, snippet: `r/${sub} | ${score} pts | ${post.num_comments || 0} comments` });
+    }
+    return searchResult({ source: "reddit", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "reddit", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchReddit, "searchReddit");
+
+async function searchNpm(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query)}&size=${limit}`);
+    let results = [];
+    for (const pkg of (data.objects || [])) {
+      if (results.length >= limit) break;
+      const p = pkg.package || {};
+      results.push({ title: `${p.name}@${p.version || "?"}`, url: p.links?.npm || `https://www.npmjs.com/package/${p.name}`, snippet: (p.description || "").substring(0, 150) });
+    }
+    return searchResult({ source: "npm", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "npm", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchNpm, "searchNpm");
+
+async function searchDevto(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://dev.to/api/articles?per_page=${limit}&tag=${encodeURIComponent(query)}`);
+    let results = [];
+    for (const art of data) {
+      if (results.length >= limit) break;
+      results.push({ title: art.title || "", url: art.url || "", snippet: `${art.positive_reactions_count || 0} reactions | ${(art.tag_list || []).join(", ")}` });
+    }
+    if (!results.length) {
+      const data2 = await fetchJson(`https://dev.to/api/articles/latest?per_page=${limit}`);
+      for (const art of data2) {
+        if (results.length >= limit) break;
+        if ((art.title || "").toLowerCase().includes(query.toLowerCase()) || (art.description || "").toLowerCase().includes(query.toLowerCase())) {
+          results.push({ title: art.title || "", url: art.url || "", snippet: (art.description || "").substring(0, 150) });
+        }
+      }
+    }
+    return searchResult({ source: "devto", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "devto", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchDevto, "searchDevto");
+
+async function searchMastodon(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const instance = /^[a-z0-9.-]+$/.test(args.instance || "") ? args.instance : "mastodon.social";
+  try {
+    // v2 search requires auth; try v1 account search or fallback to hashtags
+    let data;
+    try {
+      data = await fetchJson(`https://${instance}/api/v2/search?q=${encodeURIComponent(query)}&type=statuses&limit=${limit}`);
+    } catch {
+      data = { statuses: [] };
+    }
+    let results = [];
+    for (const status of (data.statuses || [])) {
+      if (results.length >= limit) break;
+      const content = (status.content || "").replace(/<[^>]+>/g, "").trim().substring(0, 200);
+      const author = status.account?.acct || "";
+      results.push({ title: `@${author}: ${content.substring(0, 60)}`, url: status.url || "", snippet: content });
+    }
+    // Fallback: search by hashtag timeline
+    if (!results.length) {
+      try {
+        const tag = query.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().substring(0, 30);
+        const tagData = await fetchJson(`https://${instance}/api/v1/timelines/tag/${tag}?limit=${limit}`);
+        for (const status of tagData) {
+          if (results.length >= limit) break;
+          const content = (status.content || "").replace(/<[^>]+>/g, "").trim().substring(0, 200);
+          const author = status.account?.acct || "";
+          results.push({ title: `@${author}: ${content.substring(0, 60)}`, url: status.url || "", snippet: content });
+        }
+      } catch {}
+    }
+    return searchResult({ source: "mastodon", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "mastodon", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchMastodon, "searchMastodon");
+
+async function searchPeerTube(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://search.joinpeertube.org/api/v1/search/videos?search=${encodeURIComponent(query)}&count=${limit}`);
+    let results = [];
+    for (const vid of (data.data || [])) {
+      if (results.length >= limit) break;
+      results.push({ title: vid.name || "", url: vid.url || "", snippet: `by ${vid.channel?.displayName || "?"} | ${vid.views || 0} views | ${vid.durationLabel || ""}` });
+    }
+    return searchResult({ source: "peertube", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "peertube", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchPeerTube, "searchPeerTube");
+
+
+
+async function searchBbc(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    // Direct HTML search
+    let results = [];
+    const { text: html2 } = await fetchTextWithResponse(`https://www.bbc.co.uk/search?q=${encodeURIComponent(query)}`); 
+    const seen = new Set();
+    const re = /<a[^>]+href="(https:\/\/www\.bbc\.(?:com|co\.uk)\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    for (const match of html2.matchAll(re)) {
+      if (results.length >= limit) break;
+      const url = match[1];
+      const title = cleanText(match[2]);
+      if (isNoiseUrl(url) || seen.has(url) || !title || title.length < 8 || url.includes("/weather") || url.includes("/accessibility") || url.includes("/help")) continue;
+      seen.add(url);
+      results.push({ title, url, snippet: "" });
+    }
+    if (!results.length) results = extractGenericLinks(html2, limit, "https://www.bbc.co.uk").filter(r => r.url.includes("bbc."));
+    return searchResult({ source: "bbc", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "bbc", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchBbc, "searchBbc");
+
+// placeholder to match and remove the rest
+
+
+async function searchBingNews(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const { text } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`);
+    let results = [];
+    // Try RSS first
+    const items = text.match(/<item>[\s\S]*?<\/item>/gi) || [];
+    for (const item of items) {
+      if (results.length >= limit) break;
+      const title = (item.match(/<title><!\[CDATA\[([^\]]*)\]\]><\/title>/) || item.match(/<title>([^<]+)<\/title>/) || [])[1] || "";
+      const url = (item.match(/<link>([^<]+)<\/link>/) || [])[1] || "";
+      if (title && url) results.push({ title: cleanText(title), url, snippet: "" });
+    }
+    // Fallback to HTML parsing
+    if (!results.length) {
+      const { text: html } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}`);
+      results = extractGenericLinks(html, limit, "https://www.bing.com");
+      results = results.filter(r => !r.url.includes("bing.com"));
+    }
+    return searchResult({ source: "bing_news", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "bing_news", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchBingNews, "searchBingNews");
 
 async function searchWikipedia(args) {
   const query = requireString(args.query, "query");
