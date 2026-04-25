@@ -1,54 +1,41 @@
 # search-mcp-worker
 
-`search-mcp-worker` 是一个部署在 Cloudflare Worker 上的 MCP 服务，用来统一封装多搜索引擎检索与网页内容抓取。
+基于 Cloudflare Worker 的 MCP 服务器，提供多引擎网页搜索、GitHub 查询、URL 抓取和 Wikipedia 查询——无需 API Key。
 
-## 功能
+## MCP 工具
 
-- 提供统一的 MCP 接口
-- 支持 Google、DuckDuckGo、Bing、Baidu、Yandex、Yahoo 的 HTML 搜索
-- 支持 Wikipedia / Reddit 搜索
-- 支持网页正文抓取与清洗
-- 支持 Reddit 帖子线程抓取
-- 无需额外后端，直接部署到 Worker
+### 网页搜索
 
-## 工具列表
+| 工具 | 说明 |
+|------|------|
+| `search_auto` | 多引擎自动回退搜索，返回第一个有效结果。 |
+| `search_duckduckgo` | DuckDuckGo HTML 搜索，通用回退。 |
+| `search_bing` | Bing 搜索。 |
+| `search_yahoo` | Yahoo 搜索。 |
+| `search_google_web` | Google 搜索（可能限速）。 |
+| `search_baidu` | 百度中文搜索。 |
+| `search_yandex` | Yandex 搜索，额外回退。 |
+| `search_wikipedia` | Wikipedia 搜索并返回摘要。 |
 
-### 搜索类
-- `search_google_web`
-- `search_duckduckgo`
-- `search_bing`
-- `search_baidu`
-- `search_yandex`
-- `search_yahoo`
-- `search_wikipedia`
-- `search_reddit`
-- `search_twitter_x`
+### GitHub
 
-### 抓取类
-- `fetch_url`
-- `fetch_reddit_post`
+| 工具 | 说明 |
+|------|------|
+| `search_github_repos` | 搜索公开 GitHub 仓库。 |
+| `fetch_github_file` | 按 owner/repo/path/ref 获取公开文件。 |
 
-## 项目结构
+### URL 与元数据
 
-```text
-search-mcp-worker/
-├── src/index.js        # Worker 入口与 MCP tool 实现
-├── wrangler.toml       # Cloudflare Worker 配置
-├── package.json        # 本地开发依赖
-└── README.md
-```
+| 工具 | 说明 |
+|------|------|
+| `fetch_metadata` | 获取 URL 的标题、描述、状态码等元数据。 |
+| `fetch_url` | 获取 URL 并返回可读文本和元数据。 |
 
 ## 本地开发
 
 ```bash
 npm install
-npx wrangler dev --local --port 8789
-```
-
-健康检查：
-
-```bash
-curl http://127.0.0.1:8789/healthz
+npx wrangler dev --local --port 8791
 ```
 
 ## 部署
@@ -57,29 +44,12 @@ curl http://127.0.0.1:8789/healthz
 npx wrangler deploy
 ```
 
-当前配置的默认路由：
+## 项目结构
 
-- `search-mcp.qdp.qzz.io/*`
-
-## MCP 调用示例
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "search_bing",
-    "arguments": {
-      "query": "Cloudflare",
-      "max_results": 5
-    }
-  }
-}
 ```
-
-## 说明
-
-- 某些搜索引擎会限流、跳转或触发验证码。
-- 当主搜索源不可用时，部分工具会自动 fallback。
-- X / Twitter 公开搜索结果质量取决于上游搜索引擎是否能索引到目标页面。
+search-mcp-worker/
+├── src/index.js
+├── wrangler.toml
+├── package.json
+└── README.md
+```
