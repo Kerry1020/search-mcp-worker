@@ -18,6 +18,22 @@
 | `search_naver` | Naver 韩语搜索。 |
 | `search_yandex` | Yandex 搜索，多语言回退。 |
 | `search_wikipedia` | Wikipedia 搜索并返回摘要。 |
+- **中文**: 百度、搜狗
+- **韩语**: Naver
+- **俄语/多语言**: Yandex
+- **地区化**: DuckDuckGo 支持 region 参数（如 `de-de`、`fr-fr`、`jp-jp`）
+
+### 学术搜索
+
+| 工具 | 说明 |
+|------|------|
+| `search_arxiv` | 搜索 arXiv 预印本，返回标题、作者、摘要、PDF 链接。 |
+| `search_pubmed` | 搜索 PubMed 生物医学文献，返回标题、作者、PMID。 |
+
+### 归档
+
+| 工具 | 说明 |
+|------|------|
 | `search_archive` | Internet Archive 搜索，支持条目搜索和 Wayback Machine 网页快照。 |
 
 ### GitHub
