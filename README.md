@@ -1,6 +1,6 @@
 # search-mcp-worker
 
-A Cloudflare Worker exposing an MCP server for multi-engine web search, GitHub lookup, URL fetching, and Wikipedia queries — no API keys required.
+A Cloudflare Worker exposing an MCP server for multi-engine web search, GitHub lookup, URL fetching, Wikipedia queries, and Internet Archive access — no API keys required.
 
 ## MCP Tools
 
@@ -13,9 +13,15 @@ A Cloudflare Worker exposing an MCP server for multi-engine web search, GitHub l
 | `search_bing` | Bing HTML search. |
 | `search_yahoo` | Yahoo HTML search. |
 | `search_google_web` | Google web search. May be rate-limited; use DuckDuckGo/Bing as fallback. |
+| `search_brave` | Brave Search. Independent index, privacy-focused. |
 | `search_baidu` | Baidu search for Chinese web results. |
-| `search_yandex` | Yandex search. Extra fallback when other engines fail. |
+| `search_sogou` | Sogou search for Chinese web results. |
+| `search_naver` | Naver search for Korean web results. |
+| `search_yandex` | Yandex search. Extra fallback for multi-language results. |
+| `search_qwant` | Qwant search. Privacy-focused, EU-based. Good for French/European results. |
+| `search_ecosia` | Ecosia search. Privacy-friendly European alternative. |
 | `search_wikipedia` | Search Wikipedia and return page summaries. |
+| `search_archive` | Search the Internet Archive. Supports item search and Wayback Machine URL snapshots. |
 
 ### GitHub
 
@@ -41,6 +47,13 @@ A Cloudflare Worker exposing an MCP server for multi-engine web search, GitHub l
 ## How It Works
 
 All searches parse live HTML from search engine result pages. No external API keys or subscriptions needed. The `search_auto` tool tries engines in sequence and stops at the first good result, making it the recommended default.
+
+Supported language-specific engines:
+- **Chinese**: Baidu, Sogou
+- **Korean**: Naver
+- **French/EU**: Qwant, Ecosia
+- **Russian/Multi-lang**: Yandex
+- **Archive**: Internet Archive (item search + Wayback Machine snapshots)
 
 The MCP endpoint follows standard JSON-RPC (`/mcp`).
 
