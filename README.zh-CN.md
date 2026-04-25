@@ -13,13 +13,10 @@
 | `search_bing` | Bing 搜索。 |
 | `search_yahoo` | Yahoo 搜索。 |
 | `search_google_web` | Google 搜索（可能限速）。 |
-| `search_brave` | Brave Search，独立索引，注重隐私。 |
 | `search_baidu` | 百度中文搜索。 |
 | `search_sogou` | 搜狗中文搜索。 |
 | `search_naver` | Naver 韩语搜索。 |
 | `search_yandex` | Yandex 搜索，多语言回退。 |
-| `search_qwant` | Qwant 搜索，注重隐私，适合法语/欧洲结果。 |
-| `search_ecosia` | Ecosia 搜索，环保搜索引擎。 |
 | `search_wikipedia` | Wikipedia 搜索并返回摘要。 |
 | `search_archive` | Internet Archive 搜索，支持条目搜索和 Wayback Machine 网页快照。 |
 
