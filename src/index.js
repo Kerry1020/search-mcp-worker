@@ -166,6 +166,68 @@ var TOOLS = [
     inputSchema: querySchema()
   },
   {
+    name: "search_paperswithcode",
+    description: "Search Papers With Code for ML/AI papers with code implementations. Returns paper titles, links, and tasks.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_sec_edgar",
+    description: "Search SEC EDGAR filings. Find company 10-K, 10-Q, 8-K, proxy statements and other SEC filings.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Company name or filing keyword" },
+        limit: { type: "number", description: "Maximum results, default 5, max 10" },
+        form_type: { type: "string", description: "Filing type filter: 10-K, 10-Q, 8-K, DEF 14A, etc." }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_osm",
+    description: "Search OpenStreetMap for places, addresses, POIs. Returns coordinates and location details.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_lemmy",
+    description: "Search Lemmy fediverse communities and posts. Open-source Reddit alternative.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        limit: { type: "number", description: "Maximum results, default 5, max 10" },
+        instance: { type: "string", description: "Lemmy instance, default lemmy.world" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_wikidata",
+    description: "Search Wikidata structured knowledge base. Returns entity IDs, labels, descriptions.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_crates",
+    description: "Search Rust crates on crates.io. Returns package names, descriptions, downloads.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_pypi",
+    description: "Search Python packages on PyPI via JSON API. Returns package names and summaries.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "find_rss",
+    description: "Find RSS/Atom feed URLs for a given website. Returns discovered feed links.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Website URL to scan for RSS feeds" }
+      },
+      required: ["url"]
+    }
+  },
+  {
     name: "debug_capture_search_html",
     description: "Fetch a live search page and return a bounded HTML sample focused on result markers for parser debugging.",
     inputSchema: {
@@ -369,6 +431,22 @@ async function callTool(params) {
       return toolResult(await searchBbc(args), formatSearchResponse);
     case "search_bing_news":
       return toolResult(await searchBingNews(args), formatSearchResponse);
+    case "search_paperswithcode":
+      return toolResult(await searchPapersWithCode(args), formatSearchResponse);
+    case "search_sec_edgar":
+      return toolResult(await searchSecEdgar(args), formatSearchResponse);
+    case "search_osm":
+      return toolResult(await searchOsm(args), formatSearchResponse);
+    case "search_lemmy":
+      return toolResult(await searchLemmy(args), formatSearchResponse);
+    case "search_wikidata":
+      return toolResult(await searchWikidata(args), formatSearchResponse);
+    case "search_crates":
+      return toolResult(await searchCrates(args), formatSearchResponse);
+    case "search_pypi":
+      return toolResult(await searchPypi(args), formatSearchResponse);
+    case "find_rss":
+      return toolResult(await findRss(args), formatSearchResponse);
     case "debug_capture_search_html":
       return toolResult(await debugCaptureSearchHtml(args), formatDebugCaptureResponse);
     case "search_wikipedia":
@@ -420,6 +498,13 @@ async function searchAuto(args) {
     else if (engine === "peertube") result = await searchPeerTube(args);
     else if (engine === "bbc") result = await searchBbc(args);
     else if (engine === "bing_news") result = await searchBingNews(args);
+    else if (engine === "paperswithcode") result = await searchPapersWithCode(args);
+    else if (engine === "sec_edgar") result = await searchSecEdgar(args);
+    else if (engine === "osm") result = await searchOsm(args);
+    else if (engine === "lemmy") result = await searchLemmy(args);
+    else if (engine === "wikidata") result = await searchWikidata(args);
+    else if (engine === "crates") result = await searchCrates(args);
+    else if (engine === "pypi") result = await searchPypi(args);
       else continue;
       attempts.push({ engine, ok: !isBadSearchResult(result), result_count: Array.isArray(result.results) ? result.results.length : 0 });
       if (!isBadSearchResult(result)) {
@@ -990,6 +1075,203 @@ async function searchBingNews(args) {
   }
 }
 __name(searchBingNews, "searchBingNews");
+
+
+async function searchPapersWithCode(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const { text } = await fetchTextWithResponse(`https://paperswithcode.com/api/v1/search/?q=${encodeURIComponent(query)}`);
+    let results = [];
+    // paperswithcode returns HTML, extract paper links
+    const re = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    const seen = new Set();
+    for (const match of text.matchAll(re)) {
+      if (results.length >= limit) break;
+      const url = match[1];
+      const title = cleanText(match[2]);
+      if (seen.has(url) || !title || title.length < 5 || !url.includes("paperswithcode")) continue;
+      seen.add(url);
+      results.push({ title, url, snippet: "" });
+    }
+    if (!results.length) results = extractGenericLinks(text, limit, "https://paperswithcode.com");
+    return searchResult({ source: "paperswithcode", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "paperswithcode", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchPapersWithCode, "searchPapersWithCode");
+
+async function searchSecEdgar(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const formType = args.form_type ? `&forms=${encodeURIComponent(String(args.form_type))}` : "";
+  try {
+    const { text } = await fetchTextWithResponse(`https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(query)}${formType}`);
+    let results = [];
+    // SEC EDGAR FULL_TEXT search returns JSON with hits
+    try {
+      const data = JSON.parse(text);
+      const hits = data?.hits?.hits || [];
+      for (const hit of hits) {
+        if (results.length >= limit) break;
+        const source = hit._source || {};
+        const entity = source.entity_name || source.display_names?.[0] || "";
+        const form = source.form_type || "";
+        const filed = source.filed_at || source.date || "";
+        const id = source.file_id || source._id || "";
+        const url = id ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(entity)}&type=${form}` : "";
+        results.push({ title: `${entity} - ${form} (${filed.substring(0, 10)})`, url, snippet: `Filed: ${filed.substring(0, 10)}` });
+      }
+    } catch {}
+    if (!results.length) results = extractGenericLinks(text, limit, "https://www.sec.gov");
+    return searchResult({ source: "sec_edgar", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "sec_edgar", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchSecEdgar, "searchSecEdgar");
+
+async function searchOsm(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=${limit}&addressdetails=1`);
+    let results = [];
+    for (const place of data) {
+      if (results.length >= limit) break;
+      const name = place.display_name || "";
+      const type = place.type || "";
+      const lat = place.lat || "";
+      const lon = place.lon || "";
+      results.push({ title: name, url: `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}`, snippet: `Type: ${type} | ${lat}, ${lon}` });
+    }
+    return searchResult({ source: "osm", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "osm", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchOsm, "searchOsm");
+
+async function searchLemmy(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const instance = /^[a-z0-9.-]+$/.test(args.instance || "") ? args.instance : "lemmy.world";
+  try {
+    const data = await fetchJson(`https://${instance}/api/v3/search?q=${encodeURIComponent(query)}&limit=${limit}&type_=Posts`);
+    let results = [];
+    for (const post of (data.posts || [])) {
+      if (results.length >= limit) break;
+      const p = post.post || {};
+      const name = p.name || "";
+      const url = p.ap_id || p.url || "";
+      const community = post.community?.name || "";
+      const score = post.counts?.score || 0;
+      const comments = post.counts?.comments || 0;
+      results.push({ title: name, url, snippet: `!${community}@${instance} | ${score} pts | ${comments} comments` });
+    }
+    return searchResult({ source: "lemmy", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "lemmy", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchLemmy, "searchLemmy");
+
+async function searchWikidata(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(query)}&language=en&format=json&limit=${limit}`);
+    let results = [];
+    for (const item of (data.search || [])) {
+      if (results.length >= limit) break;
+      const label = item.label || "";
+      const desc = item.description || "";
+      const id = item.id || "";
+      results.push({ title: `${label} (${id})`, url: `https://www.wikidata.org/wiki/${id}`, snippet: desc });
+    }
+    return searchResult({ source: "wikidata", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "wikidata", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchWikidata, "searchWikidata");
+
+async function searchCrates(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://crates.io/api/v1/crates?q=${encodeURIComponent(query)}&per_page=${limit}`);
+    let results = [];
+    for (const crate of (data.crates || [])) {
+      if (results.length >= limit) break;
+      results.push({ title: `${crate.name}@${crate.max_version || "?"}`, url: `https://crates.io/crates/${crate.name}`, snippet: `${crate.description || ""} | ${crate.downloads || 0} downloads` });
+    }
+    return searchResult({ source: "crates", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "crates", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchCrates, "searchCrates");
+
+async function searchPypi(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    // PyPI JSON API for single package or search via warehouse
+    const data = await fetchJson(`https://pypi.org/pypi/${encodeURIComponent(query)}/json`);
+    const info = data?.info || {};
+    return searchResult({ source: "pypi", query, limit, results: [{
+      title: `${info.name || query}@${info.version || "?"}`,
+      url: info.project_url || info.package_url || `https://pypi.org/project/${query}`,
+      snippet: `${info.summary || ""} | License: ${info.license || "?"}`
+    }]});
+  } catch {
+    // Fallback: try searching multiple packages
+    try {
+      const { text } = await fetchTextWithResponse(`https://pypi.org/search/?q=${encodeURIComponent(query)}`);
+      let results = [];
+      const re = /<a[^>]+href="\/project\/([^/]+)\/"[^>]*>([\s\S]*?)<\/a>/gi;
+      const seen = new Set();
+      for (const match of text.matchAll(re)) {
+        if (results.length >= limit) break;
+        const name = match[1];
+        if (seen.has(name)) continue;
+        seen.add(name);
+        results.push({ title: name, url: `https://pypi.org/project/${name}/`, snippet: cleanText(match[2]) });
+      }
+      return searchResult({ source: "pypi", query, limit, results });
+    } catch (e2) {
+      return searchResult({ source: "pypi", query, limit, results: [], error: e2?.message || "failed" });
+    }
+  }
+}
+__name(searchPypi, "searchPypi");
+
+async function findRss(args) {
+  const url = requireString(args.url, "url");
+  try {
+    const { text } = await fetchTextWithResponse(url);
+    const feeds = [];
+    // Look for <link rel="alternate" type="application/rss+xml" ...>
+    const rssRe = /<link[^>]+rel="alternate"[^>]+type="application\/(?:rss|atom)\+xml"[^>]+href="([^"]+)"[^>]*>/gi;
+    for (const match of text.matchAll(rssRe)) {
+      feeds.push({ title: match[1], url: new URL(match[1], url).href, snippet: "RSS/Atom feed" });
+    }
+    // Also look for <link type="application/rss+xml" ...>
+    const altRe = /<link[^>]+type="application\/(?:rss|atom)\+xml"[^>]+href="([^"]+)"[^>]*>/gi;
+    for (const match of text.matchAll(altRe)) {
+      const feedUrl = new URL(match[1], url).href;
+      if (!feeds.some(f => f.url === feedUrl)) {
+        feeds.push({ title: feedUrl, url: feedUrl, snippet: "RSS/Atom feed" });
+      }
+    }
+    return searchResult({ source: "rss_finder", query: url, limit: feeds.length, results: feeds });
+  } catch (e) {
+    return searchResult({ source: "rss_finder", query: url, limit: 0, results: [], error: e?.message || "failed" });
+  }
+}
+__name(findRss, "findRss");
 
 async function searchWikipedia(args) {
   const query = requireString(args.query, "query");
