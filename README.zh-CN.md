@@ -1,6 +1,6 @@
 # search-mcp-worker
 
-基于 Cloudflare Worker 的 MCP 服务器，提供多引擎网页搜索、GitHub 查询、URL 抓取、Wikipedia 查询和 Internet Archive 访问——无需 API Key。
+基于 Cloudflare Worker 的 MCP 服务器，提供多引擎网页搜索、学术论文、开发者论坛、社交媒体、新闻等——无需 API Key。
 
 ## MCP 工具
 
@@ -8,47 +8,57 @@
 
 | 工具 | 说明 |
 |------|------|
-| `search_auto` | 多引擎自动回退搜索，返回第一个有效结果。 |
-| `search_duckduckgo` | DuckDuckGo 搜索，通用回退。 |
+| `search_auto` | 多引擎自动回退搜索。 |
+| `search_duckduckgo` | DuckDuckGo 搜索，支持地区代码。 |
 | `search_bing` | Bing 搜索。 |
 | `search_yahoo` | Yahoo 搜索。 |
 | `search_google_web` | Google 搜索（可能限速）。 |
 | `search_baidu` | 百度中文搜索。 |
 | `search_sogou` | 搜狗中文搜索。 |
 | `search_naver` | Naver 韩语搜索。 |
-| `search_yandex` | Yandex 搜索，多语言回退。 |
-| `search_wikipedia` | Wikipedia 搜索并返回摘要。 |
-- **中文**: 百度、搜狗
-- **韩语**: Naver
-- **俄语/多语言**: Yandex
-- **地区化**: DuckDuckGo 支持 region 参数（如 `de-de`、`fr-fr`、`jp-jp`）
+| `search_yandex` | Yandex 搜索。 |
+| `search_wikipedia` | Wikipedia 搜索。 |
 
 ### 学术搜索
 
 | 工具 | 说明 |
 |------|------|
-| `search_arxiv` | 搜索 arXiv 预印本，返回标题、作者、摘要、PDF 链接。 |
-| `search_pubmed` | 搜索 PubMed 生物医学文献，返回标题、作者、PMID。 |
+| `search_arxiv` | arXiv 预印本搜索。 |
+| `search_pubmed` | PubMed 生物医学文献搜索。 |
 
-### 归档
-
-| 工具 | 说明 |
-|------|------|
-| `search_archive` | Internet Archive 搜索，支持条目搜索和 Wayback Machine 网页快照。 |
-
-### GitHub
+### 开发者 & 代码
 
 | 工具 | 说明 |
 |------|------|
-| `search_github_repos` | 搜索公开 GitHub 仓库。 |
-| `fetch_github_file` | 按 owner/repo/path/ref 获取公开文件。 |
+| `search_hackernews` | Hacker News 技术讨论搜索。 |
+| `search_stackoverflow` | Stack Exchange 全站搜索（支持所有子站）。 |
+| `search_npm` | npm 包搜索。 |
+| `search_devto` | Dev.to 开发者博客搜索。 |
+| `search_github_repos` | GitHub 仓库搜索。 |
+| `fetch_github_file` | 获取 GitHub 公开文件。 |
 
-### URL 与元数据
+### 社交 & 视频
 
 | 工具 | 说明 |
 |------|------|
-| `fetch_metadata` | 获取 URL 的标题、描述、状态码等元数据。 |
-| `fetch_url` | 获取 URL 并返回可读文本和元数据。 |
+| `search_reddit` | Reddit 帖子搜索，支持按 subreddit 过滤。 |
+| `search_mastodon` | Mastodon/fediverse 搜索，支持任意实例。 |
+| `search_peertube` | PeerTube 视频搜索。 |
+
+### 新闻 & 媒体
+
+| 工具 | 说明 |
+|------|------|
+| `search_bbc` | BBC 新闻搜索。 |
+| `search_bing_news` | Bing 新闻搜索。 |
+| `search_archive` | Internet Archive 搜索 + Wayback Machine。 |
+
+### URL & 元数据
+
+| 工具 | 说明 |
+|------|------|
+| `fetch_metadata` | 获取 URL 标题、描述、状态码等。 |
+| `fetch_url` | 获取 URL 可读文本。 |
 
 ## 本地开发
 
