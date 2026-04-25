@@ -217,6 +217,38 @@ var TOOLS = [
     inputSchema: querySchema()
   },
   {
+    name: "search_wiktionary",
+    description: "Search Wiktionary for word definitions, etymology, and translations.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Word or phrase to look up" },
+        language: { type: "string", description: "Wiktionary language code, default en" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_openlibrary",
+    description: "Search Open Library for books by title, author, or ISBN. Returns book metadata and cover URLs.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_musicbrainz",
+    description: "Search MusicBrainz for music recordings, artists, and releases.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "instant_answer",
+    description: "Get instant answers from DuckDuckGo for facts, definitions, and summaries. Good for quick lookups.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_crossref",
+    description: "Search CrossRef for academic publications with DOIs. Returns titles, authors, years, DOIs.",
+    inputSchema: querySchema()
+  },
+  {
     name: "find_rss",
     description: "Find RSS/Atom feed URLs for a given website. Returns discovered feed links.",
     inputSchema: {
@@ -346,7 +378,7 @@ function querySchema(extra = {}) {
   };
   if (extra.region) properties.region = { type: "string", description: "DuckDuckGo region, default us-en" };
   if (extra.language) properties.language = { type: "string", description: "Search language code, default en" };
-  if (extra.engines) properties.engines = { type: "array", items: { type: "string" }, description: "Optional engine order: duckduckgo, bing, yahoo, google, yandex, baidu, wikipedia" };
+  if (extra.engines) properties.engines = { type: "array", items: { type: "string" }, description: "Optional engine order: duckduckgo, bing, yahoo, google, yandex, baidu, naver, sogou, wikipedia, arxiv, pubmed, hackernews, stackoverflow, reddit, npm, devto, mastodon, peertube, bbc, bing_news, archive, paperswithcode, sec_edgar, osm, lemmy, wikidata, crates, pypi" };
   return { type: "object", properties, required: ["query"] };
 }
 __name(querySchema, "querySchema");
@@ -445,6 +477,16 @@ async function callTool(params) {
       return toolResult(await searchCrates(args), formatSearchResponse);
     case "search_pypi":
       return toolResult(await searchPypi(args), formatSearchResponse);
+    case "search_wiktionary":
+      return toolResult(await searchWiktionary(args), formatSearchResponse);
+    case "search_openlibrary":
+      return toolResult(await searchOpenLibrary(args), formatSearchResponse);
+    case "search_musicbrainz":
+      return toolResult(await searchMusicbrainz(args), formatSearchResponse);
+    case "instant_answer":
+      return toolResult(await instantAnswer(args), formatSearchResponse);
+    case "search_crossref":
+      return toolResult(await searchCrossref(args), formatSearchResponse);
     case "find_rss":
       return toolResult(await findRss(args), formatSearchResponse);
     case "debug_capture_search_html":
@@ -474,6 +516,11 @@ async function searchAuto(args) {
   const requested = Array.isArray(args.engines) ? args.engines : ["duckduckgo", "bing", "yahoo", "google", "yandex", "baidu", "naver", "sogou", "wikipedia"];
   const engines = requested.map((name) => String(name).toLowerCase()).filter(Boolean);
   const attempts = [];
+  // Check cache first
+  const cacheKey = `auto:${engines.join(",")}:${args.query}:${args.limit || 5}`;
+  const cached = getCached(cacheKey);
+  if (cached) return { ...cached, _cached: true };
+  
   for (const engine of engines) {
     try {
       let result;
@@ -508,12 +555,14 @@ async function searchAuto(args) {
       else continue;
       attempts.push({ engine, ok: !isBadSearchResult(result), result_count: Array.isArray(result.results) ? result.results.length : 0 });
       if (!isBadSearchResult(result)) {
-        return {
+        const final = {
           ...result,
           source: result.source || engine,
           attempts,
           fallback_used: attempts.length > 1
         };
+        setCache(cacheKey, final);
+        return final;
       }
     } catch (error) {
       attempts.push({ engine, ok: false, error: error?.message || "failed" });
@@ -1273,6 +1322,95 @@ async function findRss(args) {
 }
 __name(findRss, "findRss");
 
+
+async function searchWiktionary(args) {
+  const query = requireString(args.query, "query");
+  const lang = /^[a-z]{2,3}$/.test(args.language || "") ? args.language : "en";
+  try {
+    const data = await fetchJson(`https://${lang}.wiktionary.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`);
+    let results = [];
+    for (const item of (data.query?.search || [])) {
+      const snippet = (item.snippet || "").replace(/<[^>]+>/g, "").trim().substring(0, 200);
+      results.push({ title: item.title || query, url: `https://${lang}.wiktionary.org/wiki/${encodeURIComponent(item.title || query)}`, snippet });
+    }
+    return searchResult({ source: "wiktionary", query, limit: 5, results });
+  } catch (e) { return searchError("wiktionary", query, 5, e); }
+}
+__name(searchWiktionary, "searchWiktionary");
+
+async function searchOpenLibrary(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=${limit}`);
+    let results = [];
+    for (const doc of (data.docs || [])) {
+      if (results.length >= limit) break;
+      const title = doc.title || "";
+      const author = (doc.author_name || []).join(", ");
+      const year = doc.first_publish_year || "";
+      const olid = (doc.edition_key || [])[0] || "";
+      const url = olid ? `https://openlibrary.org/books/${olid}` : `https://openlibrary.org/search?q=${encodeURIComponent(title)}`;
+      results.push({ title, url, snippet: `${author}${year ? " (" + year + ")" : ""}` });
+    }
+    return searchResult({ source: "openlibrary", query, limit, results });
+  } catch (e) { return searchError("openlibrary", query, limit, e); }
+}
+__name(searchOpenLibrary, "searchOpenLibrary");
+
+async function searchMusicbrainz(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}`);
+    let results = [];
+    for (const rec of (data.recordings || [])) {
+      if (results.length >= limit) break;
+      const title = rec.title || "";
+      const artist = (rec["artist-credit"] || []).map(a => a.name || a.artist?.name || "").join(", ");
+      const album = (rec.releases || [])[0]?.title || "";
+      results.push({ title, url: `https://musicbrainz.org/recording/${rec.id}`, snippet: `${artist}${album ? " - " + album : ""}` });
+    }
+    return searchResult({ source: "musicbrainz", query, limit, results });
+  } catch (e) { return searchError("musicbrainz", query, limit, e); }
+}
+__name(searchMusicbrainz, "searchMusicbrainz");
+
+async function instantAnswer(args) {
+  const query = requireString(args.query, "query");
+  try {
+    const data = await fetchJson(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
+    const abstract = data.Abstract || "";
+    const answer = data.Answer || "";
+    const definition = data.Definition || "";
+    const infobox = data.Infobox ? JSON.stringify(data.Infobox).substring(0, 200) : "";
+    const text = abstract || answer || definition || "No instant answer found.";
+    const url = data.AbstractURL || data.DefinitionURL || "";
+    const source = data.AbstractSource || data.DefinitionSource || "";
+    return searchResult({ source: "ddg_instant", query, limit: 1, results: [{ title: query, url, snippet: `${text.substring(0, 300)}${source ? " (Source: " + source + ")" : ""}` }] });
+  } catch (e) { return searchError("ddg_instant", query, 1, e); }
+}
+__name(instantAnswer, "instantAnswer");
+
+async function searchCrossref(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=${limit}`);
+    let results = [];
+    for (const item of (data.message?.items || [])) {
+      if (results.length >= limit) break;
+      const title = (item.title || [""])[0];
+      const author = (item.author || []).map(a => `${a.given || ""} ${a.family || ""}`.trim()).join(", ");
+      const year = (item.published?.["date-parts"] || [[null]])[0][0] || "";
+      const doi = item.DOI || "";
+      results.push({ title, url: doi ? `https://doi.org/${doi}` : "", snippet: `${author}${year ? " (" + year + ")" : ""}${doi ? " DOI: " + doi : ""}` });
+    }
+    return searchResult({ source: "crossref", query, limit, results });
+  } catch (e) { return searchError("crossref", query, limit, e); }
+}
+__name(searchCrossref, "searchCrossref");
+
 async function searchWikipedia(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1401,17 +1539,31 @@ async function fetchText(url, options = {}) {
   return text;
 }
 __name(fetchText, "fetchText");
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": `${SERVER_NAME}/${SERVER_VERSION} (https://search-mcp.qdp.qzz.io)`
-    }
-  });
+// Simple in-memory cache for repeated queries
+const searchCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+function getCached(key) {
+  const entry = searchCache.get(key);
+  if (entry && Date.now() - entry.ts < CACHE_TTL_MS) return entry.data;
+  if (entry) searchCache.delete(key);
+  return null;
+}
+function setCache(key, data) {
+  if (searchCache.size > 200) { const oldest = searchCache.keys().next().value; searchCache.delete(oldest); }
+  searchCache.set(key, { data, ts: Date.now() });
+}
+__name(getCached, "getCached");
+__name(setCache, "setCache");
+
+async function fetchJson(url, options = {}) {
+  const headers = { Accept: "application/json", "User-Agent": `${SERVER_NAME}/${SERVER_VERSION}`, ...(options.headers || {}) };
+  const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`upstream ${response.status} for ${url}`);
   return response.json();
 }
 __name(fetchJson, "fetchJson");
+function searchError(source, query, limit, error) { return searchResult({ source, query, limit, results: [], error: typeof error === "string" ? error : error?.message || "failed" }); }
+__name(searchError, "searchError");
 function searchResult({ source, query, limit, results, blocked, block_reason, ...extra }) {
   const hasResults = Array.isArray(results) && results.length > 0;
   return {
