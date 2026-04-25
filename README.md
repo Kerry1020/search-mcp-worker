@@ -1,6 +1,6 @@
 # search-mcp-worker
 
-A Cloudflare Worker exposing an MCP server for multi-engine web search, GitHub lookup, URL fetching, Wikipedia queries, and Internet Archive access — no API keys required.
+A Cloudflare Worker exposing an MCP server for multi-engine web search, academic papers, developer forums, social media, news, and more — no API keys required.
 
 ## MCP Tools
 
@@ -9,37 +9,56 @@ A Cloudflare Worker exposing an MCP server for multi-engine web search, GitHub l
 | Tool | Description |
 |------|-------------|
 | `search_auto` | Search multiple engines with automatic fallback. Returns the first useful result set. |
-| `search_duckduckgo` | DuckDuckGo HTML search. Reliable general-purpose fallback. |
+| `search_duckduckgo` | DuckDuckGo HTML search. Reliable general-purpose fallback. Supports region codes. |
 | `search_bing` | Bing HTML search. |
 | `search_yahoo` | Yahoo HTML search. |
-| `search_google_web` | Google web search. May be rate-limited; use DuckDuckGo/Bing as fallback. |
+| `search_google_web` | Google web search. May be rate-limited. |
 | `search_baidu` | Baidu search for Chinese web results. |
 | `search_sogou` | Sogou search for Chinese web results. |
 | `search_naver` | Naver search for Korean web results. |
 | `search_yandex` | Yandex search. Extra fallback for multi-language results. |
 | `search_wikipedia` | Search Wikipedia and return page summaries. |
-| `search_archive` | Search the Internet Archive. Supports item search and Wayback Machine URL snapshots. |
 
-### Academic
+### Academic Search
 
 | Tool | Description |
 |------|-------------|
 | `search_arxiv` | Search arXiv preprints. Returns titles, authors, abstracts, PDF links. |
 | `search_pubmed` | Search biomedical literature on PubMed. Returns titles, authors, PMIDs. |
 
-### GitHub
+### Developer & Code
 
 | Tool | Description |
 |------|-------------|
-| `search_github_repos` | Search public GitHub repositories (no auth required). |
-| `fetch_github_file` | Fetch a public file from GitHub by owner/repo/path/ref. |
+| `search_hackernews` | Search Hacker News stories via Algolia. Tech discussions, startup news. |
+| `search_stackoverflow` | Search Stack Exchange sites. Supports all StackExchange sites (stackoverflow, askubuntu, math, physics, etc.). |
+| `search_npm` | Search npm packages. Returns names, versions, descriptions. |
+| `search_devto` | Search Dev.to developer blog posts. |
+| `search_github_repos` | Search public GitHub repositories. |
+| `fetch_github_file` | Fetch a public file from GitHub. |
+
+### Social & Video
+
+| Tool | Description |
+|------|-------------|
+| `search_reddit` | Search Reddit posts. Optionally filter by subreddit. |
+| `search_mastodon` | Search Mastodon/fediverse posts. Supports any instance. |
+| `search_peertube` | Search PeerTube videos across the fediverse. |
+
+### News & Media
+
+| Tool | Description |
+|------|-------------|
+| `search_bbc` | Search BBC News articles. |
+| `search_bing_news` | Search Bing News headlines. |
+| `search_archive` | Internet Archive (item search + Wayback Machine snapshots). |
 
 ### URL & Metadata
 
 | Tool | Description |
 |------|-------------|
-| `fetch_metadata` | Fetch a URL and return title, description, canonical URL, status, content type. |
-| `fetch_url` | Fetch a URL and return readable text and metadata. Not for private/authenticated pages. |
+| `fetch_metadata` | Fetch URL title, description, status, content type. |
+| `fetch_url` | Fetch URL and return readable text and metadata. |
 
 ### Debug
 
@@ -50,24 +69,13 @@ A Cloudflare Worker exposing an MCP server for multi-engine web search, GitHub l
 
 ## How It Works
 
-All searches parse live HTML from search engine result pages. No external API keys or subscriptions needed. The `search_auto` tool tries engines in sequence and stops at the first good result, making it the recommended default.
+All searches parse live HTML or public APIs. No external API keys or subscriptions needed.
 
-Supported language-specific engines:
-- **Chinese**: Baidu, Sogou
-- **Korean**: Naver
-- **Russian/Multi-lang**: Yandex
-- **Regional**: DuckDuckGo supports region codes (e.g. `de-de`, `fr-fr`, `jp-jp`)
-
-### Academic Search
-
-| Tool | Description |
-|------|-------------|
-| `search_arxiv` | Search arXiv preprints. Returns titles, authors, abstracts, and PDF links. |
-| `search_pubmed` | Search biomedical literature on PubMed. Returns titles, authors, PMIDs. |
-
-### Archive
-
-- **Archive**: Internet Archive (item search + Wayback Machine snapshots)
+- **`search_auto`** tries engines in sequence and stops at the first good result
+- DuckDuckGo supports region codes (e.g. `de-de`, `fr-fr`, `jp-jp`) for localized results
+- StackOverflow supports any StackExchange site via the `site` parameter
+- Reddit supports subreddit filtering via the `subreddit` parameter
+- Mastodon supports any instance via the `instance` parameter
 
 The MCP endpoint follows standard JSON-RPC (`/mcp`).
 
