@@ -73,6 +73,30 @@ var TOOLS = [
     }
   },
   {
+    name: "search_arxiv",
+    description: "Search academic papers on arXiv. Returns titles, authors, abstracts, and PDF links.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        limit: { type: "number", description: "Maximum results, default 5, max 10" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_pubmed",
+    description: "Search biomedical literature on PubMed. Returns titles, authors, PMIDs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+        limit: { type: "number", description: "Maximum results, default 5, max 10" }
+      },
+      required: ["query"]
+    }
+  },
+  {
     name: "debug_capture_search_html",
     description: "Fetch a live search page and return a bounded HTML sample focused on result markers for parser debugging.",
     inputSchema: {
@@ -254,6 +278,10 @@ async function callTool(params) {
       return toolResult(await searchArchive(args), formatSearchResponse);
     case "search_brave":
       return toolResult(await searchBrave(args), formatSearchResponse);
+    case "search_arxiv":
+      return toolResult(await searchArxiv(args), formatSearchResponse);
+    case "search_pubmed":
+      return toolResult(await searchPubmed(args), formatSearchResponse);
     case "debug_capture_search_html":
       return toolResult(await debugCaptureSearchHtml(args), formatDebugCaptureResponse);
     case "search_wikipedia":
@@ -294,6 +322,8 @@ async function searchAuto(args) {
     else if (engine === "naver") result = await searchNaver(args);
     else if (engine === "sogou") result = await searchSogou(args);
     else if (engine === "archive") result = await searchArchive(args);
+    else if (engine === "arxiv") result = await searchArxiv(args);
+    else if (engine === "pubmed") result = await searchPubmed(args);
       else continue;
       attempts.push({ engine, ok: !isBadSearchResult(result), result_count: Array.isArray(result.results) ? result.results.length : 0 });
       if (!isBadSearchResult(result)) {
@@ -582,6 +612,59 @@ async function searchArchive(args) {
 __name(searchArchive, "searchArchive");
 
 
+
+
+async function searchArxiv(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const xml = await fetchText(`https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&max_results=${limit}`);
+    let results = [];
+    const entries = xml.split("<entry>");
+    for (let i = 1; i < entries.length && results.length < limit; i++) {
+      const entry = entries[i];
+      const title = (entry.match(/<title>([\s\S]*?)<\/title>/) || [])[1]?.trim().replace(/\n/g, " ") || "";
+      const id = (entry.match(/<id>([^<]+)<\/id>/) || [])[1] || "";
+      const summary = (entry.match(/<summary>([\s\S]*?)<\/summary>/) || [])[1]?.trim().replace(/\n/g, " ").substring(0, 200) || "";
+      const authors = (entry.match(/<name>([^<]+)<\/name>/g) || []).map(a => a.replace(/<\/?name>/g, "")).join(", ");
+      const pdfUrl = id.replace("abs", "pdf");
+      if (title && id) results.push({ title, url: id, snippet: summary, authors });
+    }
+    return searchResult({ source: "arxiv", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "arxiv", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchArxiv, "searchArxiv");
+
+
+
+async function searchPubmed(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    // Step 1: search for IDs
+    const searchXml = await fetchText(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmax=${limit}`);
+    const ids = [...searchXml.matchAll(/<Id>(\d+)<\/Id>/g)].map(m => m[1]);
+    if (!ids.length) return searchResult({ source: "pubmed", query, limit, results: [] });
+    // Step 2: fetch details
+    const fetchXml = await fetchText(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${ids.join(",")}&rettype=abstract&retmode=xml`);
+    let results = [];
+    const articles = fetchXml.split("<PubmedArticle>");
+    for (let i = 1; i < articles.length && results.length < limit; i++) {
+      const art = articles[i];
+      const title = (art.match(/<ArticleTitle>([\s\S]*?)<\/ArticleTitle>/) || [])[1]?.trim() || "";
+      const pmid = (art.match(/<PMID[^>]*>(\d+)<\/PMID>/) || [])[1] || "";
+      const abstract = (art.match(/<AbstractText[^>]*>([\s\S]*?)<\/AbstractText>/) || [])[1]?.replace(/<[^>]+>/g, "").trim().substring(0, 200) || "";
+      const authorNames = [...art.matchAll(/<LastName>([^<]+)<\/LastName>/g)].map(m => m[1]).join(", ");
+      if (title && pmid) results.push({ title, url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`, snippet: abstract, authors: authorNames });
+    }
+    return searchResult({ source: "pubmed", query, limit, results });
+  } catch (e) {
+    return searchResult({ source: "pubmed", query, limit, results: [], error: e?.message || "failed" });
+  }
+}
+__name(searchPubmed, "searchPubmed");
 
 async function searchWikipedia(args) {
   const query = requireString(args.query, "query");
