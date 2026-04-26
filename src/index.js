@@ -584,6 +584,7 @@ async function searchDuckDuckGo(args) {
   const limit = clampLimit(args.limit);
   const region = typeof args.region === "string" ? args.region : "us-en";
   const attempts = [
+    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`,
     `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`,
     `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`
   ];
@@ -591,7 +592,7 @@ async function searchDuckDuckGo(args) {
   const fetchAttempts = [];
   for (const url of attempts) {
     try {
-      const { text, response } = await fetchTextWithResponse(url);
+      const { text, response } = await fetchSearchHtml(url);
       const fetchPath = safeHostname(response.url) || safeHostname(url);
       const diagnosis = diagnoseSearchHtml("duckduckgo", text, response.url);
       fetchAttempts.push({ path: fetchPath, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
@@ -636,19 +637,41 @@ __name(searchDuckDuckGo, "searchDuckDuckGo");
 async function searchBing(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const html = await fetchText(`https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`);
-  const diagnosis = diagnoseSearchHtml("bing", html);
-  const results = extractBingResults(html, limit);
-  return searchResult({ source: "bing", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+  const urls = [
+    `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}&setlang=en&cc=us&form=QBLH`,
+    `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}&setmkt=en-US`,
+    `https://m.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`
+  ];
+  for (const url of urls) {
+    try {
+      const { text, response } = await fetchSearchHtml(url);
+      const diagnosis = diagnoseSearchHtml("bing", text, response.url);
+      if (diagnosis.blocked) continue;
+      const results = extractBingResults(text, limit);
+      if (results.length > 0) return searchResult({ source: "bing", query, limit, results, blocked: false, block_reason: "" });
+    } catch (e) { continue; }
+  }
+  return searchResult({ source: "bing", query, limit, results: [], blocked: true, block_reason: "captcha_or_verification" });
 }
 __name(searchBing, "searchBing");
 async function searchYahoo(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const html = await fetchText(`https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}`);
-  const diagnosis = diagnoseSearchHtml("yahoo", html);
-  const results = extractYahooResults(html, limit);
-  return searchResult({ source: "yahoo", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+  const urls = [
+    `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8&nojs=1`,
+    `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8`,
+    `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}`
+  ];
+  for (const url of urls) {
+    try {
+      const { text, response } = await fetchSearchHtml(url);
+      const diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
+      if (diagnosis.blocked) continue;
+      const results = extractYahooResults(text, limit);
+      if (results.length > 0) return searchResult({ source: "yahoo", query, limit, results, blocked: false, block_reason: "" });
+    } catch (e) { continue; }
+  }
+  return searchResult({ source: "yahoo", query, limit, results: [], blocked: true, block_reason: "consent_page" });
 }
 __name(searchYahoo, "searchYahoo");
 async function debugCaptureSearchHtml(args) {
@@ -681,53 +704,82 @@ __name(debugCaptureSearchHtml, "debugCaptureSearchHtml");
 async function searchGoogle(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  try {
-    const { text, response } = await fetchTextWithResponse(`https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}`);
-    const diagnosis = diagnoseSearchHtml("google", text, response.url);
-    let results = [];
-    const re = /<a href="\/url\?q=([^&"]+)[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>/gi;
-    for (const match of text.matchAll(re)) {
-      if (results.length >= limit) break;
-      const url = decodeURIComponent(match[1]);
-      if (isNoiseUrl(url)) continue;
-      results.push({ title: cleanText(match[2]), url, snippet: "" });
+  const urls = [
+    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}&hl=en&gbv=1&sei=&gws_rd=cr`,
+    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}&hl=en`,
+    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}`
+  ];
+  for (const url of urls) {
+    try {
+      const { text, response } = await fetchSearchHtml(url);
+      const diagnosis = diagnoseSearchHtml("google", text, response.url);
+      if (diagnosis.blocked) continue;
+      let results = [];
+      const re = /<a href="\/url\?q=([^&"]+)[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>/gi;
+      for (const match of text.matchAll(re)) {
+        if (results.length >= limit) break;
+        const u = decodeURIComponent(match[1]);
+        if (isNoiseUrl(u)) continue;
+        results.push({ title: cleanText(match[2]), url: u, snippet: "" });
+      }
+      if (!results.length) results = extractGenericLinks(text, limit, "https://www.google.com");
+      if (results.length > 0) return searchResult({ source: "google", query, limit, results, blocked: false, block_reason: "" });
+    } catch (error) {
+      const message = String(error?.message || "");
+      if (/upstream 429 .*google\.com\/search/i.test(message)) continue;
+      continue;
     }
-    if (!results.length) results = extractGenericLinks(text, limit, "https://www.google.com");
-    return searchResult({ source: "google", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
-  } catch (error) {
-    const message = String(error?.message || "");
-    if (/upstream 429 .*google\.com\/search/i.test(message)) {
-      return searchResult({ source: "google", query, limit, results: [], blocked: true, block_reason: "rate_limited" });
-    }
-    throw error;
   }
+  return searchResult({ source: "google", query, limit, results: [], blocked: true, block_reason: "captcha_or_verification" });
 }
 __name(searchGoogle, "searchGoogle");
 async function searchBaidu(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const { text, response } = await fetchTextWithResponse(`https://www.baidu.com/s?wd=${encodeURIComponent(query)}`);
-  const diagnosis = diagnoseSearchHtml("baidu", text, response.url);
-  let results = [];
-  const re = /<h3[^>]*class="[^"]*t[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<span[^>]+class="[^"]*content-right_8Zs40[^"]*"[^>]*>|<h3[^>]*class="[^"]*t[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-  for (const match of text.matchAll(re)) {
-    if (results.length >= limit) break;
-    const url = decodeHtml(match[1] || match[3]);
-    if (isNoiseUrl(url)) continue;
-    results.push({ title: cleanText(match[2] || match[4]), url, snippet: "" });
+  const urls = [
+    `https://m.baidu.com/s?word=${encodeURIComponent(query)}&pn=0&rn=${limit}`,
+    `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`,
+    `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`
+  ];
+  for (const url of urls) {
+    try {
+      const { text, response } = await fetchSearchHtml(url);
+      const diagnosis = diagnoseSearchHtml("baidu", text, response.url);
+      if (diagnosis.blocked) continue;
+      let results = [];
+      const re = /<h3[^>]*class="[^"]*t[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<span[^>]+class="[^"]*content-right_8Zs40[^"]*"[^>]*>|<h3[^>]*class="[^"]*t[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+      for (const match of text.matchAll(re)) {
+        if (results.length >= limit) break;
+        const u = decodeHtml(match[1] || match[3]);
+        if (isNoiseUrl(u)) continue;
+        results.push({ title: cleanText(match[2] || match[4]), url: u, snippet: "" });
+      }
+      if (!results.length) results = extractGenericLinks(text, limit, "https://www.baidu.com");
+      if (results.length > 0) return searchResult({ source: "baidu", query, limit, results, blocked: false, block_reason: "" });
+    } catch (e) { continue; }
   }
-  if (!results.length) results = extractGenericLinks(text, limit, "https://www.baidu.com");
-  return searchResult({ source: "baidu", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+  return searchResult({ source: "baidu", query, limit, results: [], blocked: true, block_reason: "captcha_or_verification" });
 }
 __name(searchBaidu, "searchBaidu");
 async function searchYandex(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const language = /^[a-z-]{2,12}$/i.test(args.language || "") ? args.language : "en";
-  const html = await fetchText(`https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}`);
-  const diagnosis = diagnoseSearchHtml("yandex", html);
-  const results = extractYandexResults(html, limit);
-  return searchResult({ source: "yandex", query, limit, results, language, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+  const urls = [
+    `https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}&lr=134`,
+    `https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}`,
+    `https://yandex.com/search/?text=${encodeURIComponent(query)}`
+  ];
+  for (const url of urls) {
+    try {
+      const { text, response } = await fetchSearchHtml(url);
+      const diagnosis = diagnoseSearchHtml("yandex", text, response.url);
+      if (diagnosis.blocked) continue;
+      const results = extractYandexResults(text, limit);
+      if (results.length > 0) return searchResult({ source: "yandex", query, limit, results, language, blocked: false, block_reason: "" });
+    } catch (e) { continue; }
+  }
+  return searchResult({ source: "yandex", query, limit, results: [], language, blocked: true, block_reason: "captcha_or_verification" });
 }
 __name(searchYandex, "searchYandex");
 
@@ -1166,7 +1218,7 @@ async function searchBingNews(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const { text } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`);
+    const { text } = await fetchSearchHtml(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`);
     let results = [];
     // Try RSS first
     const items = text.match(/<item>[\s\S]*?<\/item>/gi) || [];
@@ -1178,7 +1230,7 @@ async function searchBingNews(args) {
     }
     // Fallback to HTML parsing
     if (!results.length) {
-      const { text: html } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}`);
+      const { text: html } = await fetchSearchHtml(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}`);
       results = extractGenericLinks(html, limit, "https://www.bing.com");
       results = results.filter(r => !r.url.includes("bing.com"));
     }
@@ -1562,6 +1614,56 @@ async function fetchUrl(args) {
   };
 }
 __name(fetchUrl, "fetchUrl");
+const SEARCH_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Accept-Encoding": "gzip, deflate, br",
+  "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "sec-fetch-dest": "document",
+  "sec-fetch-mode": "navigate",
+  "sec-fetch-site": "none",
+  "sec-fetch-user": "?1",
+  "Upgrade-Insecure-Requests": "1",
+  "Cache-Control": "max-age=0"
+};
+async function fetchSearchHtml(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("timeout"), options.timeoutMs || DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: SEARCH_HEADERS,
+      redirect: "follow"
+    });
+    if (!response.ok) throw new Error(`upstream ${response.status} for ${url}`);
+    const maxBytes = options.maxBytes || MAX_FETCH_BYTES;
+    const reader = response.body?.getReader();
+    if (!reader) return { text: await response.text(), response };
+    const chunks = [];
+    let size = 0;
+    while (size < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+    const merged = new Uint8Array(Math.min(size, maxBytes));
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk.slice(0, merged.length - offset), offset);
+      offset += chunk.byteLength;
+      if (offset >= merged.length) break;
+    }
+    return { text: new TextDecoder().decode(merged), response };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+__name(fetchSearchHtml, "fetchSearchHtml");
+
 async function fetchTextWithResponse(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("timeout"), options.timeoutMs || DEFAULT_TIMEOUT_MS);
@@ -2157,8 +2259,19 @@ function jsonRpcError(id, code, message, status) {
   return json(rpcError(id, code, message), status);
 }
 __name(jsonRpcError, "jsonRpcError");
+function sanitizeForJson(value) {
+  if (typeof value === "string") return value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+  if (Array.isArray(value)) return value.map(sanitizeForJson);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = sanitizeForJson(v);
+    return out;
+  }
+  return value;
+}
+__name(sanitizeForJson, "sanitizeForJson");
 function json(value, status = 200) {
-  return new Response(JSON.stringify(value), { status, headers: JSON_HEADERS });
+  return new Response(JSON.stringify(sanitizeForJson(value)), { status, headers: JSON_HEADERS });
 }
 __name(json, "json");
 export {
