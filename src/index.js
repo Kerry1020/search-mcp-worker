@@ -800,6 +800,80 @@ __name(searchSogou, "searchSogou");
 
 
 
+async function searchBrave(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const url = `https://search.brave.com/search?q=${encodeURIComponent(query)}&source=web`;
+  try {
+    const { text, response } = await fetchTextWithResponse(url);
+    const fetchPath = safeHostname(response.url) || safeHostname(url);
+    const diagnosis = diagnoseSearchHtml("brave", text, response.url);
+    if (diagnosis.blocked) return searchResult({ source: "brave", query, limit, results: [], blocked: true, block_reason: diagnosis.reason || "", fetch_path: fetchPath });
+    let results = [];
+    const blocks = text.split(/<div[^>]+class="[^"]*snippet[^"]*"[^>]*>/i);
+    for (const block of blocks) {
+      if (results.length >= limit) break;
+      const link = block.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+      if (!link) continue;
+      const href = decodeHtml(link[1]);
+      if (isNoiseUrl(href)) continue;
+      const snippet = (block.match(/<p[^>]+class="[^"]*snippet-description[^"]*"[^>]*>([\s\S]*?)<\/p>/i) || [])[1] || (block.match(/<div[^>]+class="[^"]*snippet-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || [])[1] || "";
+      results.push({ title: cleanText(link[2]), url: href, snippet: cleanText(snippet) });
+    }
+    if (!results.length) results = extractGenericLinks(text, limit, "https://search.brave.com");
+    return searchResult({ source: "brave", query, limit, results, fetch_path: fetchPath });
+  } catch (error) {
+    return { ok: false, source: "brave", query, limit, results: [], error: error?.message || "failed" };
+  }
+}
+__name(searchBrave, "searchBrave");
+
+async function searchQwant(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const url = `https://www.qwant.com/?q=${encodeURIComponent(query)}&t=web`;
+  try {
+    const { text, response } = await fetchTextWithResponse(url);
+    const fetchPath = safeHostname(response.url) || safeHostname(url);
+    const diagnosis = diagnoseSearchHtml("qwant", text, response.url);
+    if (diagnosis.blocked) return searchResult({ source: "qwant", query, limit, results: [], blocked: true, block_reason: diagnosis.reason || "", fetch_path: fetchPath });
+    let results = extractGenericLinks(text, limit, "https://www.qwant.com");
+    return searchResult({ source: "qwant", query, limit, results, fetch_path: fetchPath });
+  } catch (error) {
+    return { ok: false, source: "qwant", query, limit, results: [], error: error?.message || "failed" };
+  }
+}
+__name(searchQwant, "searchQwant");
+
+async function searchEcosia(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const url = `https://www.ecosia.org/search?q=${encodeURIComponent(query)}&method=index`;
+  try {
+    const { text, response } = await fetchTextWithResponse(url);
+    const fetchPath = safeHostname(response.url) || safeHostname(url);
+    const diagnosis = diagnoseSearchHtml("ecosia", text, response.url);
+    if (diagnosis.blocked) return searchResult({ source: "ecosia", query, limit, results: [], blocked: true, block_reason: diagnosis.reason || "", fetch_path: fetchPath });
+    let results = [];
+    const blocks = text.split(/<div[^>]+class="[^"]*result[^"]*"[^>]*>/i);
+    for (const block of blocks) {
+      if (results.length >= limit) break;
+      const link = block.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+      if (!link) continue;
+      const href = decodeHtml(link[1]);
+      if (isNoiseUrl(href)) continue;
+      const snippet = (block.match(/<p[^>]+class="[^"]*snippet[^"]*"[^>]*>([\s\S]*?)<\/p>/i) || [])[1] || "";
+      results.push({ title: cleanText(link[2]), url: href, snippet: cleanText(snippet) });
+    }
+    if (!results.length) results = extractGenericLinks(text, limit, "https://www.ecosia.org");
+    return searchResult({ source: "ecosia", query, limit, results, fetch_path: fetchPath });
+  } catch (error) {
+    return { ok: false, source: "ecosia", query, limit, results: [], error: error?.message || "failed" };
+  }
+}
+__name(searchEcosia, "searchEcosia");
+
+
 async function searchArchive(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -2042,7 +2116,7 @@ function htmlToText(html) {
 }
 __name(htmlToText, "htmlToText");
 function cleanText(value) {
-  return htmlToText(String(value || ""));
+  return htmlToText(String(value || "")).replace(/[\x00-\x1f\x7f]/g, (c) => c === "\n" ? "\n" : c === "\r" ? "" : c === "\t" ? " " : "");
 }
 __name(cleanText, "cleanText");
 function decodeHtml(value) {
