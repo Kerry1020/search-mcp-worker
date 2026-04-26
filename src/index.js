@@ -513,7 +513,7 @@ function isBadSearchResult(result) {
 }
 __name(isBadSearchResult, "isBadSearchResult");
 async function searchAuto(args) {
-  const requested = Array.isArray(args.engines) ? args.engines : ["duckduckgo", "bing", "yahoo", "google", "yandex", "baidu", "naver", "sogou", "wikipedia"];
+  const requested = Array.isArray(args.engines) ? args.engines : ["bing", "brave", "sogou", "ecosia", "qwant", "naver", "baidu", "wikipedia", "duckduckgo", "google", "yahoo", "yandex"];
   const engines = requested.map((name) => String(name).toLowerCase()).filter(Boolean);
   const attempts = [];
   // Check cache first
@@ -533,7 +533,11 @@ async function searchAuto(args) {
       else if (engine === "wikipedia") result = await searchWikipedia(args);
     else if (engine === "naver") result = await searchNaver(args);
     else if (engine === "sogou") result = await searchSogou(args);
+    else if (engine === "brave") result = await searchBrave(args);
+    else if (engine === "qwant") result = await searchQwant(args);
+    else if (engine === "ecosia") result = await searchEcosia(args);
     else if (engine === "archive") result = await searchArchive(args);
+    else if (engine === "arxiv") result = await searchArxiv(args);
     else if (engine === "arxiv") result = await searchArxiv(args);
     else if (engine === "pubmed") result = await searchPubmed(args);
     else if (engine === "hackernews") result = await searchHackerNews(args);
