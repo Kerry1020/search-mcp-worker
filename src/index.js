@@ -584,16 +584,23 @@ async function searchDuckDuckGo(args) {
   const limit = clampLimit(args.limit);
   const region = typeof args.region === "string" ? args.region : "us-en";
   const attempts = [
-    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`,
-    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`,
-    `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`
+    { url: `https://lite.duckduckgo.com/lite/`, method: "POST", body: `q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`, headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Referer": "https://html.duckduckgo.com/", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "same-origin", "Sec-Fetch-User": "?1", "Accept-Language": "en-US,en;q=0.9" } },
+    { url: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`, method: "GET", body: null, headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Referer": "https://html.duckduckgo.com/", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "same-origin", "Sec-Fetch-User": "?1" } },
+    { url: `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`, method: "GET", body: null, headers: {} }
   ];
   let bestFailure = null;
   const fetchAttempts = [];
-  for (const url of attempts) {
+  for (const attempt of attempts) {
     try {
-      const { text, response } = await fetchSearchHtml(url);
-      const fetchPath = safeHostname(response.url) || safeHostname(url);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort("timeout"), DEFAULT_TIMEOUT_MS);
+      const fetchOpts = { signal: controller.signal, headers: attempt.headers, redirect: "follow" };
+      if (attempt.method === "POST" && attempt.body) { fetchOpts.method = "POST"; fetchOpts.body = attempt.body; }
+      const response = await fetch(attempt.url, fetchOpts);
+      clearTimeout(timer);
+      if (!response.ok) throw new Error(`upstream ${response.status}`);
+      const text = await response.text();
+      const fetchPath = safeHostname(response.url) || safeHostname(attempt.url);
       const diagnosis = diagnoseSearchHtml("duckduckgo", text, response.url);
       fetchAttempts.push({ path: fetchPath, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
       if (diagnosis.blocked) {
@@ -611,13 +618,26 @@ async function searchDuckDuckGo(args) {
         const snippet = (block.match(/<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i) || [])[1] || "";
         results.push({ title: cleanText(link[2]), url: href, snippet: cleanText(snippet) });
       }
+      // lite 版本的解析
+      if (!results.length) {
+        const rows = text.split(/<tr[^>]*>/i);
+        for (const row of rows) {
+          if (results.length >= limit) break;
+          const link = row.match(/<a[^>]+class="[^"]*result-link[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i) || row.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*class="[^"]*link[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+          if (!link) continue;
+          const href = decodeDuckUrl(decodeHtml(link[1]));
+          if (isNoiseUrl(href)) continue;
+          const snippet = (row.match(/<td[^>]+class="[^"]*result-snippet[^"]*"[^>]*>([\s\S]*?)<\/td>/i) || [])[1] || "";
+          results.push({ title: cleanText(link[2]), url: href, snippet: cleanText(snippet) });
+        }
+      }
       if (!results.length) results = extractGenericLinks(text, limit, "https://duckduckgo.com");
       if (results.length) {
         return searchResult({ source: "duckduckgo", query, limit, results, region, fetch_path: fetchPath, fetch_attempts: fetchAttempts });
       }
       bestFailure = searchResult({ source: "duckduckgo", query, limit, results: [], region, fetch_path: fetchPath, fetch_attempts: fetchAttempts });
     } catch (error) {
-      fetchAttempts.push({ path: safeHostname(url), blocked: false, block_reason: "", error: error?.message || "failed" });
+      fetchAttempts.push({ path: safeHostname(attempt.url), blocked: false, block_reason: "", error: error?.message || "failed" });
       bestFailure = {
         ok: false,
         source: "duckduckgo",
@@ -626,7 +646,7 @@ async function searchDuckDuckGo(args) {
         results: [],
         region,
         error: error?.message || "failed",
-        fetch_path: safeHostname(url),
+        fetch_path: safeHostname(attempt.url),
         fetch_attempts: fetchAttempts
       };
     }
@@ -637,14 +657,14 @@ __name(searchDuckDuckGo, "searchDuckDuckGo");
 async function searchBing(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const urls = [
-    `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}&setlang=en&cc=us&form=QBLH`,
-    `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}&setmkt=en-US`,
-    `https://m.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`
+  const attempts = [
+    { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}&setlang=en&cc=us`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*" } },
+    { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`, headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Accept": "text/html,*/*" } },
+    { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`, headers: {} },
   ];
-  for (const url of urls) {
+  for (const attempt of attempts) {
     try {
-      const { text, response } = await fetchSearchHtml(url);
+      const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
       const diagnosis = diagnoseSearchHtml("bing", text, response.url);
       if (diagnosis.blocked) continue;
       const results = extractBingResults(text, limit);
@@ -657,14 +677,14 @@ __name(searchBing, "searchBing");
 async function searchYahoo(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const urls = [
-    `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8&nojs=1`,
-    `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8`,
-    `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}`
+  const attempts = [
+    { url: `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8&nojs=1`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*", "Accept-Language": "en-US,en;q=0.9" } },
+    { url: `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8`, headers: {} },
+    { url: `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}`, headers: {} },
   ];
-  for (const url of urls) {
+  for (const attempt of attempts) {
     try {
-      const { text, response } = await fetchSearchHtml(url);
+      const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
       const diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
       if (diagnosis.blocked) continue;
       const results = extractYahooResults(text, limit);
@@ -704,14 +724,15 @@ __name(debugCaptureSearchHtml, "debugCaptureSearchHtml");
 async function searchGoogle(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const urls = [
-    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}&hl=en&gbv=1&sei=&gws_rd=cr`,
-    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}&hl=en`,
-    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}`
+  // Strategy 1: GSA mobile UA + standard URL
+  const attempts = [
+    { url: `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}&hl=en`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,application/xhtml+xml,*/*", "Accept-Language": "en-US,en;q=0.9" } },
+    { url: `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}&hl=en&gbv=1`, headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Accept": "text/html,*/*" } },
+    { url: `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}`, headers: {} },
   ];
-  for (const url of urls) {
+  for (const attempt of attempts) {
     try {
-      const { text, response } = await fetchSearchHtml(url);
+      const { text, response } = await fetchWithUA(attempt.url, { ...attempt.headers });
       const diagnosis = diagnoseSearchHtml("google", text, response.url);
       if (diagnosis.blocked) continue;
       let results = [];
@@ -724,11 +745,7 @@ async function searchGoogle(args) {
       }
       if (!results.length) results = extractGenericLinks(text, limit, "https://www.google.com");
       if (results.length > 0) return searchResult({ source: "google", query, limit, results, blocked: false, block_reason: "" });
-    } catch (error) {
-      const message = String(error?.message || "");
-      if (/upstream 429 .*google\.com\/search/i.test(message)) continue;
-      continue;
-    }
+    } catch (e) { continue; }
   }
   return searchResult({ source: "google", query, limit, results: [], blocked: true, block_reason: "captcha_or_verification" });
 }
@@ -736,14 +753,13 @@ __name(searchGoogle, "searchGoogle");
 async function searchBaidu(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const urls = [
-    `https://m.baidu.com/s?word=${encodeURIComponent(query)}&pn=0&rn=${limit}`,
-    `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`,
-    `https://www.baidu.com/s?wd=${encodeURIComponent(query)}`
+  const attempts = [
+    { url: `https://m.baidu.com/s?word=${encodeURIComponent(query)}&pn=0&rn=${limit}`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*", "Accept-Language": "zh-CN,zh;q=0.9" } },
+    { url: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`, headers: {} },
   ];
-  for (const url of urls) {
+  for (const attempt of attempts) {
     try {
-      const { text, response } = await fetchSearchHtml(url);
+      const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
       const diagnosis = diagnoseSearchHtml("baidu", text, response.url);
       if (diagnosis.blocked) continue;
       let results = [];
@@ -765,14 +781,13 @@ async function searchYandex(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const language = /^[a-z-]{2,12}$/i.test(args.language || "") ? args.language : "en";
-  const urls = [
-    `https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}&lr=134`,
-    `https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}`,
-    `https://yandex.com/search/?text=${encodeURIComponent(query)}`
+  const attempts = [
+    { url: `https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}&lr=134`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*" } },
+    { url: `https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}`, headers: {} },
   ];
-  for (const url of urls) {
+  for (const attempt of attempts) {
     try {
-      const { text, response } = await fetchSearchHtml(url);
+      const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
       const diagnosis = diagnoseSearchHtml("yandex", text, response.url);
       if (diagnosis.blocked) continue;
       const results = extractYandexResults(text, limit);
@@ -862,15 +877,28 @@ async function searchBrave(args) {
     const diagnosis = diagnoseSearchHtml("brave", text, response.url);
     if (diagnosis.blocked) return searchResult({ source: "brave", query, limit, results: [], blocked: true, block_reason: diagnosis.reason || "", fetch_path: fetchPath });
     let results = [];
-    const blocks = text.split(/<div[^>]+class="[^"]*snippet[^"]*"[^>]*>/i);
+    // Brave uses data-type="web" divs for web results
+    const blocks = text.split(/data-type="web"/i);
     for (const block of blocks) {
       if (results.length >= limit) break;
-      const link = block.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+      // Links with class "l1" are result titles
+      const link = block.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*class="[^"]*l1[^"]*"[^>]*>([\s\S]*?)<\/a>/i) || block.match(/<a[^>]+class="[^"]*l1[^"]*"[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
       if (!link) continue;
       const href = decodeHtml(link[1]);
       if (isNoiseUrl(href)) continue;
-      const snippet = (block.match(/<p[^>]+class="[^"]*snippet-description[^"]*"[^>]*>([\s\S]*?)<\/p>/i) || [])[1] || (block.match(/<div[^>]+class="[^"]*snippet-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || [])[1] || "";
+      // Description is in a <div class="snippet-description ...">
+      const snippet = (block.match(/class="[^"]*snippet-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || [])[1] || (block.match(/class="[^"]*snippet-description[^"]*"[^>]*>([\s\S]*?)<\/p>/i) || [])[1] || "";
       results.push({ title: cleanText(link[2]), url: href, snippet: cleanText(snippet) });
+    }
+    // Fallback: generic links with l1 class
+    if (!results.length) {
+      const links = text.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*class="[^"]*l1[^"]*"[^>]*>([\s\S]*?)<\/a>/gi) || [];
+      for (const lm of links) {
+        if (results.length >= limit) break;
+        const m = lm.match(/href="(https?:\/\/[^"]+)"/i);
+        const tm = lm.match(/>([\s\S]*?)<\//i);
+        if (m && !isNoiseUrl(m[1])) results.push({ title: cleanText(tm ? tm[1] : ""), url: decodeHtml(m[1]), snippet: "" });
+      }
     }
     if (!results.length) results = extractGenericLinks(text, limit, "https://search.brave.com");
     return searchResult({ source: "brave", query, limit, results, fetch_path: fetchPath });
@@ -1218,7 +1246,7 @@ async function searchBingNews(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const { text } = await fetchSearchHtml(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`);
+    const { text } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`);
     let results = [];
     // Try RSS first
     const items = text.match(/<item>[\s\S]*?<\/item>/gi) || [];
@@ -1230,7 +1258,7 @@ async function searchBingNews(args) {
     }
     // Fallback to HTML parsing
     if (!results.length) {
-      const { text: html } = await fetchSearchHtml(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}`);
+      const { text: html } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}`);
       results = extractGenericLinks(html, limit, "https://www.bing.com");
       results = results.filter(r => !r.url.includes("bing.com"));
     }
@@ -1614,28 +1642,23 @@ async function fetchUrl(args) {
   };
 }
 __name(fetchUrl, "fetchUrl");
-const SEARCH_HEADERS = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Accept-Encoding": "gzip, deflate, br",
-  "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-  "sec-ch-ua-mobile": "?0",
-  "sec-ch-ua-platform": '"Windows"',
-  "sec-fetch-dest": "document",
-  "sec-fetch-mode": "navigate",
-  "sec-fetch-site": "none",
-  "sec-fetch-user": "?1",
-  "Upgrade-Insecure-Requests": "1",
-  "Cache-Control": "max-age=0"
-};
-async function fetchSearchHtml(url, options = {}) {
+const GSA_USER_AGENTS = [
+  "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36",
+  "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.101 Mobile Safari/537.36",
+  "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.64 Mobile Safari/537.36",
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
+  "Mozilla/5.0 (Linux; Android 12; M2101K6G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36"
+];
+function randomGsaUA() { return GSA_USER_AGENTS[Math.floor(Math.random() * GSA_USER_AGENTS.length)]; }
+__name(randomGsaUA, "randomGsaUA");
+
+async function fetchWithUA(url, headers, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("timeout"), options.timeoutMs || DEFAULT_TIMEOUT_MS);
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: SEARCH_HEADERS,
+      headers,
       redirect: "follow"
     });
     if (!response.ok) throw new Error(`upstream ${response.status} for ${url}`);
@@ -1662,44 +1685,13 @@ async function fetchSearchHtml(url, options = {}) {
     clearTimeout(timer);
   }
 }
-__name(fetchSearchHtml, "fetchSearchHtml");
-
+__name(fetchWithUA, "fetchWithUA");
 async function fetchTextWithResponse(url, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("timeout"), options.timeoutMs || DEFAULT_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
-      },
-      redirect: "follow"
-    });
-    if (!response.ok) throw new Error(`upstream ${response.status} for ${url}`);
-    const maxBytes = options.maxBytes || MAX_FETCH_BYTES;
-    const reader = response.body?.getReader();
-    if (!reader) return { text: await response.text(), response };
-    const chunks = [];
-    let size = 0;
-    while (size < maxBytes) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      size += value.byteLength;
-    }
-    const merged = new Uint8Array(Math.min(size, maxBytes));
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk.slice(0, merged.length - offset), offset);
-      offset += chunk.byteLength;
-      if (offset >= merged.length) break;
-    }
-    return { text: new TextDecoder().decode(merged), response };
-  } finally {
-    clearTimeout(timer);
-  }
+  return fetchWithUA(url, {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
+  }, options);
 }
 __name(fetchTextWithResponse, "fetchTextWithResponse");
 async function fetchText(url, options = {}) {
