@@ -1,154 +1,310 @@
 # search-mcp-worker
 
-A Cloudflare Worker exposing an MCP server for **39 multi-engine search tools** — no API keys required.
+English | [简体中文](./README.zh-CN.md)
 
-Covers: web search, academic papers, developer forums, social media, news, books, music, maps, knowledge bases, package registries, SEC filings, and more.
+`search-mcp-worker` is a Cloudflare Worker that exposes a lightweight MCP server for web search and page fetching. It is designed for agents and automation workflows that need a single MCP endpoint instead of wiring together multiple search providers manually.
 
-## MCP Tools (39 total)
+The project focuses on two jobs:
 
-### 🔍 Web Search (9)
+1. search across several public web sources
+2. fetch and clean page content into readable text
 
-| Tool | Description |
-|------|-------------|
-| `search_auto` | Multi-engine auto-fallback. Returns first useful result set. Cached 5 min. |
-| `search_duckduckgo` | DuckDuckGo HTML search. Supports region codes (`de-de`, `fr-fr`, `jp-jp`). |
-| `search_bing` | Bing HTML search. |
-| `search_yahoo` | Yahoo HTML search. |
-| `search_google_web` | Google web search. May be rate-limited. |
-| `search_baidu` | Baidu search for Chinese results. |
-| `search_sogou` | Sogou search for Chinese results. |
-| `search_naver` | Naver search for Korean results. |
-| `search_yandex` | Yandex multi-language search. |
+## What it does
 
-### 📚 Academic & Research (4)
+- Runs as a single Cloudflare Worker
+- Exposes an MCP-compatible JSON-RPC endpoint at `/mcp`
+- Supports multiple search tools for general web search, Wikipedia, Reddit, and public X/Twitter discovery
+- Includes page-fetch tools for generic URLs and Reddit threads
+- Uses fallback search paths when a primary engine returns weak or empty results
+- Keeps deployment simple: no database, no extra backend, no headless browser
 
-| Tool | Description |
-|------|-------------|
-| `search_arxiv` | arXiv preprints. Returns titles, authors, abstracts, PDF links. |
-| `search_pubmed` | PubMed biomedical literature. Two-step esearch→efetch. |
-| `search_crossref` | CrossRef DOI search. Returns titles, authors, years, DOIs. |
-| `search_paperswithcode` | ML/AI papers with code implementations. |
+## Tool list
 
-### 💻 Developer & Code (5)
+### Web search
 
-| Tool | Description |
-|------|-------------|
-| `search_hackernews` | Hacker News via Algolia. Tech discussions, startup news. |
-| `search_stackoverflow` | All StackExchange sites (`site` param: stackoverflow, math, physics, etc.). |
-| `search_npm` | npm package search. Returns names, versions, descriptions. |
-| `search_devto` | Dev.to developer blog posts. |
-| `search_github_repos` | GitHub repository search. |
+- `search_google_web`
+- `search_duckduckgo`
+- `search_bing`
+- `search_baidu`
+- `search_yandex`
+- `search_yahoo`
 
-### 📱 Social & Video (3)
+These tools accept:
 
-| Tool | Description |
-|------|-------------|
-| `search_reddit` | Reddit posts. Optional subreddit filter. |
-| `search_mastodon` | Fediverse posts. Supports any instance. |
-| `search_peertube` | PeerTube videos across the fediverse. |
+```json
+{
+  "query": "Cloudflare Workers",
+  "max_results": 5
+}
+```
 
-### 📰 News & Media (2)
+Notes:
 
-| Tool | Description |
-|------|-------------|
-| `search_bbc` | BBC News articles. |
-| `search_bing_news` | Bing News headlines. |
+- `query` is required
+- `max_results` is clamped to `1-10`
+- some tools internally fall back to another engine if the first source is blocked or returns nothing useful
 
-### 📖 Reference & Media (4)
+### Knowledge / community search
 
-| Tool | Description |
-|------|-------------|
-| `search_wikipedia` | Wikipedia page summaries. |
-| `search_wiktionary` | Word definitions, etymology, translations. Supports language codes. |
-| `search_openlibrary` | Book search by title/author/ISBN. Returns cover URLs. |
-| `search_musicbrainz` | Music recordings, artists, releases. |
+#### `search_wikipedia`
 
-### 🌍 Geographic & Knowledge (2)
+Search Wikipedia with language-aware fallback.
 
-| Tool | Description |
-|------|-------------|
-| `search_osm` | OpenStreetMap places, addresses, POIs with coordinates. |
-| `search_wikidata` | Structured knowledge entities (IDs, labels, descriptions). |
+```json
+{
+  "query": "Alan Turing",
+  "limit": 5,
+  "lang": "auto"
+}
+```
 
-### 📦 Package Registries (2)
+Arguments:
 
-| Tool | Description |
-|------|-------------|
-| `search_crates` | Rust crates on crates.io. Downloads count included. |
-| `search_pypi` | Python packages. JSON API for known packages, HTML fallback for search. |
+- `query` required
+- `limit` optional, `1-10`
+- `lang` optional, default `auto`
 
-### 💰 Finance (1)
+#### `search_reddit`
 
-| Tool | Description |
-|------|-------------|
-| `search_sec_edgar` | SEC EDGAR filings. Filter by form type (10-K, 10-Q, 8-K, etc.). |
+Search public Reddit posts through JSON endpoints.
 
-### 🗂️ Archive & Feeds (2)
+```json
+{
+  "query": "mcp server",
+  "subreddit": "ClaudeAI",
+  "limit": 5,
+  "sort": "relevance"
+}
+```
 
-| Tool | Description |
-|------|-------------|
-| `search_archive` | Internet Archive item search + Wayback Machine snapshots. |
-| `find_rss` | Discover RSS/Atom feed URLs for any website. |
+Arguments:
 
-### ⚡ Quick Lookup (1)
+- `query` required
+- `subreddit` optional
+- `limit` optional, `1-10`
+- `sort` optional, default `relevance`
 
-| Tool | Description |
-|------|-------------|
-| `instant_answer` | DuckDuckGo instant answers for facts and definitions. |
+#### `search_twitter_x`
 
-### 🔧 GitHub & URL (3)
+Search public X/Twitter pages through multi-engine site-scoped search.
 
-| Tool | Description |
-|------|-------------|
-| `fetch_github_file` | Fetch a public file from GitHub. |
-| `fetch_metadata` | URL title, description, status, content type. |
-| `fetch_url` | Fetch URL and return readable text + metadata. |
+```json
+{
+  "query": "OpenAI MCP",
+  "max_results": 5
+}
+```
 
-### 🐛 Debug (2)
+## Fetch tools
 
-| Tool | Description |
-|------|-------------|
-| `debug_capture_search_html` | Capture raw HTML for parser debugging. |
-| `health` | Worker health check. |
+### `fetch_url`
 
-## Features
+Fetch a URL and return metadata plus cleaned text.
 
-- **Zero API keys** — all tools use public APIs or HTML parsing
-- **In-memory cache** — 5 min TTL on `search_auto` results
-- **Auto-fallback** — `search_auto` tries engines in sequence
-- **Multi-language** — region codes on DDG, language codes on Wiktionary, Korean on Naver
-- **Fediverse support** — Mastodon (any instance), PeerTube, Lemmy
+```json
+{
+  "url": "https://developers.cloudflare.com/workers/",
+  "max_chars": 6000
+}
+```
 
-## Local Development
+Arguments:
+
+- `url` required
+- `max_chars` optional, clamped to `500-20000`
+
+Typical response fields:
+
+- `ok`
+- `status`
+- `url`
+- `final_url`
+- `content_type`
+- `title`
+- `text`
+
+### `fetch_reddit_post`
+
+Fetch a Reddit thread via the public `.json` endpoint.
+
+```json
+{
+  "url": "https://www.reddit.com/r/Cloudflare/comments/xxxxx/example_post/",
+  "max_comments": 5
+}
+```
+
+Arguments:
+
+- `url` required
+- `max_comments` optional, clamped to `1-20`
+
+## Endpoints
+
+### Health
+
+`GET /` or `GET /healthz`
+
+Example:
+
+```bash
+curl https://your-worker.example.com/healthz
+```
+
+Returns basic server metadata, version, MCP endpoint, and tool names.
+
+### MCP
+
+`POST /mcp`
+
+This endpoint speaks JSON-RPC and supports the core MCP flow implemented by this worker:
+
+- `initialize`
+- `notifications/initialized`
+- `tools/list`
+- `tools/call`
+
+## Example MCP calls
+
+### Initialize
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {}
+}
+```
+
+### List tools
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/list",
+  "params": {}
+}
+```
+
+### Call a search tool
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "search_bing",
+    "arguments": {
+      "query": "Cloudflare Workers MCP",
+      "max_results": 5
+    }
+  }
+}
+```
+
+### Call a fetch tool
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "fetch_url",
+    "arguments": {
+      "url": "https://modelcontextprotocol.io/",
+      "max_chars": 3000
+    }
+  }
+}
+```
+
+## Response shape
+
+Tool calls return MCP text content plus structured JSON. In practice, clients can use the structured payload directly.
+
+Search results generally look like this:
+
+```json
+{
+  "ok": true,
+  "status": 200,
+  "query": "Cloudflare Workers MCP",
+  "source": "bing",
+  "fallback_used": false,
+  "results": [
+    {
+      "rank": 1,
+      "url": "https://example.com",
+      "title": "Example result",
+      "snippet": "Example snippet"
+    }
+  ]
+}
+```
+
+## Local development
 
 ```bash
 npm install
-npx wrangler dev --local --port 8791
+npx wrangler dev --local --port 8789
 ```
 
-## Deploy
+Then test:
+
+```bash
+curl http://127.0.0.1:8789/healthz
+```
+
+## Deployment
 
 ```bash
 npx wrangler deploy
 ```
 
-## Project Structure
+Current route configured in `wrangler.toml`:
 
-```
+- `search-mcp.qdp.qzz.io/*`
+
+## Project structure
+
+```text
 search-mcp-worker/
-├── src/index.js      # Worker entry + all search parsers + MCP handlers (~95KB)
-├── wrangler.toml
-├── package.json
-└── README.md
+├── src/index.js        # Worker entrypoint, MCP routing, tool implementations
+├── wrangler.toml       # Cloudflare Worker config
+├── package.json        # local development dependencies
+├── README.md
+└── README.zh-CN.md
 ```
 
-## Known Limitations
+## Design notes
 
-- Several search engines block Cloudflare Worker exit IPs (Bluesky, Google Scholar, Discogs)
-- BBC search returns section pages rather than individual articles
-- PyPI HTML search triggers client challenge; use exact package name with JSON API
-- Archive Wayback may timeout due to archive.org latency from CF edge
+- This project relies on publicly reachable web endpoints and HTML parsing for several engines.
+- Search result quality depends on upstream markup stability, indexing coverage, and rate limiting.
+- Some engines may challenge requests or return degraded HTML in certain regions.
+- `search_twitter_x` does not call a private X API. It finds public pages through site-scoped web search.
+- `fetch_url` returns cleaned text, not full readability-grade article extraction.
 
-## License
+## Good use cases
 
-MIT
+- give an LLM one MCP endpoint for basic web search
+- fetch readable text from a webpage before summarization
+- search Wikipedia or Reddit without adding extra providers
+- deploy a small search MCP service on Cloudflare with minimal operational overhead
+
+## Limits
+
+This worker is intentionally simple. It is not trying to be:
+
+- a full SERP API replacement
+- a browser automation system
+- a JavaScript-rendering scraper
+- a long-form article extraction engine
+- a private authenticated social-media connector
+
+## License / usage
+
+Use and adapt it however fits your deployment model. If you expose it publicly, expect search engines to throttle or reshape traffic over time.
