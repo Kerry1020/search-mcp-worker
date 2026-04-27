@@ -18,7 +18,7 @@ The project focuses on two jobs:
 - Uses fallback search paths when a primary engine returns weak or empty results
 - Keeps deployment simple: no database, no extra backend, no headless browser
 
-## Tool list
+## Full tool list
 
 ### Web search
 
