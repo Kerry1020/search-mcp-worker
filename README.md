@@ -20,124 +20,65 @@ The project focuses on two jobs:
 
 ## Full tool list
 
-### Web search
+The current `main` branch exposes **40 tools**.
 
-- `search_google_web`
+### General web search
+
+- `search_auto`
 - `search_duckduckgo`
 - `search_bing`
+- `search_yahoo`
+- `search_google_web`
 - `search_baidu`
 - `search_yandex`
-- `search_yahoo`
+- `search_naver`
+- `search_sogou`
 
-These tools accept:
+### Research, knowledge, developer, and domain search
 
-```json
-{
-  "query": "Cloudflare Workers",
-  "max_results": 5
-}
-```
+- `search_archive`
+- `search_arxiv`
+- `search_pubmed`
+- `search_hackernews`
+- `search_stackoverflow`
+- `search_reddit`
+- `search_npm`
+- `search_devto`
+- `search_mastodon`
+- `search_peertube`
+- `search_bbc`
+- `search_bing_news`
+- `search_paperswithcode`
+- `search_sec_edgar`
+- `search_osm`
+- `search_lemmy`
+- `search_wikidata`
+- `search_crates`
+- `search_pypi`
+- `search_wiktionary`
+- `search_openlibrary`
+- `search_musicbrainz`
+- `search_crossref`
+- `search_wikipedia`
+- `search_github_repos`
 
-Notes:
+### Fetch / extraction
 
-- `query` is required
-- `max_results` is clamped to `1-10`
-- some tools internally fall back to another engine if the first source is blocked or returns nothing useful
+- `fetch_github_file`
+- `fetch_metadata`
+- `fetch_url`
 
-### Knowledge / community search
+### Utility / debugging
 
-#### `search_wikipedia`
+- `instant_answer`
+- `find_rss`
+- `debug_capture_search_html`
 
-Search Wikipedia with language-aware fallback.
+### Notes on coverage
 
-```json
-{
-  "query": "Alan Turing",
-  "limit": 5,
-  "lang": "auto"
-}
-```
-
-Arguments:
-
-- `query` required
-- `limit` optional, `1-10`
-- `lang` optional, default `auto`
-
-#### `search_reddit`
-
-Search public Reddit posts through JSON endpoints.
-
-```json
-{
-  "query": "mcp server",
-  "subreddit": "ClaudeAI",
-  "limit": 5,
-  "sort": "relevance"
-}
-```
-
-Arguments:
-
-- `query` required
-- `subreddit` optional
-- `limit` optional, `1-10`
-- `sort` optional, default `relevance`
-
-#### `search_twitter_x`
-
-Search public X/Twitter pages through multi-engine site-scoped search.
-
-```json
-{
-  "query": "OpenAI MCP",
-  "max_results": 5
-}
-```
-
-## Fetch tools
-
-### `fetch_url`
-
-Fetch a URL and return metadata plus cleaned text.
-
-```json
-{
-  "url": "https://developers.cloudflare.com/workers/",
-  "max_chars": 6000
-}
-```
-
-Arguments:
-
-- `url` required
-- `max_chars` optional, clamped to `500-20000`
-
-Typical response fields:
-
-- `ok`
-- `status`
-- `url`
-- `final_url`
-- `content_type`
-- `title`
-- `text`
-
-### `fetch_reddit_post`
-
-Fetch a Reddit thread via the public `.json` endpoint.
-
-```json
-{
-  "url": "https://www.reddit.com/r/Cloudflare/comments/xxxxx/example_post/",
-  "max_comments": 5
-}
-```
-
-Arguments:
-
-- `url` required
-- `max_comments` optional, clamped to `1-20`
+- `search_auto` is the umbrella entrypoint for multi-engine fallback.
+- Several domain-specific tools target academic, developer, financial, map, library, and social/community sources.
+- `debug_capture_search_html` is mainly for parser troubleshooting, not normal end-user search flows.
 
 ## Endpoints
 

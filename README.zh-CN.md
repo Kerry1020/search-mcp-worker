@@ -20,124 +20,65 @@
 
 ## 完整工具列表
 
+当前 `main` 分支一共暴露 **40 个工具**。
+
 ### 通用网页搜索
 
-- `search_google_web`
+- `search_auto`
 - `search_duckduckgo`
 - `search_bing`
+- `search_yahoo`
+- `search_google_web`
 - `search_baidu`
 - `search_yandex`
-- `search_yahoo`
+- `search_naver`
+- `search_sogou`
 
-这些工具的典型参数：
+### 研究、知识、开发者与垂直搜索
 
-```json
-{
-  "query": "Cloudflare Workers",
-  "max_results": 5
-}
-```
+- `search_archive`
+- `search_arxiv`
+- `search_pubmed`
+- `search_hackernews`
+- `search_stackoverflow`
+- `search_reddit`
+- `search_npm`
+- `search_devto`
+- `search_mastodon`
+- `search_peertube`
+- `search_bbc`
+- `search_bing_news`
+- `search_paperswithcode`
+- `search_sec_edgar`
+- `search_osm`
+- `search_lemmy`
+- `search_wikidata`
+- `search_crates`
+- `search_pypi`
+- `search_wiktionary`
+- `search_openlibrary`
+- `search_musicbrainz`
+- `search_crossref`
+- `search_wikipedia`
+- `search_github_repos`
 
-说明：
+### 抓取 / 提取
 
-- `query` 必填
-- `max_results` 会被限制在 `1-10`
-- 某些工具在首选搜索源被拦截、无结果或结果不可用时，会自动尝试其他引擎
+- `fetch_github_file`
+- `fetch_metadata`
+- `fetch_url`
 
-### 知识 / 社区搜索
+### 工具 / 调试
 
-#### `search_wikipedia`
+- `instant_answer`
+- `find_rss`
+- `debug_capture_search_html`
 
-按语言智能回退搜索 Wikipedia。
+### 覆盖范围说明
 
-```json
-{
-  "query": "Alan Turing",
-  "limit": 5,
-  "lang": "auto"
-}
-```
-
-参数：
-
-- `query` 必填
-- `limit` 可选，范围 `1-10`
-- `lang` 可选，默认 `auto`
-
-#### `search_reddit`
-
-通过 Reddit 的公开 JSON 接口搜索帖子。
-
-```json
-{
-  "query": "mcp server",
-  "subreddit": "ClaudeAI",
-  "limit": 5,
-  "sort": "relevance"
-}
-```
-
-参数：
-
-- `query` 必填
-- `subreddit` 可选
-- `limit` 可选，范围 `1-10`
-- `sort` 可选，默认 `relevance`
-
-#### `search_twitter_x`
-
-通过多搜索引擎站内检索发现公开的 X/Twitter 页面。
-
-```json
-{
-  "query": "OpenAI MCP",
-  "max_results": 5
-}
-```
-
-## 抓取工具
-
-### `fetch_url`
-
-抓取一个 URL，返回元数据和清洗后的正文文本。
-
-```json
-{
-  "url": "https://developers.cloudflare.com/workers/",
-  "max_chars": 6000
-}
-```
-
-参数：
-
-- `url` 必填
-- `max_chars` 可选，会被限制在 `500-20000`
-
-典型返回字段：
-
-- `ok`
-- `status`
-- `url`
-- `final_url`
-- `content_type`
-- `title`
-- `text`
-
-### `fetch_reddit_post`
-
-通过公开 `.json` 接口抓取 Reddit 帖子线程。
-
-```json
-{
-  "url": "https://www.reddit.com/r/Cloudflare/comments/xxxxx/example_post/",
-  "max_comments": 5
-}
-```
-
-参数：
-
-- `url` 必填
-- `max_comments` 可选，会被限制在 `1-20`
+- `search_auto` 是多引擎回退的总入口。
+- 很多垂直工具覆盖了学术、开发者、金融、地图、图书、社区等不同数据源。
+- `debug_capture_search_html` 主要用于解析器排障，不是普通用户的常规搜索入口。
 
 ## 服务端点
 
