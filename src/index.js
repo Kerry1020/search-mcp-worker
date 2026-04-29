@@ -1,9 +1,11 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// src/worker.js
+// src/index.js
+var __defProp2 = Object.defineProperty;
+var __name2 = /* @__PURE__ */ __name((target, value) => __defProp2(target, "name", { value, configurable: true }), "__name");
 var SERVER_NAME = "search-mcp-worker";
-var SERVER_VERSION = "0.7.3";
+var SERVER_VERSION = "0.7.4";
 var MAX_FETCH_BYTES = 512e3;
 var DEFAULT_TIMEOUT_MS = 12e3;
 var JSON_HEADERS = {
@@ -48,7 +50,6 @@ var TOOLS = [
     description: "Search the web via Yandex HTML results. Useful as an extra fallback when other engines fail.",
     inputSchema: querySchema({ language: true })
   },
-
   {
     name: "search_naver",
     description: "Search Korean web results via Naver.",
@@ -382,6 +383,7 @@ function querySchema(extra = {}) {
   return { type: "object", properties, required: ["query"] };
 }
 __name(querySchema, "querySchema");
+__name2(querySchema, "querySchema");
 async function handleJsonRpc(message, request) {
   const id = message?.id ?? null;
   try {
@@ -411,6 +413,7 @@ async function handleJsonRpc(message, request) {
   }
 }
 __name(handleJsonRpc, "handleJsonRpc");
+__name2(handleJsonRpc, "handleJsonRpc");
 async function callTool(params) {
   const name = params?.name;
   const args = params?.arguments || {};
@@ -506,21 +509,21 @@ async function callTool(params) {
   }
 }
 __name(callTool, "callTool");
+__name2(callTool, "callTool");
 function isBadSearchResult(result) {
   if (!result || result.ok === false) return true;
   if (!Array.isArray(result.results) || result.results.length === 0) return true;
   return result.results.every((item) => isNoiseUrl(item.url));
 }
 __name(isBadSearchResult, "isBadSearchResult");
+__name2(isBadSearchResult, "isBadSearchResult");
 async function searchAuto(args) {
-  const requested = Array.isArray(args.engines) ? args.engines : ["bing", "brave", "sogou", "ecosia", "qwant", "naver", "baidu", "wikipedia", "duckduckgo", "google", "yahoo", "yandex"];
+  const requested = Array.isArray(args.engines) ? args.engines : ["bing", "brave", "sogou", "ecosia", "qwant", "naver", "baidu", "wikipedia", "duckduckgo", "google", "archive", "yahoo", "yandex"];
   const engines = requested.map((name) => String(name).toLowerCase()).filter(Boolean);
   const attempts = [];
-  // Check cache first
   const cacheKey = `auto:${engines.join(",")}:${args.query}:${args.limit || 5}`;
   const cached = getCached(cacheKey);
   if (cached) return { ...cached, _cached: true };
-  
   for (const engine of engines) {
     try {
       let result;
@@ -531,31 +534,31 @@ async function searchAuto(args) {
       else if (engine === "yandex") result = await searchYandex(args);
       else if (engine === "baidu") result = await searchBaidu(args);
       else if (engine === "wikipedia") result = await searchWikipedia(args);
-    else if (engine === "naver") result = await searchNaver(args);
-    else if (engine === "sogou") result = await searchSogou(args);
-    else if (engine === "brave") result = await searchBrave(args);
-    else if (engine === "qwant") result = await searchQwant(args);
-    else if (engine === "ecosia") result = await searchEcosia(args);
-    else if (engine === "archive") result = await searchArchive(args);
-    else if (engine === "arxiv") result = await searchArxiv(args);
-    else if (engine === "arxiv") result = await searchArxiv(args);
-    else if (engine === "pubmed") result = await searchPubmed(args);
-    else if (engine === "hackernews") result = await searchHackerNews(args);
-    else if (engine === "stackoverflow") result = await searchStackOverflow(args);
-    else if (engine === "reddit") result = await searchReddit(args);
-    else if (engine === "npm") result = await searchNpm(args);
-    else if (engine === "devto") result = await searchDevto(args);
-    else if (engine === "mastodon") result = await searchMastodon(args);
-    else if (engine === "peertube") result = await searchPeerTube(args);
-    else if (engine === "bbc") result = await searchBbc(args);
-    else if (engine === "bing_news") result = await searchBingNews(args);
-    else if (engine === "paperswithcode") result = await searchPapersWithCode(args);
-    else if (engine === "sec_edgar") result = await searchSecEdgar(args);
-    else if (engine === "osm") result = await searchOsm(args);
-    else if (engine === "lemmy") result = await searchLemmy(args);
-    else if (engine === "wikidata") result = await searchWikidata(args);
-    else if (engine === "crates") result = await searchCrates(args);
-    else if (engine === "pypi") result = await searchPypi(args);
+      else if (engine === "naver") result = await searchNaver(args);
+      else if (engine === "sogou") result = await searchSogou(args);
+      else if (engine === "brave") result = await searchBrave(args);
+      else if (engine === "qwant") result = await searchQwant(args);
+      else if (engine === "ecosia") result = await searchEcosia(args);
+      else if (engine === "archive") result = await searchArchive(args);
+      else if (engine === "arxiv") result = await searchArxiv(args);
+      else if (engine === "arxiv") result = await searchArxiv(args);
+      else if (engine === "pubmed") result = await searchPubmed(args);
+      else if (engine === "hackernews") result = await searchHackerNews(args);
+      else if (engine === "stackoverflow") result = await searchStackOverflow(args);
+      else if (engine === "reddit") result = await searchReddit(args);
+      else if (engine === "npm") result = await searchNpm(args);
+      else if (engine === "devto") result = await searchDevto(args);
+      else if (engine === "mastodon") result = await searchMastodon(args);
+      else if (engine === "peertube") result = await searchPeerTube(args);
+      else if (engine === "bbc") result = await searchBbc(args);
+      else if (engine === "bing_news") result = await searchBingNews(args);
+      else if (engine === "paperswithcode") result = await searchPapersWithCode(args);
+      else if (engine === "sec_edgar") result = await searchSecEdgar(args);
+      else if (engine === "osm") result = await searchOsm(args);
+      else if (engine === "lemmy") result = await searchLemmy(args);
+      else if (engine === "wikidata") result = await searchWikidata(args);
+      else if (engine === "crates") result = await searchCrates(args);
+      else if (engine === "pypi") result = await searchPypi(args);
       else continue;
       attempts.push({ engine, ok: !isBadSearchResult(result), result_count: Array.isArray(result.results) ? result.results.length : 0 });
       if (!isBadSearchResult(result)) {
@@ -583,6 +586,7 @@ async function searchAuto(args) {
   };
 }
 __name(searchAuto, "searchAuto");
+__name2(searchAuto, "searchAuto");
 async function searchDuckDuckGo(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -590,7 +594,7 @@ async function searchDuckDuckGo(args) {
   const attempts = [
     { url: `https://noai.duckduckgo.com/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`, method: "GET", body: null, headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Accept": "text/html,*/*", "Accept-Language": "en-US,en;q=0.9" } },
     { url: `https://lite.duckduckgo.com/lite/`, method: "POST", body: `q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`, headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Referer": "https://html.duckduckgo.com/" } },
-    { url: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`, method: "GET", body: null, headers: {} },
+    { url: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(region)}`, method: "GET", body: null, headers: {} }
   ];
   let bestFailure = null;
   const fetchAttempts = [];
@@ -599,7 +603,10 @@ async function searchDuckDuckGo(args) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort("timeout"), DEFAULT_TIMEOUT_MS);
       const fetchOpts = { signal: controller.signal, headers: attempt.headers, redirect: "follow" };
-      if (attempt.method === "POST" && attempt.body) { fetchOpts.method = "POST"; fetchOpts.body = attempt.body; }
+      if (attempt.method === "POST" && attempt.body) {
+        fetchOpts.method = "POST";
+        fetchOpts.body = attempt.body;
+      }
       const response = await fetch(attempt.url, fetchOpts);
       clearTimeout(timer);
       if (!response.ok) throw new Error(`upstream ${response.status}`);
@@ -622,7 +629,6 @@ async function searchDuckDuckGo(args) {
         const snippet = (block.match(/<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i) || [])[1] || "";
         results.push({ title: cleanText(link[2]), url: href, snippet: cleanText(snippet) });
       }
-      // lite 版本的解析
       if (!results.length) {
         const rows = text.split(/<tr[^>]*>/i);
         for (const row of rows) {
@@ -658,13 +664,14 @@ async function searchDuckDuckGo(args) {
   return bestFailure || searchResult({ source: "duckduckgo", query, limit, results: [], region, error: "duckduckgo returned no usable results", fetch_attempts: fetchAttempts });
 }
 __name(searchDuckDuckGo, "searchDuckDuckGo");
+__name2(searchDuckDuckGo, "searchDuckDuckGo");
 async function searchBing(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const attempts = [
     { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}&setlang=en&cc=us`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*" } },
     { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`, headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Accept": "text/html,*/*" } },
-    { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`, headers: {} },
+    { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`, headers: {} }
   ];
   for (const attempt of attempts) {
     try {
@@ -673,18 +680,21 @@ async function searchBing(args) {
       if (diagnosis.blocked) continue;
       const results = extractBingResults(text, limit);
       if (results.length > 0) return searchResult({ source: "bing", query, limit, results, blocked: false, block_reason: "" });
-    } catch (e) { continue; }
+    } catch (e) {
+      continue;
+    }
   }
   return searchResult({ source: "bing", query, limit, results: [], blocked: true, block_reason: "captcha_or_verification" });
 }
 __name(searchBing, "searchBing");
+__name2(searchBing, "searchBing");
 async function searchYahoo(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const attempts = [
     { url: `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8&nojs=1`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*", "Accept-Language": "en-US,en;q=0.9" } },
     { url: `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8`, headers: {} },
-    { url: `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}`, headers: {} },
+    { url: `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}`, headers: {} }
   ];
   for (const attempt of attempts) {
     try {
@@ -693,11 +703,14 @@ async function searchYahoo(args) {
       if (diagnosis.blocked) continue;
       const results = extractYahooResults(text, limit);
       if (results.length > 0) return searchResult({ source: "yahoo", query, limit, results, blocked: false, block_reason: "" });
-    } catch (e) { continue; }
+    } catch (e) {
+      continue;
+    }
   }
   return searchResult({ source: "yahoo", query, limit, results: [], blocked: true, block_reason: "consent_page" });
 }
 __name(searchYahoo, "searchYahoo");
+__name2(searchYahoo, "searchYahoo");
 async function debugCaptureSearchHtml(args) {
   const engine = requireString(args.engine, "engine").toLowerCase();
   const query = requireString(args.query, "query");
@@ -725,14 +738,14 @@ async function debugCaptureSearchHtml(args) {
   };
 }
 __name(debugCaptureSearchHtml, "debugCaptureSearchHtml");
+__name2(debugCaptureSearchHtml, "debugCaptureSearchHtml");
 async function searchGoogle(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  // Strategy 1: GSA mobile UA + standard URL
   const attempts = [
     { url: `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}&hl=en`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,application/xhtml+xml,*/*", "Accept-Language": "en-US,en;q=0.9" } },
     { url: `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}&hl=en&gbv=1`, headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Accept": "text/html,*/*" } },
-    { url: `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}`, headers: {} },
+    { url: `https://www.google.com/search?q=${encodeURIComponent(query)}&num=${limit}`, headers: {} }
   ];
   for (const attempt of attempts) {
     try {
@@ -749,17 +762,20 @@ async function searchGoogle(args) {
       }
       if (!results.length) results = extractGenericLinks(text, limit, "https://www.google.com");
       if (results.length > 0) return searchResult({ source: "google", query, limit, results, blocked: false, block_reason: "" });
-    } catch (e) { continue; }
+    } catch (e) {
+      continue;
+    }
   }
   return searchResult({ source: "google", query, limit, results: [], blocked: true, block_reason: "captcha_or_verification" });
 }
 __name(searchGoogle, "searchGoogle");
+__name2(searchGoogle, "searchGoogle");
 async function searchBaidu(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const attempts = [
     { url: `https://m.baidu.com/s?word=${encodeURIComponent(query)}&pn=0&rn=${limit}`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*", "Accept-Language": "zh-CN,zh;q=0.9" } },
-    { url: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`, headers: {} },
+    { url: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`, headers: {} }
   ];
   for (const attempt of attempts) {
     try {
@@ -776,18 +792,21 @@ async function searchBaidu(args) {
       }
       if (!results.length) results = extractGenericLinks(text, limit, "https://www.baidu.com");
       if (results.length > 0) return searchResult({ source: "baidu", query, limit, results, blocked: false, block_reason: "" });
-    } catch (e) { continue; }
+    } catch (e) {
+      continue;
+    }
   }
   return searchResult({ source: "baidu", query, limit, results: [], blocked: true, block_reason: "captcha_or_verification" });
 }
 __name(searchBaidu, "searchBaidu");
+__name2(searchBaidu, "searchBaidu");
 async function searchYandex(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const language = /^[a-z-]{2,12}$/i.test(args.language || "") ? args.language : "en";
   const attempts = [
     { url: `https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}&lr=134`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*" } },
-    { url: `https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}`, headers: {} },
+    { url: `https://yandex.com/search/?text=${encodeURIComponent(query)}&lang=${encodeURIComponent(language)}`, headers: {} }
   ];
   for (const attempt of attempts) {
     try {
@@ -796,27 +815,27 @@ async function searchYandex(args) {
       if (diagnosis.blocked) continue;
       const results = extractYandexResults(text, limit);
       if (results.length > 0) return searchResult({ source: "yandex", query, limit, results, language, blocked: false, block_reason: "" });
-    } catch (e) { continue; }
+    } catch (e) {
+      continue;
+    }
   }
   return searchResult({ source: "yandex", query, limit, results: [], language, blocked: true, block_reason: "captcha_or_verification" });
 }
 __name(searchYandex, "searchYandex");
-
+__name2(searchYandex, "searchYandex");
 async function searchNaver(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const { text, response } = await fetchTextWithResponse(`https://search.naver.com/search.naver?query=${encodeURIComponent(query)}&where=web`);
   const diagnosis = diagnoseSearchHtml("naver", text, response.url);
   let results = [];
-  const seen = new Set();
-  // Naver SSR embeds result URLs in data-url attributes; titles are in React hydration so extract from nearby links
+  const seen = /* @__PURE__ */ new Set();
   const dataUrlRe = /data-url="(https?:\/\/[^"]+)"/gi;
   for (const m of text.matchAll(dataUrlRe)) {
     if (results.length >= limit) break;
     const url = decodeHtml(m[1]);
     if (isNoiseUrl(url) || seen.has(url) || url.includes("naver.com") || url.includes("pstatic.net")) continue;
     seen.add(url);
-    // Derive title from URL hostname+path
     try {
       const u = new URL(url);
       const host = u.hostname.replace(/^www\./, "");
@@ -827,7 +846,6 @@ async function searchNaver(args) {
       results.push({ title: url, url, snippet: "" });
     }
   }
-  // Fallback: external links with anchor text
   if (results.length < limit) {
     const linkRe = /<a[^>]+href="(https?:\/\/(?!.*naver\.com)(?!.*pstatic\.net)[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     for (const m of text.matchAll(linkRe)) {
@@ -843,21 +861,19 @@ async function searchNaver(args) {
   return searchResult({ source: "naver", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
 }
 __name(searchNaver, "searchNaver");
-
+__name2(searchNaver, "searchNaver");
 async function searchSogou(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const { text, response } = await fetchTextWithResponse(`https://www.sogou.com/web?query=${encodeURIComponent(query)}`);
   const diagnosis = diagnoseSearchHtml("sogou", text, response.url);
   let results = [];
-  // Sogou uses /link?url=... redirect links; accept them as valid result URLs
   const re = /<h3[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   for (const match of text.matchAll(re)) {
     if (results.length >= limit) break;
     let url = decodeHtml(match[1]);
     const title = cleanText(match[2]);
     if (!title || title.length < 2) continue;
-    // Accept sogou /link urls as valid; skip javascript: and sogou internal pages
     if (url.startsWith("javascript:") || url === "#" || url === "/") continue;
     if (!url.startsWith("http")) url = "https://www.sogou.com" + url;
     results.push({ title, url, snippet: "" });
@@ -866,11 +882,7 @@ async function searchSogou(args) {
   return searchResult({ source: "sogou", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
 }
 __name(searchSogou, "searchSogou");
-
-
-
-
-
+__name2(searchSogou, "searchSogou");
 async function searchBrave(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -881,20 +893,16 @@ async function searchBrave(args) {
     const diagnosis = diagnoseSearchHtml("brave", text, response.url);
     if (diagnosis.blocked) return searchResult({ source: "brave", query, limit, results: [], blocked: true, block_reason: diagnosis.reason || "", fetch_path: fetchPath });
     let results = [];
-    // Brave uses data-type="web" divs for web results
     const blocks = text.split(/data-type="web"/i);
     for (const block of blocks) {
       if (results.length >= limit) break;
-      // Links with class "l1" are result titles
       const link = block.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*class="[^"]*l1[^"]*"[^>]*>([\s\S]*?)<\/a>/i) || block.match(/<a[^>]+class="[^"]*l1[^"]*"[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
       if (!link) continue;
       const href = decodeHtml(link[1]);
       if (isNoiseUrl(href)) continue;
-      // Description is in a <div class="snippet-description ...">
       const snippet = (block.match(/class="[^"]*snippet-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || [])[1] || (block.match(/class="[^"]*snippet-description[^"]*"[^>]*>([\s\S]*?)<\/p>/i) || [])[1] || "";
       results.push({ title: cleanText(link[2]), url: href, snippet: cleanText(snippet) });
     }
-    // Fallback: generic links with l1 class
     if (!results.length) {
       const links = text.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*class="[^"]*l1[^"]*"[^>]*>([\s\S]*?)<\/a>/gi) || [];
       for (const lm of links) {
@@ -911,7 +919,7 @@ async function searchBrave(args) {
   }
 }
 __name(searchBrave, "searchBrave");
-
+__name2(searchBrave, "searchBrave");
 async function searchQwant(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -928,7 +936,7 @@ async function searchQwant(args) {
   }
 }
 __name(searchQwant, "searchQwant");
-
+__name2(searchQwant, "searchQwant");
 async function searchEcosia(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -956,8 +964,7 @@ async function searchEcosia(args) {
   }
 }
 __name(searchEcosia, "searchEcosia");
-
-
+__name2(searchEcosia, "searchEcosia");
 async function searchArchive(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -976,7 +983,6 @@ async function searchArchive(args) {
       return searchResult({ source: "archive_wayback", query: url, limit, results: [], error: e?.message || "wayback lookup failed" });
     }
   }
-  // Use Internet Archive Scrape API for better results
   let results = [];
   try {
     const data = await fetchJson(`https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl[]=identifier,title,description&rows=${limit}&output=json`);
@@ -989,19 +995,16 @@ async function searchArchive(args) {
         snippet: Array.isArray(doc.description) ? doc.description[0]?.substring(0, 200) || "" : (doc.description || "").substring(0, 200)
       });
     }
-  } catch {}
+  } catch {
+  }
   if (!results.length) {
-    // Fallback to HTML scraping
     const { text } = await fetchTextWithResponse(`https://archive.org/search?query=${encodeURIComponent(query)}`);
     results = extractGenericLinks(text, limit, "https://archive.org");
   }
   return searchResult({ source: "archive", query, limit, results });
 }
 __name(searchArchive, "searchArchive");
-
-
-
-
+__name2(searchArchive, "searchArchive");
 async function searchArxiv(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1014,7 +1017,7 @@ async function searchArxiv(args) {
       const title = (entry.match(/<title>([\s\S]*?)<\/title>/) || [])[1]?.trim().replace(/\n/g, " ") || "";
       const id = (entry.match(/<id>([^<]+)<\/id>/) || [])[1] || "";
       const summary = (entry.match(/<summary>([\s\S]*?)<\/summary>/) || [])[1]?.trim().replace(/\n/g, " ").substring(0, 200) || "";
-      const authors = (entry.match(/<name>([^<]+)<\/name>/g) || []).map(a => a.replace(/<\/?name>/g, "")).join(", ");
+      const authors = (entry.match(/<name>([^<]+)<\/name>/g) || []).map((a) => a.replace(/<\/?name>/g, "")).join(", ");
       const pdfUrl = id.replace("abs", "pdf");
       if (title && id) results.push({ title, url: id, snippet: summary, authors });
     }
@@ -1024,18 +1027,14 @@ async function searchArxiv(args) {
   }
 }
 __name(searchArxiv, "searchArxiv");
-
-
-
+__name2(searchArxiv, "searchArxiv");
 async function searchPubmed(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    // Step 1: search for IDs
     const searchXml = await fetchText(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmax=${limit}`);
-    const ids = [...searchXml.matchAll(/<Id>(\d+)<\/Id>/g)].map(m => m[1]);
+    const ids = [...searchXml.matchAll(/<Id>(\d+)<\/Id>/g)].map((m) => m[1]);
     if (!ids.length) return searchResult({ source: "pubmed", query, limit, results: [] });
-    // Step 2: fetch details
     const fetchXml = await fetchText(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${ids.join(",")}&rettype=abstract&retmode=xml`);
     let results = [];
     const articles = fetchXml.split("<PubmedArticle>");
@@ -1044,7 +1043,7 @@ async function searchPubmed(args) {
       const title = (art.match(/<ArticleTitle>([\s\S]*?)<\/ArticleTitle>/) || [])[1]?.trim() || "";
       const pmid = (art.match(/<PMID[^>]*>(\d+)<\/PMID>/) || [])[1] || "";
       const abstract = (art.match(/<AbstractText[^>]*>([\s\S]*?)<\/AbstractText>/) || [])[1]?.replace(/<[^>]+>/g, "").trim().substring(0, 200) || "";
-      const authorNames = [...art.matchAll(/<LastName>([^<]+)<\/LastName>/g)].map(m => m[1]).join(", ");
+      const authorNames = [...art.matchAll(/<LastName>([^<]+)<\/LastName>/g)].map((m) => m[1]).join(", ");
       if (title && pmid) results.push({ title, url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`, snippet: abstract, authors: authorNames });
     }
     return searchResult({ source: "pubmed", query, limit, results });
@@ -1053,15 +1052,14 @@ async function searchPubmed(args) {
   }
 }
 __name(searchPubmed, "searchPubmed");
-
-
+__name2(searchPubmed, "searchPubmed");
 async function searchHackerNews(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
     const data = await fetchJson(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=${limit}`);
     let results = [];
-    for (const hit of (data.hits || [])) {
+    for (const hit of data.hits || []) {
       if (results.length >= limit) break;
       const title = hit.title || "";
       const url = hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`;
@@ -1076,7 +1074,7 @@ async function searchHackerNews(args) {
   }
 }
 __name(searchHackerNews, "searchHackerNews");
-
+__name2(searchHackerNews, "searchHackerNews");
 async function searchStackOverflow(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1084,7 +1082,7 @@ async function searchStackOverflow(args) {
   try {
     const data = await fetchJson(`https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=${encodeURIComponent(query)}&site=${site}&pagesize=${limit}&filter=withbody`);
     let results = [];
-    for (const item of (data.items || [])) {
+    for (const item of data.items || []) {
       if (results.length >= limit) break;
       const title = item.title || "";
       const url = item.link || "";
@@ -1099,40 +1097,43 @@ async function searchStackOverflow(args) {
   }
 }
 __name(searchStackOverflow, "searchStackOverflow");
-
+__name2(searchStackOverflow, "searchStackOverflow");
 async function searchReddit(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const subreddit = args.subreddit ? `r/${String(args.subreddit).replace(/^r\//, "")}/` : "";
+  const subredditName = subreddit ? subreddit.replace(/^r\//, "").replace(/\/$/, "") : "";
   try {
-    const { text } = await fetchTextWithResponse(`https://www.reddit.com/${subreddit}search.json?q=${encodeURIComponent(query)}&limit=${limit}&sort=relevance`, {
-      headers: { "User-Agent": "search-mcp-worker/1.0" }
+    const data = await fetchJson(`https://www.reddit.com/${subreddit}search.json?q=${encodeURIComponent(query)}&limit=${limit}&sort=relevance&raw_json=1`, {
+      headers: {
+        Accept: "application/json"
+      },
+      timeoutMs: 15e3
     });
-    const data = JSON.parse(text);
     let results = [];
-    for (const child of (data.data?.children || [])) {
+    for (const child of data.data?.children || []) {
       if (results.length >= limit) break;
       const post = child.data || {};
       const title = post.title || "";
-      const url = `https://reddit.com${post.permalink || ""}`;
+      const url = post.permalink ? `https://reddit.com${post.permalink}` : post.url_overridden_by_dest || post.url || "";
       const score = post.score || 0;
-      const sub = post.subreddit || "";
+      const sub = post.subreddit || subredditName;
       results.push({ title, url, snippet: `r/${sub} | ${score} pts | ${post.num_comments || 0} comments` });
     }
-    return searchResult({ source: "reddit", query, limit, results });
+    return searchResult({ source: "reddit", query, limit, results, subreddit: subredditName, fetch_path: "www.reddit.com" });
   } catch (e) {
-    return searchResult({ source: "reddit", query, limit, results: [], error: e?.message || "failed" });
+    return searchError("reddit", query, limit, e, { subreddit: subredditName, fetch_path: "www.reddit.com" });
   }
 }
 __name(searchReddit, "searchReddit");
-
+__name2(searchReddit, "searchReddit");
 async function searchNpm(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
     const data = await fetchJson(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query)}&size=${limit}`);
     let results = [];
-    for (const pkg of (data.objects || [])) {
+    for (const pkg of data.objects || []) {
       if (results.length >= limit) break;
       const p = pkg.package || {};
       results.push({ title: `${p.name}@${p.version || "?"}`, url: p.links?.npm || `https://www.npmjs.com/package/${p.name}`, snippet: (p.description || "").substring(0, 150) });
@@ -1143,29 +1144,30 @@ async function searchNpm(args) {
   }
 }
 __name(searchNpm, "searchNpm");
-
+__name2(searchNpm, "searchNpm");
 async function searchDevto(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
     const data = await fetchJson(`https://dev.to/api/articles?per_page=${limit}&q=${encodeURIComponent(query)}`);
     let results = [];
-    for (const article of (Array.isArray(data) ? data : [])) {
+    for (const article of Array.isArray(data) ? data : []) {
       if (results.length >= limit) break;
       results.push({ title: article.title || "", url: article.url || "", snippet: `${article.description || ""} | reactions: ${article.positive_reactions_count || 0} | comments: ${article.comments_count || 0}` });
     }
     return searchResult({ source: "devto", query, limit, results });
-  } catch (e) { return searchError("devto", query, limit, e); }
+  } catch (e) {
+    return searchError("devto", query, limit, e);
+  }
 }
-__name(searchDevto, "searchDevto")
 __name(searchDevto, "searchDevto");
-
+__name2(searchDevto, "searchDevto");
+__name2(searchDevto, "searchDevto");
 async function searchMastodon(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const instance = /^[a-z0-9.-]+$/.test(args.instance || "") ? args.instance : "mastodon.social";
   try {
-    // v2 search requires auth; try v1 account search or fallback to hashtags
     let data;
     try {
       data = await fetchJson(`https://${instance}/api/v2/search?q=${encodeURIComponent(query)}&type=statuses&limit=${limit}`);
@@ -1173,13 +1175,12 @@ async function searchMastodon(args) {
       data = { statuses: [] };
     }
     let results = [];
-    for (const status of (data.statuses || [])) {
+    for (const status of data.statuses || []) {
       if (results.length >= limit) break;
       const content = (status.content || "").replace(/<[^>]+>/g, "").trim().substring(0, 200);
       const author = status.account?.acct || "";
       results.push({ title: `@${author}: ${content.substring(0, 60)}`, url: status.url || "", snippet: content });
     }
-    // Fallback: search by hashtag timeline
     if (!results.length) {
       try {
         const tag = query.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().substring(0, 30);
@@ -1190,7 +1191,8 @@ async function searchMastodon(args) {
           const author = status.account?.acct || "";
           results.push({ title: `@${author}: ${content.substring(0, 60)}`, url: status.url || "", snippet: content });
         }
-      } catch {}
+      } catch {
+      }
     }
     return searchResult({ source: "mastodon", query, limit, results });
   } catch (e) {
@@ -1198,14 +1200,14 @@ async function searchMastodon(args) {
   }
 }
 __name(searchMastodon, "searchMastodon");
-
+__name2(searchMastodon, "searchMastodon");
 async function searchPeerTube(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
     const data = await fetchJson(`https://search.joinpeertube.org/api/v1/search/videos?search=${encodeURIComponent(query)}&count=${limit}`);
     let results = [];
-    for (const vid of (data.data || [])) {
+    for (const vid of data.data || []) {
       if (results.length >= limit) break;
       results.push({ title: vid.name || "", url: vid.url || "", snippet: `by ${vid.channel?.displayName || "?"} | ${vid.views || 0} views | ${vid.durationLabel || ""}` });
     }
@@ -1215,17 +1217,14 @@ async function searchPeerTube(args) {
   }
 }
 __name(searchPeerTube, "searchPeerTube");
-
-
-
+__name2(searchPeerTube, "searchPeerTube");
 async function searchBbc(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    // Direct HTML search
     let results = [];
-    const { text: html2 } = await fetchTextWithResponse(`https://www.bbc.co.uk/search?q=${encodeURIComponent(query)}`); 
-    const seen = new Set();
+    const { text: html2 } = await fetchTextWithResponse(`https://www.bbc.co.uk/search?q=${encodeURIComponent(query)}`);
+    const seen = /* @__PURE__ */ new Set();
     const re = /<a[^>]+href="(https:\/\/www\.bbc\.(?:com|co\.uk)\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     for (const match of html2.matchAll(re)) {
       if (results.length >= limit) break;
@@ -1235,24 +1234,20 @@ async function searchBbc(args) {
       seen.add(url);
       results.push({ title, url, snippet: "" });
     }
-    if (!results.length) results = extractGenericLinks(html2, limit, "https://www.bbc.co.uk").filter(r => r.url.includes("bbc."));
+    if (!results.length) results = extractGenericLinks(html2, limit, "https://www.bbc.co.uk").filter((r) => r.url.includes("bbc."));
     return searchResult({ source: "bbc", query, limit, results });
   } catch (e) {
     return searchResult({ source: "bbc", query, limit, results: [], error: e?.message || "failed" });
   }
 }
 __name(searchBbc, "searchBbc");
-
-// placeholder to match and remove the rest
-
-
+__name2(searchBbc, "searchBbc");
 async function searchBingNews(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
     const { text } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=rss`);
     let results = [];
-    // Try RSS first
     const items = text.match(/<item>[\s\S]*?<\/item>/gi) || [];
     for (const item of items) {
       if (results.length >= limit) break;
@@ -1260,11 +1255,10 @@ async function searchBingNews(args) {
       const url = (item.match(/<link>([^<]+)<\/link>/) || [])[1] || "";
       if (title && url) results.push({ title: cleanText(title), url, snippet: "" });
     }
-    // Fallback to HTML parsing
     if (!results.length) {
       const { text: html } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}`);
       results = extractGenericLinks(html, limit, "https://www.bing.com");
-      results = results.filter(r => !r.url.includes("bing.com"));
+      results = results.filter((r) => !r.url.includes("bing.com"));
     }
     return searchResult({ source: "bing_news", query, limit, results });
   } catch (e) {
@@ -1272,48 +1266,47 @@ async function searchBingNews(args) {
   }
 }
 __name(searchBingNews, "searchBingNews");
-
-
+__name2(searchBingNews, "searchBingNews");
 async function searchPapersWithCode(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  // Try Semantic Scholar first, fall back to CrossRef
   let results = [];
   try {
     const resp = await fetch(`https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${limit}&fields=title,authors,year,abstract`);
     if (resp.ok) {
       const data = await resp.json();
-      for (const paper of (data.data || [])) {
+      for (const paper of data.data || []) {
         if (results.length >= limit) break;
-        const authors = (paper.authors || []).map(a => a.name || "").join(", ");
+        const authors = (paper.authors || []).map((a) => a.name || "").join(", ");
         const year = paper.year || "";
         results.push({ title: paper.title || "", url: `https://www.semanticscholar.org/paper/${paper.paperId || ""}`, snippet: `${authors}${year ? " (" + year + ")" : ""}` });
       }
     }
-  } catch {}
-  // CrossRef fallback
+  } catch {
+  }
   if (!results.length) {
     try {
       const data = await fetchJson(`https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=${limit}`);
-      for (const item of (data.message?.items || [])) {
+      for (const item of data.message?.items || []) {
         if (results.length >= limit) break;
         const title = (item.title || [""])[0];
-        const author = (item.author || []).map(a => `${a.given || ""} ${a.family || ""}`.trim()).join(", ");
+        const author = (item.author || []).map((a) => `${a.given || ""} ${a.family || ""}`.trim()).join(", ");
         const year = (item.published?.["date-parts"] || [[null]])[0][0] || "";
         const doi = item.DOI || "";
         results.push({ title, url: doi ? `https://doi.org/${doi}` : "", snippet: `${author}${year ? " (" + year + ")" : ""}` });
       }
-    } catch {}
+    } catch {
+    }
   }
   return searchResult({ source: "paperswithcode", query, limit, results });
 }
-__name(searchPapersWithCode, "searchPapersWithCode")
-__name(searchPapersWithCode, "searchPapersWithCode")
-__name(searchPapersWithCode, "searchPapersWithCode")
-__name(searchPapersWithCode, "searchPapersWithCode")
-__name(searchPapersWithCode, "searchPapersWithCode")
 __name(searchPapersWithCode, "searchPapersWithCode");
-
+__name2(searchPapersWithCode, "searchPapersWithCode");
+__name2(searchPapersWithCode, "searchPapersWithCode");
+__name2(searchPapersWithCode, "searchPapersWithCode");
+__name2(searchPapersWithCode, "searchPapersWithCode");
+__name2(searchPapersWithCode, "searchPapersWithCode");
+__name2(searchPapersWithCode, "searchPapersWithCode");
 async function searchSecEdgar(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1321,7 +1314,6 @@ async function searchSecEdgar(args) {
   try {
     const { text } = await fetchTextWithResponse(`https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(query)}${formType}`);
     let results = [];
-    // SEC EDGAR FULL_TEXT search returns JSON with hits
     try {
       const data = JSON.parse(text);
       const hits = data?.hits?.hits || [];
@@ -1335,7 +1327,8 @@ async function searchSecEdgar(args) {
         const url = id ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(entity)}&type=${form}` : "";
         results.push({ title: `${entity} - ${form} (${filed.substring(0, 10)})`, url, snippet: `Filed: ${filed.substring(0, 10)}` });
       }
-    } catch {}
+    } catch {
+    }
     if (!results.length) results = extractGenericLinks(text, limit, "https://www.sec.gov");
     return searchResult({ source: "sec_edgar", query, limit, results });
   } catch (e) {
@@ -1343,28 +1336,33 @@ async function searchSecEdgar(args) {
   }
 }
 __name(searchSecEdgar, "searchSecEdgar");
-
+__name2(searchSecEdgar, "searchSecEdgar");
 async function searchOsm(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const data = await fetchJson(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=${limit}&addressdetails=1`);
+    const data = await fetchJson(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=jsonv2&limit=${limit}&addressdetails=1`, {
+      headers: {
+        "Accept-Language": "en",
+        Referer: "https://search-mcp.qdp.qzz.io/"
+      }
+    });
     let results = [];
-    for (const place of data) {
+    for (const place of Array.isArray(data) ? data : []) {
       if (results.length >= limit) break;
       const name = place.display_name || "";
-      const type = place.type || "";
+      const type = place.type || place.class || "";
       const lat = place.lat || "";
       const lon = place.lon || "";
-      results.push({ title: name, url: `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}`, snippet: `Type: ${type} | ${lat}, ${lon}` });
+      results.push({ title: name, url: lat && lon ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}` : "https://www.openstreetmap.org", snippet: `Type: ${type} | ${lat}, ${lon}` });
     }
-    return searchResult({ source: "osm", query, limit, results });
+    return searchResult({ source: "osm", query, limit, results, fetch_path: "nominatim.openstreetmap.org" });
   } catch (e) {
-    return searchResult({ source: "osm", query, limit, results: [], error: e?.message || "failed" });
+    return searchError("osm", query, limit, e, { fetch_path: "nominatim.openstreetmap.org" });
   }
 }
 __name(searchOsm, "searchOsm");
-
+__name2(searchOsm, "searchOsm");
 async function searchLemmy(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1372,7 +1370,7 @@ async function searchLemmy(args) {
   try {
     const data = await fetchJson(`https://${instance}/api/v3/search?q=${encodeURIComponent(query)}&limit=${limit}&type_=Posts`);
     let results = [];
-    for (const post of (data.posts || [])) {
+    for (const post of data.posts || []) {
       if (results.length >= limit) break;
       const p = post.post || {};
       const name = p.name || "";
@@ -1388,34 +1386,34 @@ async function searchLemmy(args) {
   }
 }
 __name(searchLemmy, "searchLemmy");
-
+__name2(searchLemmy, "searchLemmy");
 async function searchWikidata(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const data = await fetchJson(`https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(query)}&language=en&format=json&limit=${limit}`);
+    const data = await fetchJson(`https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(query)}&language=en&format=json&limit=${limit}&origin=*`);
     let results = [];
-    for (const item of (data.search || [])) {
+    for (const item of data.search || []) {
       if (results.length >= limit) break;
       const label = item.label || "";
       const desc = item.description || "";
       const id = item.id || "";
       results.push({ title: `${label} (${id})`, url: `https://www.wikidata.org/wiki/${id}`, snippet: desc });
     }
-    return searchResult({ source: "wikidata", query, limit, results });
+    return searchResult({ source: "wikidata", query, limit, results, fetch_path: "www.wikidata.org" });
   } catch (e) {
-    return searchResult({ source: "wikidata", query, limit, results: [], error: e?.message || "failed" });
+    return searchError("wikidata", query, limit, e, { fetch_path: "www.wikidata.org" });
   }
 }
 __name(searchWikidata, "searchWikidata");
-
+__name2(searchWikidata, "searchWikidata");
 async function searchCrates(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
     const data = await fetchJson(`https://crates.io/api/v1/crates?q=${encodeURIComponent(query)}&per_page=${limit}`);
     let results = [];
-    for (const crate of (data.crates || [])) {
+    for (const crate of data.crates || []) {
       if (results.length >= limit) break;
       results.push({ title: `${crate.name}@${crate.max_version || "?"}`, url: `https://crates.io/crates/${crate.name}`, snippet: `${crate.description || ""} | ${crate.downloads || 0} downloads` });
     }
@@ -1425,43 +1423,44 @@ async function searchCrates(args) {
   }
 }
 __name(searchCrates, "searchCrates");
-
+__name2(searchCrates, "searchCrates");
 async function searchPypi(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
     const data = await fetchJson(`https://pypi.org/search/?q=${encodeURIComponent(query)}&format=json`);
     let results = [];
-    for (const item of (data.items || data.results || [])) {
+    for (const item of data.items || data.results || []) {
       if (results.length >= limit) break;
       results.push({ title: `${item.name || item.project}@${item.version || ""}`, url: `https://pypi.org/project/${item.name || item.project}/`, snippet: item.summary || "" });
     }
     if (results.length) return searchResult({ source: "pypi", query, limit, results });
-  } catch {}
+  } catch {
+  }
   try {
     const data = await fetchJson(`https://pypi.org/pypi/${encodeURIComponent(query)}/json`);
     const info = data?.info || {};
     return searchResult({ source: "pypi", query, limit, results: [{ title: `${info.name}@${info.version}`, url: info.project_url || `https://pypi.org/project/${query}/`, snippet: info.summary || "" }] });
-  } catch (e) { return searchError("pypi", query, limit, e); }
+  } catch (e) {
+    return searchError("pypi", query, limit, e);
+  }
 }
-__name(searchPypi, "searchPypi")
 __name(searchPypi, "searchPypi");
-
+__name2(searchPypi, "searchPypi");
+__name2(searchPypi, "searchPypi");
 async function findRss(args) {
   const url = requireString(args.url, "url");
   try {
     const { text } = await fetchTextWithResponse(url);
     const feeds = [];
-    // Look for <link rel="alternate" type="application/rss+xml" ...>
     const rssRe = /<link[^>]+rel="alternate"[^>]+type="application\/(?:rss|atom)\+xml"[^>]+href="([^"]+)"[^>]*>/gi;
     for (const match of text.matchAll(rssRe)) {
       feeds.push({ title: match[1], url: new URL(match[1], url).href, snippet: "RSS/Atom feed" });
     }
-    // Also look for <link type="application/rss+xml" ...>
     const altRe = /<link[^>]+type="application\/(?:rss|atom)\+xml"[^>]+href="([^"]+)"[^>]*>/gi;
     for (const match of text.matchAll(altRe)) {
       const feedUrl = new URL(match[1], url).href;
-      if (!feeds.some(f => f.url === feedUrl)) {
+      if (!feeds.some((f) => f.url === feedUrl)) {
         feeds.push({ title: feedUrl, url: feedUrl, snippet: "RSS/Atom feed" });
       }
     }
@@ -1471,96 +1470,122 @@ async function findRss(args) {
   }
 }
 __name(findRss, "findRss");
-
-
+__name2(findRss, "findRss");
 async function searchWiktionary(args) {
   const query = requireString(args.query, "query");
-  const lang = /^[a-z]{2,3}$/.test(args.language || "") ? args.language : "en";
+  const lang = /^[a-z]{2,12}$/i.test(args.language || "") ? String(args.language).toLowerCase() : "en";
   try {
-    const data = await fetchJson(`https://${lang}.wiktionary.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5`);
+    const data = await fetchJson(`https://${lang}.wiktionary.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5&origin=*`);
     let results = [];
-    for (const item of (data.query?.search || [])) {
-      const snippet = (item.snippet || "").replace(/<[^>]+>/g, "").trim().substring(0, 200);
-      results.push({ title: item.title || query, url: `https://${lang}.wiktionary.org/wiki/${encodeURIComponent(item.title || query)}`, snippet });
+    for (const item of data.query?.search || []) {
+      if (results.length >= 5) break;
+      const title = item.title || query;
+      const snippet = cleanText(item.snippet || "").substring(0, 200);
+      results.push({ title, url: `https://${lang}.wiktionary.org/wiki/${encodeURIComponent(title)}`, snippet });
     }
-    return searchResult({ source: "wiktionary", query, limit: 5, results });
-  } catch (e) { return searchError("wiktionary", query, 5, e); }
+    return searchResult({ source: "wiktionary", query, limit: 5, results, language: lang, fetch_path: `${lang}.wiktionary.org` });
+  } catch (e) {
+    return searchError("wiktionary", query, 5, e, { language: lang, fetch_path: `${lang}.wiktionary.org` });
+  }
 }
 __name(searchWiktionary, "searchWiktionary");
-
+__name2(searchWiktionary, "searchWiktionary");
 async function searchOpenLibrary(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
     const data = await fetchJson(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=${limit}`);
     let results = [];
-    for (const doc of (data.docs || [])) {
+    for (const doc of data.docs || []) {
       if (results.length >= limit) break;
       const title = doc.title || "";
       const author = (doc.author_name || []).join(", ");
       const year = doc.first_publish_year || "";
-      const olid = (doc.edition_key || [])[0] || "";
-      const url = olid ? `https://openlibrary.org/books/${olid}` : `https://openlibrary.org/search?q=${encodeURIComponent(title)}`;
+      const olid = (doc.edition_key || [])[0] || doc.key || "";
+      const url = olid.startsWith("/works/") ? `https://openlibrary.org${olid}` : olid ? `https://openlibrary.org/books/${olid}` : `https://openlibrary.org/search?q=${encodeURIComponent(title || query)}`;
       results.push({ title, url, snippet: `${author}${year ? " (" + year + ")" : ""}` });
     }
-    return searchResult({ source: "openlibrary", query, limit, results });
-  } catch (e) { return searchError("openlibrary", query, limit, e); }
+    return searchResult({ source: "openlibrary", query, limit, results, fetch_path: "openlibrary.org" });
+  } catch (e) {
+    return searchError("openlibrary", query, limit, e, { fetch_path: "openlibrary.org" });
+  }
 }
 __name(searchOpenLibrary, "searchOpenLibrary");
-
+__name2(searchOpenLibrary, "searchOpenLibrary");
 async function searchMusicbrainz(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const data = await fetchJson(`https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}`);
+    const data = await fetchJson(`https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}`, {
+      headers: {
+        Accept: "application/json"
+      },
+      timeoutMs: 15e3
+    });
     let results = [];
-    for (const rec of (data.recordings || [])) {
+    for (const rec of data.recordings || []) {
       if (results.length >= limit) break;
       const title = rec.title || "";
-      const artist = (rec["artist-credit"] || []).map(a => a.name || a.artist?.name || "").join(", ");
+      const artist = (rec["artist-credit"] || []).map((a) => a.name || a.artist?.name || "").filter(Boolean).join(", ");
       const album = (rec.releases || [])[0]?.title || "";
       results.push({ title, url: `https://musicbrainz.org/recording/${rec.id}`, snippet: `${artist}${album ? " - " + album : ""}` });
     }
-    return searchResult({ source: "musicbrainz", query, limit, results });
-  } catch (e) { return searchError("musicbrainz", query, limit, e); }
+    return searchResult({ source: "musicbrainz", query, limit, results, fetch_path: "musicbrainz.org" });
+  } catch (e) {
+    return searchError("musicbrainz", query, limit, e, { fetch_path: "musicbrainz.org" });
+  }
 }
 __name(searchMusicbrainz, "searchMusicbrainz");
-
+__name2(searchMusicbrainz, "searchMusicbrainz");
 async function instantAnswer(args) {
   const query = requireString(args.query, "query");
   try {
-    const data = await fetchJson(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
+    const data = await fetchJson(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`, {
+      headers: {
+        Accept: "application/json"
+      }
+    });
     const abstract = data.Abstract || "";
     const answer = data.Answer || "";
     const definition = data.Definition || "";
-    const infobox = data.Infobox ? JSON.stringify(data.Infobox).substring(0, 200) : "";
-    const text = abstract || answer || definition || "No instant answer found.";
-    const url = data.AbstractURL || data.DefinitionURL || "";
-    const source = data.AbstractSource || data.DefinitionSource || "";
-    return searchResult({ source: "ddg_instant", query, limit: 1, results: [{ title: query, url, snippet: `${text.substring(0, 300)}${source ? " (Source: " + source + ")" : ""}` }] });
-  } catch (e) { return searchError("ddg_instant", query, 1, e); }
+    const relatedTopics = Array.isArray(data.RelatedTopics) ? data.RelatedTopics : [];
+    const flattenedTopics = relatedTopics.flatMap((item) => Array.isArray(item?.Topics) ? item.Topics : [item]);
+    const topicText = flattenedTopics.map((item) => item?.Text || "").find(Boolean) || "";
+    const firstRelatedUrl = flattenedTopics.map((item) => item?.FirstURL || "").find(Boolean) || "";
+    const text = abstract || answer || definition || topicText;
+    const url = data.AbstractURL || data.DefinitionURL || firstRelatedUrl || "";
+    const source = data.AbstractSource || data.DefinitionSource || "DuckDuckGo";
+    if (!text) {
+      return searchResult({ source: "ddg_instant", query, limit: 1, results: [], fetch_path: "api.duckduckgo.com", error: "No instant answer found." });
+    }
+    return searchResult({ source: "ddg_instant", query, limit: 1, results: [{ title: query, url, snippet: `${text.substring(0, 300)}${source ? " (Source: " + source + ")" : ""}` }], fetch_path: "api.duckduckgo.com" });
+  } catch (e) {
+    return searchError("ddg_instant", query, 1, e, { fetch_path: "api.duckduckgo.com" });
+  }
 }
 __name(instantAnswer, "instantAnswer");
-
+__name2(instantAnswer, "instantAnswer");
 async function searchCrossref(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
     const data = await fetchJson(`https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=${limit}`);
     let results = [];
-    for (const item of (data.message?.items || [])) {
+    for (const item of data.message?.items || []) {
       if (results.length >= limit) break;
       const title = (item.title || [""])[0];
-      const author = (item.author || []).map(a => `${a.given || ""} ${a.family || ""}`.trim()).join(", ");
+      const author = (item.author || []).map((a) => `${a.given || ""} ${a.family || ""}`.trim()).join(", ");
       const year = (item.published?.["date-parts"] || [[null]])[0][0] || "";
       const doi = item.DOI || "";
       results.push({ title, url: doi ? `https://doi.org/${doi}` : "", snippet: `${author}${year ? " (" + year + ")" : ""}${doi ? " DOI: " + doi : ""}` });
     }
     return searchResult({ source: "crossref", query, limit, results });
-  } catch (e) { return searchError("crossref", query, limit, e); }
+  } catch (e) {
+    return searchError("crossref", query, limit, e);
+  }
 }
 __name(searchCrossref, "searchCrossref");
-
+__name2(searchCrossref, "searchCrossref");
 async function searchWikipedia(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1580,6 +1605,7 @@ async function searchWikipedia(args) {
   }
 }
 __name(searchWikipedia, "searchWikipedia");
+__name2(searchWikipedia, "searchWikipedia");
 async function searchGitHubRepos(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1592,6 +1618,7 @@ async function searchGitHubRepos(args) {
   return searchResult({ source: "github", query, limit, results, total_count: data.total_count || 0 });
 }
 __name(searchGitHubRepos, "searchGitHubRepos");
+__name2(searchGitHubRepos, "searchGitHubRepos");
 async function fetchGitHubFile(args) {
   const owner = requireSlug(args.owner, "owner");
   const repo = requireSlug(args.repo, "repo");
@@ -1612,6 +1639,7 @@ async function fetchGitHubFile(args) {
   };
 }
 __name(fetchGitHubFile, "fetchGitHubFile");
+__name2(fetchGitHubFile, "fetchGitHubFile");
 async function fetchMetadata(args) {
   const url = new URL(requireString(args.url, "url"));
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
@@ -1630,6 +1658,7 @@ async function fetchMetadata(args) {
   };
 }
 __name(fetchMetadata, "fetchMetadata");
+__name2(fetchMetadata, "fetchMetadata");
 async function fetchUrl(args) {
   const url = new URL(requireString(args.url, "url"));
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
@@ -1646,16 +1675,19 @@ async function fetchUrl(args) {
   };
 }
 __name(fetchUrl, "fetchUrl");
-const GSA_USER_AGENTS = [
+__name2(fetchUrl, "fetchUrl");
+var GSA_USER_AGENTS = [
   "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36",
   "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.101 Mobile Safari/537.36",
   "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.64 Mobile Safari/537.36",
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
   "Mozilla/5.0 (Linux; Android 12; M2101K6G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36"
 ];
-function randomGsaUA() { return GSA_USER_AGENTS[Math.floor(Math.random() * GSA_USER_AGENTS.length)]; }
+function randomGsaUA() {
+  return GSA_USER_AGENTS[Math.floor(Math.random() * GSA_USER_AGENTS.length)];
+}
 __name(randomGsaUA, "randomGsaUA");
-
+__name2(randomGsaUA, "randomGsaUA");
 async function fetchWithUA(url, headers, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("timeout"), options.timeoutMs || DEFAULT_TIMEOUT_MS);
@@ -1690,6 +1722,7 @@ async function fetchWithUA(url, headers, options = {}) {
   }
 }
 __name(fetchWithUA, "fetchWithUA");
+__name2(fetchWithUA, "fetchWithUA");
 async function fetchTextWithResponse(url, options = {}) {
   return fetchWithUA(url, {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
@@ -1698,36 +1731,55 @@ async function fetchTextWithResponse(url, options = {}) {
   }, options);
 }
 __name(fetchTextWithResponse, "fetchTextWithResponse");
+__name2(fetchTextWithResponse, "fetchTextWithResponse");
 async function fetchText(url, options = {}) {
   const { text } = await fetchTextWithResponse(url, options);
   return text;
 }
 __name(fetchText, "fetchText");
-// Simple in-memory cache for repeated queries
-const searchCache = new Map();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+__name2(fetchText, "fetchText");
+var searchCache = /* @__PURE__ */ new Map();
+var CACHE_TTL_MS = 5 * 60 * 1e3;
 function getCached(key) {
   const entry = searchCache.get(key);
   if (entry && Date.now() - entry.ts < CACHE_TTL_MS) return entry.data;
   if (entry) searchCache.delete(key);
   return null;
 }
+__name(getCached, "getCached");
 function setCache(key, data) {
-  if (searchCache.size > 200) { const oldest = searchCache.keys().next().value; searchCache.delete(oldest); }
+  if (searchCache.size > 200) {
+    const oldest = searchCache.keys().next().value;
+    searchCache.delete(oldest);
+  }
   searchCache.set(key, { data, ts: Date.now() });
 }
-__name(getCached, "getCached");
 __name(setCache, "setCache");
-
+__name2(getCached, "getCached");
+__name2(setCache, "setCache");
 async function fetchJson(url, options = {}) {
-  const headers = { Accept: "application/json", "User-Agent": `${SERVER_NAME}/${SERVER_VERSION}`, ...(options.headers || {}) };
-  const response = await fetch(url, { headers });
-  if (!response.ok) throw new Error(`upstream ${response.status} for ${url}`);
-  return response.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort("timeout"), options.timeoutMs || DEFAULT_TIMEOUT_MS);
+  try {
+    const headers = {
+      Accept: "application/json",
+      "User-Agent": `${SERVER_NAME}/${SERVER_VERSION} (https://search-mcp.qdp.qzz.io)`,
+      ...options.headers || {}
+    };
+    const response = await fetch(url, { signal: controller.signal, headers, redirect: "follow" });
+    if (!response.ok) throw new Error(`upstream ${response.status} for ${url}`);
+    return response.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 __name(fetchJson, "fetchJson");
-function searchError(source, query, limit, error) { return searchResult({ source, query, limit, results: [], error: typeof error === "string" ? error : error?.message || "failed" }); }
+__name2(fetchJson, "fetchJson");
+function searchError(source, query, limit, error, extra = {}) {
+  return searchResult({ source, query, limit, results: [], error: typeof error === "string" ? error : error?.message || "failed", ...extra });
+}
 __name(searchError, "searchError");
+__name2(searchError, "searchError");
 function searchResult({ source, query, limit, results, blocked, block_reason, ...extra }) {
   const hasResults = Array.isArray(results) && results.length > 0;
   return {
@@ -1742,6 +1794,7 @@ function searchResult({ source, query, limit, results, blocked, block_reason, ..
   };
 }
 __name(searchResult, "searchResult");
+__name2(searchResult, "searchResult");
 function formatSearchResponse(result) {
   if (!result.results.length) {
     if (result.blocked && result.block_reason) {
@@ -1758,16 +1811,19 @@ ${item.snippet || ""}`)
   ].join("\n");
 }
 __name(formatSearchResponse, "formatSearchResponse");
+__name2(formatSearchResponse, "formatSearchResponse");
 function formatGitHubFileResponse(result) {
   return `# ${result.owner}/${result.repo}/${result.path}@${result.ref}
 
 ${result.content}`;
 }
 __name(formatGitHubFileResponse, "formatGitHubFileResponse");
+__name2(formatGitHubFileResponse, "formatGitHubFileResponse");
 function formatMetadataResponse(result) {
   return JSON.stringify(result, null, 2);
 }
 __name(formatMetadataResponse, "formatMetadataResponse");
+__name2(formatMetadataResponse, "formatMetadataResponse");
 function formatFetchUrlResponse(result) {
   return `# ${result.title}
 
@@ -1777,15 +1833,18 @@ Final URL: ${result.finalUrl}
 ${result.text}`;
 }
 __name(formatFetchUrlResponse, "formatFetchUrlResponse");
+__name2(formatFetchUrlResponse, "formatFetchUrlResponse");
 function formatDebugCaptureResponse(result) {
   return JSON.stringify(result, null, 2);
 }
 __name(formatDebugCaptureResponse, "formatDebugCaptureResponse");
+__name2(formatDebugCaptureResponse, "formatDebugCaptureResponse");
 function capitalize(value) {
   const text = String(value || "");
   return text ? text[0].toUpperCase() + text.slice(1) : "";
 }
 __name(capitalize, "capitalize");
+__name2(capitalize, "capitalize");
 function buildSearchDebugUrl(engine, query, limit, language) {
   if (engine === "bing") return `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`;
   if (engine === "yahoo") return `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}`;
@@ -1796,6 +1855,7 @@ function buildSearchDebugUrl(engine, query, limit, language) {
   throw new Error("engine must be bing, yahoo, or yandex");
 }
 __name(buildSearchDebugUrl, "buildSearchDebugUrl");
+__name2(buildSearchDebugUrl, "buildSearchDebugUrl");
 function diagnoseSearchHtml(engine, html, finalUrl = "") {
   const haystack = `${finalUrl}
 ${html}`.toLowerCase();
@@ -1839,6 +1899,7 @@ ${html}`.toLowerCase();
   return { blocked: false, reason: "" };
 }
 __name(diagnoseSearchHtml, "diagnoseSearchHtml");
+__name2(diagnoseSearchHtml, "diagnoseSearchHtml");
 function extractSearchDebugExcerpt(engine, html, maxChars) {
   const markers = {
     bing: ['id="b_results"', "id='b_results'", 'class="b_algo"', "class='b_algo'", 'id="b_content"', 'class="b_searchboxForm"'],
@@ -1856,6 +1917,7 @@ function extractSearchDebugExcerpt(engine, html, maxChars) {
   return { marker: "", markerIndex: -1, offset: 0, sample: html.slice(0, maxChars), truncated: html.length > maxChars };
 }
 __name(extractSearchDebugExcerpt, "extractSearchDebugExcerpt");
+__name2(extractSearchDebugExcerpt, "extractSearchDebugExcerpt");
 function decodeDuckUrl(href) {
   try {
     const url = new URL(href, "https://duckduckgo.com");
@@ -1866,6 +1928,7 @@ function decodeDuckUrl(href) {
   }
 }
 __name(decodeDuckUrl, "decodeDuckUrl");
+__name2(decodeDuckUrl, "decodeDuckUrl");
 function extractBingResults(html, limit) {
   const results = [];
   const seen = /* @__PURE__ */ new Set();
@@ -1900,6 +1963,7 @@ function extractBingResults(html, limit) {
   return results;
 }
 __name(extractBingResults, "extractBingResults");
+__name2(extractBingResults, "extractBingResults");
 function parseBingBlock(block, baseUrl) {
   const headerMatch = block.match(/<(?:h2|h3)[^>]*>[\s\S]*?<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>[\s\S]*?<\/(?:h2|h3)>/i);
   const candidates = headerMatch ? [headerMatch] : [...block.matchAll(/<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>/gi)];
@@ -1923,6 +1987,7 @@ function parseBingBlock(block, baseUrl) {
   return null;
 }
 __name(parseBingBlock, "parseBingBlock");
+__name2(parseBingBlock, "parseBingBlock");
 function extractBingSnippet(block, title) {
   const snippetPatterns = [
     { pattern: /<(?:div|p|span)[^>]+class=("([^"]*(?:b_caption|b_lineclamp|b_snippet|b_algoSlug|b_paractl|b_secondaryText)[^"]*)"|'([^']*(?:b_caption|b_lineclamp|b_snippet|b_algoSlug|b_paractl|b_secondaryText)[^']*)')[^>]*>([\s\S]*?)<\/(?:div|p|span)>/gi, contentIndex: 4 },
@@ -1938,6 +2003,7 @@ function extractBingSnippet(block, title) {
   return "";
 }
 __name(extractBingSnippet, "extractBingSnippet");
+__name2(extractBingSnippet, "extractBingSnippet");
 function decodeBingUrl(href) {
   try {
     const url = new URL(decodeHtml(String(href || "")), "https://www.bing.com");
@@ -1959,10 +2025,12 @@ function decodeBingUrl(href) {
   }
 }
 __name(decodeBingUrl, "decodeBingUrl");
+__name2(decodeBingUrl, "decodeBingUrl");
 function isBingNoiseUrl(url) {
   return /bing\.com\/(?:search|images|videos|maps|news)|go\.microsoft\.com|r\.bing\.com|th\.bing\.com|cc\.bingj\.com/i.test(String(url || ""));
 }
 __name(isBingNoiseUrl, "isBingNoiseUrl");
+__name2(isBingNoiseUrl, "isBingNoiseUrl");
 function extractYahooResults(html, limit) {
   const diagnosis = diagnoseSearchHtml("yahoo", html);
   if (diagnosis.blocked) return [];
@@ -1997,6 +2065,7 @@ function extractYahooResults(html, limit) {
   return results;
 }
 __name(extractYahooResults, "extractYahooResults");
+__name2(extractYahooResults, "extractYahooResults");
 function parseYahooBlock(block, baseUrl) {
   const headerMatch = block.match(/<(?:h3|h4)[^>]*>[\s\S]*?<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>[\s\S]*?<\/(?:h3|h4)>/i);
   const candidates = headerMatch ? [headerMatch] : [...block.matchAll(/<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>/gi)];
@@ -2020,6 +2089,7 @@ function parseYahooBlock(block, baseUrl) {
   return null;
 }
 __name(parseYahooBlock, "parseYahooBlock");
+__name2(parseYahooBlock, "parseYahooBlock");
 function extractYahooSnippet(block, title) {
   const snippetPatterns = [
     { pattern: /<(?:div|p|span)[^>]+class=("([^"]*(?:compText|lh-22|fc-falcon|fz-ms|clr-grey|summary)[^"]*)"|'([^']*(?:compText|lh-22|fc-falcon|fz-ms|clr-grey|summary)[^']*)')[^>]*>([\s\S]*?)<\/(?:div|p|span)>/gi, contentIndex: 4 },
@@ -2034,6 +2104,7 @@ function extractYahooSnippet(block, title) {
   return "";
 }
 __name(extractYahooSnippet, "extractYahooSnippet");
+__name2(extractYahooSnippet, "extractYahooSnippet");
 function decodeYahooUrl(href) {
   try {
     const url = new URL(decodeHtml(String(href || "")), "https://search.yahoo.com");
@@ -2047,10 +2118,12 @@ function decodeYahooUrl(href) {
   }
 }
 __name(decodeYahooUrl, "decodeYahooUrl");
+__name2(decodeYahooUrl, "decodeYahooUrl");
 function isYahooNoiseUrl(url) {
   return /search\.yahoo\.com\/search|r\.search\.yahoo\.com|yahoo\.com\/(?:search|news|video|images)/i.test(String(url || ""));
 }
 __name(isYahooNoiseUrl, "isYahooNoiseUrl");
+__name2(isYahooNoiseUrl, "isYahooNoiseUrl");
 function decodeYandexUrl(href) {
   try {
     const decodedHref = decodeUnicodeEscapes(decodeHtml(String(href || "")));
@@ -2075,10 +2148,12 @@ function decodeYandexUrl(href) {
   }
 }
 __name(decodeYandexUrl, "decodeYandexUrl");
+__name2(decodeYandexUrl, "decodeYandexUrl");
 function decodeUnicodeEscapes(value) {
   return String(value || "").replace(/\\u([0-9a-f]{4})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 }
 __name(decodeUnicodeEscapes, "decodeUnicodeEscapes");
+__name2(decodeUnicodeEscapes, "decodeUnicodeEscapes");
 function normalizeUrlCandidate(value) {
   const text = String(value || "").trim();
   if (!text) return "";
@@ -2087,6 +2162,7 @@ function normalizeUrlCandidate(value) {
   return text;
 }
 __name(normalizeUrlCandidate, "normalizeUrlCandidate");
+__name2(normalizeUrlCandidate, "normalizeUrlCandidate");
 function safelyDecodeUrlComponent(value) {
   try {
     return decodeURIComponent(value);
@@ -2095,6 +2171,7 @@ function safelyDecodeUrlComponent(value) {
   }
 }
 __name(safelyDecodeUrlComponent, "safelyDecodeUrlComponent");
+__name2(safelyDecodeUrlComponent, "safelyDecodeUrlComponent");
 function extractYandexResults(html, limit) {
   const results = [];
   const seen = /* @__PURE__ */ new Set();
@@ -2119,6 +2196,7 @@ function extractYandexResults(html, limit) {
   return results;
 }
 __name(extractYandexResults, "extractYandexResults");
+__name2(extractYandexResults, "extractYandexResults");
 function parseYandexBlock(block, baseUrl) {
   const candidates = [...block.matchAll(/<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>/gi)];
   for (const match of candidates) {
@@ -2143,6 +2221,7 @@ function parseYandexBlock(block, baseUrl) {
   return null;
 }
 __name(parseYandexBlock, "parseYandexBlock");
+__name2(parseYandexBlock, "parseYandexBlock");
 function extractYandexSnippet(block, title) {
   const snippetPatterns = [
     { pattern: /<(?:div|span|p)[^>]+class=("([^"]*(?:text-container|organic__text|ExtendedText-Container|TextContainer|organic__content-wrapper|path__text)[^"]*)"|'([^']*(?:text-container|organic__text|ExtendedText-Container|TextContainer|organic__content-wrapper|path__text)[^']*)')[^>]*>([\s\S]*?)<\/(?:div|span|p)>/gi, contentIndex: 4 },
@@ -2159,6 +2238,7 @@ function extractYandexSnippet(block, title) {
   return "";
 }
 __name(extractYandexSnippet, "extractYandexSnippet");
+__name2(extractYandexSnippet, "extractYandexSnippet");
 function extractGenericLinks(html, limit, baseUrl) {
   const results = [];
   const seen = /* @__PURE__ */ new Set();
@@ -2181,6 +2261,7 @@ function extractGenericLinks(html, limit, baseUrl) {
   return results;
 }
 __name(extractGenericLinks, "extractGenericLinks");
+__name2(extractGenericLinks, "extractGenericLinks");
 function extractSectionAroundMarker(html, markers, maxLength) {
   const lowered = html.toLowerCase();
   for (const marker of markers) {
@@ -2193,14 +2274,17 @@ function extractSectionAroundMarker(html, markers, maxLength) {
   return "";
 }
 __name(extractSectionAroundMarker, "extractSectionAroundMarker");
+__name2(extractSectionAroundMarker, "extractSectionAroundMarker");
 function looksLikeSearchResultUrl(url) {
   return /^https?:\/\//i.test(String(url || ""));
 }
 __name(looksLikeSearchResultUrl, "looksLikeSearchResultUrl");
+__name2(looksLikeSearchResultUrl, "looksLikeSearchResultUrl");
 function isNoiseUrl(url) {
   return /\/preferences|\/settings|\/login|\/account|setlang=|\/search\?|\/images\/|\/maps\?|\/html\/?$|\/more\/?$|\/support\/?|\/legal\/?|duckduckgo\.com\/?$|baidu\.com\/?$|yandex\.com\/?$|yandex\.com\/search|yabs\.yandex|yandex\.ru\/images|hao123\.com|voice\.baidu\.com|policies\.google|support\.google|go\.microsoft\.com|account\.microsoft|bing\.com\/ck\/a|consent\.yahoo\.com|search\.yahoo\.com\/v2\/partners|guce\.yahoo\.com/i.test(String(url || ""));
 }
 __name(isNoiseUrl, "isNoiseUrl");
+__name2(isNoiseUrl, "isNoiseUrl");
 function safeHostname(url) {
   try {
     return new URL(String(url || "")).hostname.toLowerCase();
@@ -2209,33 +2293,40 @@ function safeHostname(url) {
   }
 }
 __name(safeHostname, "safeHostname");
+__name2(safeHostname, "safeHostname");
 function htmlToText(html) {
   return decodeHtml(html).replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+([.,;:!?])/g, "$1").replace(/\s+/g, " ").trim();
 }
 __name(htmlToText, "htmlToText");
+__name2(htmlToText, "htmlToText");
 function cleanText(value) {
-  return htmlToText(String(value || "")).replace(/[\x00-\x1f\x7f]/g, (c) => c === "\n" ? "\n" : c === "\r" ? "" : c === "\t" ? " " : "");
+  return htmlToText(String(value || "")).replace(/[\x00-\x1f\x7f]/g, (c) => c === "\n" ? "\n" : c === "\r" ? "" : c === "	" ? " " : "");
 }
 __name(cleanText, "cleanText");
+__name2(cleanText, "cleanText");
 function decodeHtml(value) {
   return String(value || "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)));
 }
 __name(decodeHtml, "decodeHtml");
+__name2(decodeHtml, "decodeHtml");
 function requireString(value, name) {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${name} is required`);
   return value.trim();
 }
 __name(requireString, "requireString");
+__name2(requireString, "requireString");
 function requireSlug(value, name) {
   const slug = requireString(value, name);
   if (!/^[A-Za-z0-9_.-]+$/.test(slug)) throw new Error(`${name} contains invalid characters`);
   return slug;
 }
 __name(requireSlug, "requireSlug");
+__name2(requireSlug, "requireSlug");
 function clampLimit(value) {
   return Math.min(Math.max(Number(value) || 5, 1), 10);
 }
 __name(clampLimit, "clampLimit");
+__name2(clampLimit, "clampLimit");
 function toolResult(structuredContent, formatter = (value) => JSON.stringify(value, null, 2)) {
   return {
     content: [{ type: "text", text: formatter(structuredContent) }],
@@ -2243,18 +2334,22 @@ function toolResult(structuredContent, formatter = (value) => JSON.stringify(val
   };
 }
 __name(toolResult, "toolResult");
+__name2(toolResult, "toolResult");
 function rpcResult(id, result) {
   return { jsonrpc: "2.0", id, result };
 }
 __name(rpcResult, "rpcResult");
+__name2(rpcResult, "rpcResult");
 function rpcError(id, code, message) {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 __name(rpcError, "rpcError");
+__name2(rpcError, "rpcError");
 function jsonRpcError(id, code, message, status) {
   return json(rpcError(id, code, message), status);
 }
 __name(jsonRpcError, "jsonRpcError");
+__name2(jsonRpcError, "jsonRpcError");
 function sanitizeForJson(value) {
   if (typeof value === "string") return value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
   if (Array.isArray(value)) return value.map(sanitizeForJson);
@@ -2266,11 +2361,13 @@ function sanitizeForJson(value) {
   return value;
 }
 __name(sanitizeForJson, "sanitizeForJson");
+__name2(sanitizeForJson, "sanitizeForJson");
 function json(value, status = 200) {
   return new Response(JSON.stringify(sanitizeForJson(value)), { status, headers: JSON_HEADERS });
 }
 __name(json, "json");
+__name2(json, "json");
 export {
   worker_default as default
 };
-//# sourceMappingURL=worker.js.map
+//# sourceMappingURL=index.js.map
