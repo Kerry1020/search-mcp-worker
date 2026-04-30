@@ -14,6 +14,37 @@ var JSON_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, Mcp-Session-Id, mcp-session-id"
 };
+var PROVIDER_CONFIG = {
+  brave: { apiKey: "", baseUrl: "", enabled: true },
+  tavily: { apiKey: "", baseUrl: "", enabled: true },
+  jina: { apiKey: "", baseUrl: "", enabled: true },
+  searxng: { apiKey: "", baseUrl: "", enabled: true },
+  serpapi: { apiKey: "", baseUrl: "", enabled: true },
+  bing: { apiKey: "", baseUrl: "", enabled: true },
+  parallel: { apiKey: "", baseUrl: "", enabled: true },
+  ollama: { apiKey: "", baseUrl: "https://api.ollama.com/v1/web-search", enabled: true },
+  xiaohongshu: { apiKey: "", baseUrl: "", enabled: true }
+};
+function getProviderConfig(name) {
+  const key = String(name || "").toLowerCase();
+  return PROVIDER_CONFIG[key] || null;
+}
+function maskSecret(v) {
+  const s = String(v || "");
+  if (!s) return "";
+  if (s.length <= 8) return "****";
+  return `${s.slice(0, 4)}****${s.slice(-4)}`;
+}
+function getProviderApiKey(name, envKey) {
+  const cfg = getProviderConfig(name);
+  if (cfg && cfg.apiKey) return cfg.apiKey;
+  return envKey ? (typeof process !== "undefined" && process.env ? process.env[envKey] : "") : "";
+}
+function getProviderBaseUrl(name, fallback) {
+  const cfg = getProviderConfig(name);
+  if (cfg && cfg.baseUrl) return cfg.baseUrl;
+  return fallback;
+}
 var TOOLS = [
   {
     name: "search_auto",
@@ -337,6 +368,44 @@ var TOOLS = [
       },
       required: ["url"]
     }
+  },
+  {
+    name: "provider_list",
+    description: "List provider configuration status and whether api keys are configured.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false }
+  },
+  {
+    name: "provider_set_config",
+    description: "Set provider API key/base URL/enabled flag for current worker runtime.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        provider: { type: "string", description: "Provider name, e.g. ollama/brave/tavily/jina/searxng/serpapi/bing/parallel/xiaohongshu" },
+        api_key: { type: "string", description: "API key/token" },
+        base_url: { type: "string", description: "Custom provider base URL (optional)" },
+        enabled: { type: "boolean", description: "Enable/disable provider" }
+      },
+      required: ["provider"]
+    }
+  },
+  {
+    name: "provider_get_config",
+    description: "Get one provider config (api key masked).",
+    inputSchema: {
+      type: "object",
+      properties: { provider: { type: "string" } },
+      required: ["provider"]
+    }
+  },
+  {
+    name: "search_ollama",
+    description: "Search via Ollama search provider API (requires provider key or env OLLAMA_API_KEY).",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_xiaohongshu",
+    description: "Search Xiaohongshu content using site-targeted fallback strategy.",
+    inputSchema: querySchema()
   }
 ];
 var worker_default = {
@@ -424,6 +493,16 @@ async function callTool(params) {
       return toolResult(await searchDuckDuckGo(args), formatSearchResponse);
     case "search_bing":
       return toolResult(await searchBing(args), formatSearchResponse);
+    case "search_ollama":
+      return toolResult(await searchOllama(args), formatSearchResponse);
+    case "search_xiaohongshu":
+      return toolResult(await searchXiaohongshu(args), formatSearchResponse);
+    case "provider_list":
+      return toolResult(providerList(), formatMetadataResponse);
+    case "provider_set_config":
+      return toolResult(providerSetConfig(args), formatMetadataResponse);
+    case "provider_get_config":
+      return toolResult(providerGetConfig(args), formatMetadataResponse);
     case "search_yahoo":
       return toolResult(await searchYahoo(args), formatSearchResponse);
     case "search_google_web":
@@ -518,7 +597,7 @@ function isBadSearchResult(result) {
 __name(isBadSearchResult, "isBadSearchResult");
 __name2(isBadSearchResult, "isBadSearchResult");
 async function searchAuto(args) {
-  const requested = Array.isArray(args.engines) ? args.engines : ["bing", "brave", "sogou", "ecosia", "qwant", "naver", "baidu", "wikipedia", "duckduckgo", "google", "archive", "yahoo", "yandex"];
+  const requested = Array.isArray(args.engines) ? args.engines : ["ollama", "xiaohongshu", "bing", "brave", "sogou", "ecosia", "qwant", "naver", "baidu", "wikipedia", "duckduckgo", "google", "archive", "yahoo", "yandex"];
   const engines = requested.map((name) => String(name).toLowerCase()).filter(Boolean);
   const attempts = [];
   const cacheKey = `auto:${engines.join(",")}:${args.query}:${args.limit || 5}`;
@@ -529,6 +608,8 @@ async function searchAuto(args) {
       let result;
       if (engine === "duckduckgo") result = await searchDuckDuckGo(args);
       else if (engine === "bing") result = await searchBing(args);
+      else if (engine === "ollama") result = await searchOllama(args);
+      else if (engine === "xiaohongshu") result = await searchXiaohongshu(args);
       else if (engine === "yahoo") result = await searchYahoo(args);
       else if (engine === "google") result = await searchGoogle(args);
       else if (engine === "yandex") result = await searchYandex(args);
@@ -1775,6 +1856,71 @@ async function fetchJson(url, options = {}) {
 }
 __name(fetchJson, "fetchJson");
 __name2(fetchJson, "fetchJson");
+function providerList() {
+  const out = {};
+  for (const [k, v] of Object.entries(PROVIDER_CONFIG)) {
+    out[k] = { enabled: v.enabled !== false, baseUrl: v.baseUrl || "", apiKeyConfigured: !!v.apiKey, apiKeyMasked: maskSecret(v.apiKey) };
+  }
+  return { ok: true, providers: out };
+}
+function providerSetConfig(args) {
+  const name = String(args.provider || "").toLowerCase();
+  if (!name || !PROVIDER_CONFIG[name]) throw new Error(`unsupported provider: ${name}`);
+  if (typeof args.api_key === "string") PROVIDER_CONFIG[name].apiKey = args.api_key.trim();
+  if (typeof args.base_url === "string") PROVIDER_CONFIG[name].baseUrl = args.base_url.trim();
+  if (typeof args.enabled === "boolean") PROVIDER_CONFIG[name].enabled = args.enabled;
+  return { ok: true, provider: name, config: { enabled: PROVIDER_CONFIG[name].enabled !== false, baseUrl: PROVIDER_CONFIG[name].baseUrl || "", apiKeyMasked: maskSecret(PROVIDER_CONFIG[name].apiKey) } };
+}
+function providerGetConfig(args) {
+  const name = String(args.provider || "").toLowerCase();
+  if (!name || !PROVIDER_CONFIG[name]) throw new Error(`unsupported provider: ${name}`);
+  const v = PROVIDER_CONFIG[name];
+  return { ok: true, provider: name, config: { enabled: v.enabled !== false, baseUrl: v.baseUrl || "", apiKeyConfigured: !!v.apiKey, apiKeyMasked: maskSecret(v.apiKey) } };
+}
+async function searchOllama(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const apiKey = getProviderApiKey("ollama", "OLLAMA_API_KEY");
+  const endpoint = getProviderBaseUrl("ollama", "https://api.ollama.com/v1/web-search");
+  if (!apiKey) return searchError("ollama", query, limit, "missing OLLAMA_API_KEY/provider api key");
+  const resp = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      "User-Agent": `${SERVER_NAME}/${SERVER_VERSION}`
+    },
+    body: JSON.stringify({ query, max_results: limit })
+  });
+  if (!resp.ok) return searchError("ollama", query, limit, `upstream ${resp.status}`);
+  const data = await resp.json();
+  const items = Array.isArray(data?.results) ? data.results : Array.isArray(data?.items) ? data.items : [];
+  const results = items.slice(0, limit).map((it) => ({
+    title: it.title || it.name || it.url || "",
+    url: it.url || it.link || "",
+    snippet: (it.snippet || it.description || it.content || "").toString().slice(0, 300)
+  })).filter((x) => x.url || x.title);
+  return searchResult({ source: "ollama", query, limit, results, fetch_path: safeHostname(endpoint) });
+}
+async function searchXiaohongshu(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const composed = `site:xiaohongshu.com ${query}`;
+  let results = [];
+  const preferred = [searchSogou, searchBaidu, searchBing, searchGoogle, searchYandex];
+  for (const fn of preferred) {
+    try {
+      const r = await fn({ query: composed, limit });
+      if (Array.isArray(r?.results) && r.results.length) {
+        results = r.results.filter((x) => (x.url || "").includes("xiaohongshu.com")).slice(0, limit);
+        if (results.length) break;
+      }
+    } catch {}
+  }
+  return searchResult({ source: "xiaohongshu", query, limit, results, strategy: "site-targeted-fallback" });
+}
+
 function searchError(source, query, limit, error, extra = {}) {
   return searchResult({ source, query, limit, results: [], error: typeof error === "string" ? error : error?.message || "failed", ...extra });
 }
