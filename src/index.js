@@ -35,12 +35,23 @@ function maskSecret(v) {
   if (s.length <= 8) return "****";
   return `${s.slice(0, 4)}****${s.slice(-4)}`;
 }
-function getProviderApiKey(name, envKey) {
+function headerValue(request, key) {
+  try {
+    return request?.headers?.get?.(key) || request?.headers?.get?.(key.toLowerCase()) || "";
+  } catch {
+    return "";
+  }
+}
+function getProviderApiKey(name, envKey, request) {
+  const header = headerValue(request, `x-${name}-api-key`);
+  if (header) return header;
   const cfg = getProviderConfig(name);
   if (cfg && cfg.apiKey) return cfg.apiKey;
   return envKey ? (typeof process !== "undefined" && process.env ? process.env[envKey] : "") : "";
 }
-function getProviderBaseUrl(name, fallback) {
+function getProviderBaseUrl(name, fallback, request) {
+  const header = headerValue(request, `x-${name}-base-url`);
+  if (header) return header;
   const cfg = getProviderConfig(name);
   if (cfg && cfg.baseUrl) return cfg.baseUrl;
   return fallback;
@@ -528,7 +539,7 @@ async function handleJsonRpc(message, request) {
       case "tools/list":
         return rpcResult(id, { tools: TOOLS });
       case "tools/call":
-        return rpcResult(id, await callTool(message.params));
+        return rpcResult(id, await callTool(message.params, request));
       default:
         return rpcError(id, -32601, `method not found: ${message.method}`);
     }
@@ -538,7 +549,7 @@ async function handleJsonRpc(message, request) {
 }
 __name(handleJsonRpc, "handleJsonRpc");
 __name2(handleJsonRpc, "handleJsonRpc");
-async function callTool(params) {
+async function callTool(params, request) {
   const name = params?.name;
   const args = params?.arguments || {};
   switch (name) {
@@ -1939,8 +1950,8 @@ function providerSetSpecificConfig(provider, args) {
 async function searchOllama(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const apiKey = getProviderApiKey("ollama", "OLLAMA_API_KEY");
-  const endpoint = getProviderBaseUrl("ollama", "https://api.ollama.com/v1/web-search");
+  const apiKey = getProviderApiKey("ollama", "OLLAMA_API_KEY", request);
+  const endpoint = getProviderBaseUrl("ollama", "https://api.ollama.com/v1/web-search", request);
   if (!apiKey) return searchError("ollama", query, limit, "missing OLLAMA_API_KEY/provider api key");
   const resp = await fetch(endpoint, {
     method: "POST",
