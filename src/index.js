@@ -398,6 +398,51 @@ var TOOLS = [
     }
   },
   {
+    name: "provider_set_ollama",
+    description: "Configure the Ollama provider for this worker runtime.",
+    inputSchema: providerConfigSchema({ provider: "ollama", needsBaseUrl: true, needsApiKey: true })
+  },
+  {
+    name: "provider_set_brave",
+    description: "Configure the Brave provider for this worker runtime.",
+    inputSchema: providerConfigSchema({ provider: "brave", needsApiKey: true })
+  },
+  {
+    name: "provider_set_tavily",
+    description: "Configure the Tavily provider for this worker runtime.",
+    inputSchema: providerConfigSchema({ provider: "tavily", needsApiKey: true })
+  },
+  {
+    name: "provider_set_jina",
+    description: "Configure the Jina provider for this worker runtime.",
+    inputSchema: providerConfigSchema({ provider: "jina", needsApiKey: true, needsBaseUrl: true })
+  },
+  {
+    name: "provider_set_serpapi",
+    description: "Configure the SerpAPI provider for this worker runtime.",
+    inputSchema: providerConfigSchema({ provider: "serpapi", needsApiKey: true })
+  },
+  {
+    name: "provider_set_bing",
+    description: "Configure the Bing provider for this worker runtime.",
+    inputSchema: providerConfigSchema({ provider: "bing", needsApiKey: true })
+  },
+  {
+    name: "provider_set_parallel",
+    description: "Configure the Parallel provider for this worker runtime.",
+    inputSchema: providerConfigSchema({ provider: "parallel", needsApiKey: true, needsBaseUrl: true })
+  },
+  {
+    name: "provider_set_searxng",
+    description: "Configure the SearXNG provider for this worker runtime.",
+    inputSchema: providerConfigSchema({ provider: "searxng", needsBaseUrl: true, needsApiKey: false })
+  },
+  {
+    name: "provider_set_xiaohongshu",
+    description: "Configure the Xiaohongshu provider for this worker runtime.",
+    inputSchema: providerConfigSchema({ provider: "xiaohongshu", needsBaseUrl: true, needsApiKey: true })
+  },
+  {
     name: "search_ollama",
     description: "Search via Ollama search provider API (requires provider key or env OLLAMA_API_KEY).",
     inputSchema: querySchema()
@@ -448,8 +493,18 @@ function querySchema(extra = {}) {
   };
   if (extra.region) properties.region = { type: "string", description: "DuckDuckGo region, default us-en" };
   if (extra.language) properties.language = { type: "string", description: "Search language code, default en" };
-  if (extra.engines) properties.engines = { type: "array", items: { type: "string" }, description: "Optional engine order: duckduckgo, bing, yahoo, google, yandex, baidu, naver, sogou, wikipedia, arxiv, pubmed, hackernews, stackoverflow, reddit, npm, devto, mastodon, peertube, bbc, bing_news, archive, paperswithcode, sec_edgar, osm, lemmy, wikidata, crates, pypi" };
+  if (extra.engines) properties.engines = { type: "array", items: { type: "string" }, description: "Optional engine order: duckduckgo, bing, yahoo, google, yandex, baidu, naver, sogou, wikipedia, arxiv, pubmed, hackernews, stackoverflow, reddit, npm, devto, mastodon, peertube, bbc, bing_news, archive, paperswithcode, sec_edgar, osm, lemmy, wikidata, crates, pypi, ollama, xiaohongshu" };
   return { type: "object", properties, required: ["query"] };
+}
+function providerConfigSchema({ provider, needsApiKey = true, needsBaseUrl = false }) {
+  const properties = {
+    api_key: { type: "string", description: `${provider} API key` },
+    enabled: { type: "boolean", description: `Enable/disable ${provider}` }
+  };
+  if (needsBaseUrl) properties.base_url = { type: "string", description: `${provider} base URL` };
+  const required = [];
+  if (needsApiKey) required.push("api_key");
+  return { type: "object", properties, required };
 }
 __name(querySchema, "querySchema");
 __name2(querySchema, "querySchema");
@@ -1876,6 +1931,10 @@ function providerGetConfig(args) {
   if (!name || !PROVIDER_CONFIG[name]) throw new Error(`unsupported provider: ${name}`);
   const v = PROVIDER_CONFIG[name];
   return { ok: true, provider: name, config: { enabled: v.enabled !== false, baseUrl: v.baseUrl || "", apiKeyConfigured: !!v.apiKey, apiKeyMasked: maskSecret(v.apiKey) } };
+}
+function providerSetSpecificConfig(provider, args) {
+  const merged = { ...args, provider };
+  return providerSetConfig(merged);
 }
 async function searchOllama(args) {
   const query = requireString(args.query, "query");
