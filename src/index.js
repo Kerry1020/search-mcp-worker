@@ -436,7 +436,7 @@ var TOOLS = [
   {
     name: "provider_set_bing",
     description: "Configure the Bing provider for this worker runtime. API key optional; HTML search works without it.",
-    inputSchema: providerConfigSchema({ provider: "bing", needsApiKey: false, needsBaseUrl: false })
+    inputSchema: providerConfigSchema({ provider: "bing", needsApiKey: false, needsBaseUrl: false, note: "Built-in HTML search, no configuration needed. Leave enabled." })
   },
   {
     name: "provider_set_parallel",
@@ -446,12 +446,12 @@ var TOOLS = [
   {
     name: "provider_set_searxng",
     description: "Configure the SearXNG provider for this worker runtime.",
-    inputSchema: providerConfigSchema({ provider: "searxng", needsBaseUrl: true, needsApiKey: false })
+    inputSchema: providerConfigSchema({ provider: "searxng", needsBaseUrl: true, needsApiKey: false, note: "Only configure if you use your own SearXNG instance." })
   },
   {
     name: "provider_set_xiaohongshu",
     description: "Configure the Xiaohongshu provider for this worker runtime. Current implementation uses built-in site-targeted search and does not require configuration.",
-    inputSchema: providerConfigSchema({ provider: "xiaohongshu", needsBaseUrl: false, needsApiKey: false })
+    inputSchema: providerConfigSchema({ provider: "xiaohongshu", needsApiKey: false, needsBaseUrl: false, note: "Built-in Xiaohongshu site-targeted search, no configuration needed. Leave enabled." })
   },
   {
     name: "search_ollama",
@@ -507,11 +507,11 @@ function querySchema(extra = {}) {
   if (extra.engines) properties.engines = { type: "array", items: { type: "string" }, description: "Optional engine order: duckduckgo, bing, yahoo, google, yandex, baidu, naver, sogou, wikipedia, arxiv, pubmed, hackernews, stackoverflow, reddit, npm, devto, mastodon, peertube, bbc, bing_news, archive, paperswithcode, sec_edgar, osm, lemmy, wikidata, crates, pypi, ollama, xiaohongshu" };
   return { type: "object", properties, required: ["query"] };
 }
-function providerConfigSchema({ provider, needsApiKey = true, needsBaseUrl = false }) {
+function providerConfigSchema({ provider, needsApiKey = true, needsBaseUrl = false, note = "" }) {
   const properties = {
-    api_key: { type: "string", description: `${provider} API key` },
-    enabled: { type: "boolean", description: `Enable/disable ${provider}` }
+    enabled: { type: "boolean", description: note || `Enable/disable ${provider}`, default: true }
   };
+  if (needsApiKey) properties.api_key = { type: "string", description: `${provider} API key` };
   if (needsBaseUrl) properties.base_url = { type: "string", description: `${provider} base URL` };
   const required = [];
   if (needsApiKey) required.push("api_key");
