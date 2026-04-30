@@ -455,7 +455,12 @@ var TOOLS = [
   },
   {
     name: "search_ollama",
-    description: "Search via Ollama search provider API (requires provider key or env OLLAMA_API_KEY).",
+    description: "Search via Ollama search provider API (requires provider key set via provider_set_config).",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_parallel",
+    description: "Search via Parallel AI search API (requires provider key set via provider_set_config). High quality results.",
     inputSchema: querySchema()
   },
   {
@@ -467,6 +472,13 @@ var TOOLS = [
 var worker_default = {
   async fetch(request) {
     if (request.method === "OPTIONS") return new Response(null, { headers: JSON_HEADERS });
+    // Load provider keys from request headers (stateless per-request)
+    for (const name of Object.keys(PROVIDER_CONFIG)) {
+      const hKey = request.headers.get(`x-${name}-api-key`);
+      if (hKey) PROVIDER_CONFIG[name].apiKey = hKey;
+      const hUrl = request.headers.get(`x-${name}-base-url`);
+      if (hUrl) PROVIDER_CONFIG[name].baseUrl = hUrl;
+    }
     const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "/health" || url.pathname === "/healthz") {
       return json({
@@ -561,6 +573,8 @@ async function callTool(params, request) {
       return toolResult(await searchBing(args), formatSearchResponse);
     case "search_ollama":
       return toolResult(await searchOllama(args), formatSearchResponse);
+    case "search_parallel":
+      return toolResult(await searchParallel(args), formatSearchResponse);
     case "search_xiaohongshu":
       return toolResult(await searchXiaohongshu(args), formatSearchResponse);
     case "provider_list":
@@ -663,7 +677,7 @@ function isBadSearchResult(result) {
 __name(isBadSearchResult, "isBadSearchResult");
 __name2(isBadSearchResult, "isBadSearchResult");
 async function searchAuto(args) {
-  const requested = Array.isArray(args.engines) ? args.engines : ["ollama", "xiaohongshu", "bing", "brave", "sogou", "ecosia", "qwant", "naver", "baidu", "wikipedia", "duckduckgo", "google", "archive", "yahoo", "yandex"];
+  const requested = Array.isArray(args.engines) ? args.engines : ["parallel", "ollama", "xiaohongshu", "bing", "brave", "sogou", "ecosia", "qwant", "naver", "baidu", "wikipedia", "duckduckgo", "google", "archive", "yahoo", "yandex"];
   const engines = requested.map((name) => String(name).toLowerCase()).filter(Boolean);
   const attempts = [];
   const cacheKey = `auto:${engines.join(",")}:${args.query}:${args.limit || 5}`;
@@ -674,6 +688,7 @@ async function searchAuto(args) {
       let result;
       if (engine === "duckduckgo") result = await searchDuckDuckGo(args);
       else if (engine === "bing") result = await searchBing(args);
+      else if (engine === "parallel") result = await searchParallel(args);
       else if (engine === "ollama") result = await searchOllama(args);
       else if (engine === "xiaohongshu") result = await searchXiaohongshu(args);
       else if (engine === "yahoo") result = await searchYahoo(args);
@@ -1950,35 +1965,82 @@ function providerSetSpecificConfig(provider, args) {
 async function searchOllama(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const apiKey = getProviderApiKey("ollama", "OLLAMA_API_KEY", request);
-  const endpoint = getProviderBaseUrl("ollama", "https://api.ollama.com/v1/web-search", request);
-  if (!apiKey) return searchError("ollama", query, limit, "missing OLLAMA_API_KEY/provider api key");
-  const resp = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "User-Agent": `${SERVER_NAME}/${SERVER_VERSION}`
-    },
-    body: JSON.stringify({ query, max_results: limit })
-  });
-  if (!resp.ok) return searchError("ollama", query, limit, `upstream ${resp.status}`);
-  const data = await resp.json();
-  const items = Array.isArray(data?.results) ? data.results : Array.isArray(data?.items) ? data.items : [];
-  const results = items.slice(0, limit).map((it) => ({
-    title: it.title || it.name || it.url || "",
-    url: it.url || it.link || "",
-    snippet: (it.snippet || it.description || it.content || "").toString().slice(0, 300)
-  })).filter((x) => x.url || x.title);
-  return searchResult({ source: "ollama", query, limit, results, fetch_path: safeHostname(endpoint) });
+  const apiKey = PROVIDER_CONFIG.ollama?.apiKey || "";
+  const endpoint = PROVIDER_CONFIG.ollama?.baseUrl || "https://api.ollama.com/v1/web-search";
+  if (!apiKey) return searchError("ollama", query, limit, "missing OLLAMA_API_KEY. Use provider_set_config or x-ollama-api-key header to set it.");
+  try {
+    const resp = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": `${SERVER_NAME}/${SERVER_VERSION}`
+      },
+      body: JSON.stringify({ query, max_results: limit })
+    });
+    if (!resp.ok) return searchError("ollama", query, limit, `upstream ${resp.status}`);
+    const data = await resp.json();
+    const items = Array.isArray(data?.results) ? data.results : Array.isArray(data?.items) ? data.items : [];
+    const results = items.slice(0, limit).map((it) => ({
+      title: it.title || it.name || it.url || "",
+      url: it.url || it.link || "",
+      snippet: (it.snippet || it.description || it.content || "").toString().slice(0, 300)
+    })).filter((x) => x.url || x.title);
+    return searchResult({ source: "ollama", query, limit, results, fetch_path: safeHostname(endpoint) });
+  } catch (error) {
+    return searchError("ollama", query, limit, error?.message || "failed");
+  }
+}
+async function searchParallel(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const apiKey = PROVIDER_CONFIG.parallel?.apiKey || "";
+  if (!apiKey) return searchError("parallel", query, limit, "missing PARALLEL_API_KEY. Use provider_set_config to set it.");
+  try {
+    const resp = await fetch("https://api.parallel.ai/v1/search", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "User-Agent": `${SERVER_NAME}/${SERVER_VERSION}`
+      },
+      body: JSON.stringify({ search_queries: [query] })
+    });
+    if (!resp.ok) return searchError("parallel", query, limit, `upstream ${resp.status}`);
+    const data = await resp.json();
+    const items = Array.isArray(data?.results) ? data.results : [];
+    const results = [];
+    for (const item of items) {
+      if (results.length >= limit) break;
+      const excerpts = Array.isArray(item?.excerpts) ? item.excerpts.join(" ").slice(0, 300) : "";
+      results.push({
+        title: item.title || item.url || "",
+        url: item.url || "",
+        snippet: excerpts
+      });
+    }
+    return searchResult({ source: "parallel", query, limit, results, fetch_path: "api.parallel.ai" });
+  } catch (error) {
+    return searchError("parallel", query, limit, error?.message || "failed");
+  }
 }
 async function searchXiaohongshu(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const composed = `site:xiaohongshu.com ${query}`;
   let results = [];
-  const preferred = [searchSogou, searchBaidu, searchBing, searchGoogle, searchYandex];
+  const parallelKey = PROVIDER_CONFIG.parallel?.apiKey || "";
+  if (parallelKey) {
+    try {
+      const r = await searchParallel({ query: composed, limit });
+      if (Array.isArray(r?.results) && r.results.length) {
+        results = r.results.filter((x) => (x.url || "").includes("xiaohongshu.com")).slice(0, limit);
+        if (results.length) return searchResult({ source: "xiaohongshu", query, limit, results, strategy: "parallel-site-targeted" });
+      }
+    } catch {}
+  }
+  const preferred = [searchSogou, searchBing, searchGoogle, searchBaidu, searchYandex];
   for (const fn of preferred) {
     try {
       const r = await fn({ query: composed, limit });
