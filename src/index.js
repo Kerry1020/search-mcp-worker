@@ -411,37 +411,37 @@ var TOOLS = [
   {
     name: "provider_set_ollama",
     description: "Configure the Ollama provider for this worker runtime.",
-    inputSchema: providerConfigSchema({ provider: "ollama", needsBaseUrl: true, needsApiKey: true })
+    inputSchema: providerConfigSchema({ provider: "ollama", needsBaseUrl: false, needsApiKey: true })
   },
   {
     name: "provider_set_brave",
     description: "Configure the Brave provider for this worker runtime.",
-    inputSchema: providerConfigSchema({ provider: "brave", needsApiKey: true })
+    inputSchema: providerConfigSchema({ provider: "brave", needsApiKey: true, needsBaseUrl: false })
   },
   {
     name: "provider_set_tavily",
     description: "Configure the Tavily provider for this worker runtime.",
-    inputSchema: providerConfigSchema({ provider: "tavily", needsApiKey: true })
+    inputSchema: providerConfigSchema({ provider: "tavily", needsApiKey: true, needsBaseUrl: false })
   },
   {
     name: "provider_set_jina",
     description: "Configure the Jina provider for this worker runtime.",
-    inputSchema: providerConfigSchema({ provider: "jina", needsApiKey: true, needsBaseUrl: true })
+    inputSchema: providerConfigSchema({ provider: "jina", needsApiKey: true, needsBaseUrl: false })
   },
   {
     name: "provider_set_serpapi",
     description: "Configure the SerpAPI provider for this worker runtime.",
-    inputSchema: providerConfigSchema({ provider: "serpapi", needsApiKey: true })
+    inputSchema: providerConfigSchema({ provider: "serpapi", needsApiKey: true, needsBaseUrl: false })
   },
   {
     name: "provider_set_bing",
-    description: "Configure the Bing provider for this worker runtime.",
-    inputSchema: providerConfigSchema({ provider: "bing", needsApiKey: true })
+    description: "Configure the Bing provider for this worker runtime. API key optional; HTML search works without it.",
+    inputSchema: providerConfigSchema({ provider: "bing", needsApiKey: false, needsBaseUrl: false })
   },
   {
     name: "provider_set_parallel",
     description: "Configure the Parallel provider for this worker runtime.",
-    inputSchema: providerConfigSchema({ provider: "parallel", needsApiKey: true, needsBaseUrl: true })
+    inputSchema: providerConfigSchema({ provider: "parallel", needsApiKey: true, needsBaseUrl: false })
   },
   {
     name: "provider_set_searxng",
@@ -450,8 +450,8 @@ var TOOLS = [
   },
   {
     name: "provider_set_xiaohongshu",
-    description: "Configure the Xiaohongshu provider for this worker runtime.",
-    inputSchema: providerConfigSchema({ provider: "xiaohongshu", needsBaseUrl: true, needsApiKey: true })
+    description: "Configure the Xiaohongshu provider for this worker runtime. Current implementation uses built-in site-targeted search and does not require configuration.",
+    inputSchema: providerConfigSchema({ provider: "xiaohongshu", needsBaseUrl: false, needsApiKey: false })
   },
   {
     name: "search_ollama",
