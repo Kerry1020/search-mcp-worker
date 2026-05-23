@@ -42,25 +42,27 @@ function headerValue(request, key) {
     return "";
   }
 }
-function getProviderApiKey(name, envKey, request) {
-  const header = headerValue(request, `x-${name}-api-key`);
+function getProviderApiKey(name, envKey, requestOrConfig) {
+  const header = headerValue(requestOrConfig, `x-${name}-api-key`);
   if (header) return header;
-  const cfg = getProviderConfig(name);
+  const config = requestOrConfig && typeof requestOrConfig === "object" && !("headers" in requestOrConfig) ? requestOrConfig : null;
+  const cfg = config ? config[String(name || "").toLowerCase()] || null : getProviderConfig(name);
   if (cfg && cfg.apiKey) return cfg.apiKey;
   return envKey ? (typeof process !== "undefined" && process.env ? process.env[envKey] : "") : "";
 }
-function getProviderBaseUrl(name, fallback, request) {
-  const header = headerValue(request, `x-${name}-base-url`);
+function getProviderBaseUrl(name, fallback, requestOrConfig) {
+  const header = headerValue(requestOrConfig, `x-${name}-base-url`);
   if (header) return header;
-  const cfg = getProviderConfig(name);
+  const config = requestOrConfig && typeof requestOrConfig === "object" && !("headers" in requestOrConfig) ? requestOrConfig : null;
+  const cfg = config ? config[String(name || "").toLowerCase()] || null : getProviderConfig(name);
   if (cfg && cfg.baseUrl) return cfg.baseUrl;
   return fallback;
 }
 var TOOLS = [
   {
     name: "search_auto",
-    description: "Search multiple engines with fallbacks and return the first useful result set.",
-    inputSchema: querySchema({ engines: true })
+    description: "Search multiple engines, merge usable results, and rerank the best matches automatically.",
+    inputSchema: querySchema({ engines: true, autoMode: true })
   },
   {
     name: "search_duckduckgo",
@@ -70,6 +72,16 @@ var TOOLS = [
   {
     name: "search_bing",
     description: "Search the web via Bing HTML results.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_bing_global",
+    description: "Search the web via the international Bing HTML route.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_bing_cn",
+    description: "Search the web via the China Bing HTML route.",
     inputSchema: querySchema()
   },
   {
@@ -469,16 +481,60 @@ var TOOLS = [
     inputSchema: querySchema()
   }
 ];
+var NON_PUBLIC_TOOL_NAMES = new Set([
+  "provider_list",
+  "provider_get_config",
+  "provider_set_config",
+  "provider_set_ollama",
+  "provider_set_brave",
+  "provider_set_tavily",
+  "provider_set_jina",
+  "provider_set_serpapi",
+  "provider_set_bing",
+  "provider_set_parallel",
+  "provider_set_searxng",
+  "provider_set_xiaohongshu",
+  "search_ollama",
+  "search_parallel",
+  "search_xiaohongshu",
+  "search_brave",
+  "search_qwant",
+  "search_ecosia"
+]);
+var PUBLIC_TOOLS = TOOLS.filter((tool) => !NON_PUBLIC_TOOL_NAMES.has(tool.name));
+function buildRequestProviderConfig(request) {
+  const config = Object.fromEntries(Object.entries(PROVIDER_CONFIG).map(([name, value]) => [name, { ...value }]));
+  for (const name of Object.keys(config)) {
+    const hKey = request.headers.get(`x-${name}-api-key`);
+    if (hKey) config[name].apiKey = hKey;
+    const hUrl = request.headers.get(`x-${name}-base-url`);
+    if (hUrl) config[name].baseUrl = hUrl;
+    const hEnabled = request.headers.get(`x-${name}-enabled`);
+    if (hEnabled !== null) config[name].enabled = hEnabled !== "false";
+  }
+  return config;
+}
+function getRequestProviderConfig(requestOrConfig) {
+  if (!requestOrConfig) {
+    return Object.fromEntries(Object.entries(PROVIDER_CONFIG).map(([name, value]) => [name, { ...value }]));
+  }
+  if (typeof requestOrConfig === "object" && !("headers" in requestOrConfig)) return requestOrConfig;
+  return buildRequestProviderConfig(requestOrConfig);
+}
+function hasRequestScopedProviderOverrides(requestOrConfig) {
+  const config = getRequestProviderConfig(requestOrConfig);
+  for (const [name, value] of Object.entries(config)) {
+    const base = PROVIDER_CONFIG[name] || {};
+    if ((value.enabled !== false) !== (base.enabled !== false)) return true;
+    if (String(value.apiKey || "") !== String(base.apiKey || "")) return true;
+    if (String(value.baseUrl || "") !== String(base.baseUrl || "")) return true;
+  }
+  return false;
+}
 var worker_default = {
   async fetch(request) {
     if (request.method === "OPTIONS") return new Response(null, { headers: JSON_HEADERS });
-    // Load provider keys from request headers (stateless per-request)
-    for (const name of Object.keys(PROVIDER_CONFIG)) {
-      const hKey = request.headers.get(`x-${name}-api-key`);
-      if (hKey) PROVIDER_CONFIG[name].apiKey = hKey;
-      const hUrl = request.headers.get(`x-${name}-base-url`);
-      if (hUrl) PROVIDER_CONFIG[name].baseUrl = hUrl;
-    }
+    const requestProviderConfig = buildRequestProviderConfig(request);
     const url = new URL(request.url);
     if (url.pathname === "/" || url.pathname === "/health" || url.pathname === "/healthz") {
       return json({
@@ -487,7 +543,7 @@ var worker_default = {
         version: SERVER_VERSION,
         mcp_endpoint: `${url.origin}/mcp`,
         endpoints: ["/mcp", "/health", "/healthz"],
-        tools: TOOLS.map((tool) => tool.name)
+        tools: PUBLIC_TOOLS.map((tool) => tool.name)
       });
     }
     if (url.pathname !== "/mcp") return jsonRpcError(null, -32004, "not found", 404);
@@ -502,7 +558,7 @@ var worker_default = {
     const messages = isBatch ? body : [body];
     const responses = [];
     for (const message of messages) {
-      const response = await handleJsonRpc(message, request);
+      const response = await handleJsonRpc(message, request, requestProviderConfig);
       if (response !== void 0) responses.push(response);
     }
     if (responses.length === 0) return new Response(null, { status: 202, headers: JSON_HEADERS });
@@ -516,6 +572,7 @@ function querySchema(extra = {}) {
   };
   if (extra.region) properties.region = { type: "string", description: "DuckDuckGo region, default us-en" };
   if (extra.language) properties.language = { type: "string", description: "Search language code, default en" };
+  if (extra.autoMode) properties.auto_mode = { type: "string", description: "Auto aggregation mode: default uses intent-aware engines; full fans out across all enabled public search engines before reranking." };
   if (extra.engines) properties.engines = { type: "array", items: { type: "string" }, description: "Optional engine order: duckduckgo, bing, yahoo, google, yandex, baidu, naver, sogou, wikipedia, arxiv, pubmed, hackernews, stackoverflow, reddit, npm, devto, mastodon, peertube, bbc, bing_news, archive, paperswithcode, sec_edgar, osm, lemmy, wikidata, crates, pypi, ollama, xiaohongshu" };
   return { type: "object", properties, required: ["query"] };
 }
@@ -531,7 +588,7 @@ function providerConfigSchema({ provider, needsApiKey = true, needsBaseUrl = fal
 }
 __name(querySchema, "querySchema");
 __name2(querySchema, "querySchema");
-async function handleJsonRpc(message, request) {
+async function handleJsonRpc(message, request, requestProviderConfig) {
   const id = message?.id ?? null;
   try {
     if (!message || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
@@ -549,9 +606,9 @@ async function handleJsonRpc(message, request) {
       case "ping":
         return rpcResult(id, {});
       case "tools/list":
-        return rpcResult(id, { tools: TOOLS });
+        return rpcResult(id, { tools: PUBLIC_TOOLS });
       case "tools/call":
-        return rpcResult(id, await callTool(message.params, request));
+        return rpcResult(id, await callTool(message.params, requestProviderConfig));
       default:
         return rpcError(id, -32601, `method not found: ${message.method}`);
     }
@@ -561,28 +618,51 @@ async function handleJsonRpc(message, request) {
 }
 __name(handleJsonRpc, "handleJsonRpc");
 __name2(handleJsonRpc, "handleJsonRpc");
-async function callTool(params, request) {
+async function callTool(params, requestProviderConfig) {
   const name = params?.name;
   const args = params?.arguments || {};
+  const providerArgs = { ...args, _context: { ...(args?._context || {}), providerConfig: requestProviderConfig } };
   switch (name) {
     case "search_auto":
-      return toolResult(await searchAuto(args), formatSearchResponse);
+      return toolResult(await searchAuto({ ...args, _providerConfig: requestProviderConfig }), formatSearchResponse);
     case "search_duckduckgo":
       return toolResult(await searchDuckDuckGo(args), formatSearchResponse);
     case "search_bing":
       return toolResult(await searchBing(args), formatSearchResponse);
+    case "search_bing_global":
+      return toolResult(await searchBingGlobal(args), formatSearchResponse);
+    case "search_bing_cn":
+      return toolResult(await searchBingCn(args), formatSearchResponse);
     case "search_ollama":
-      return toolResult(await searchOllama(args), formatSearchResponse);
+      return toolResult(await searchOllama(providerArgs), formatSearchResponse);
     case "search_parallel":
-      return toolResult(await searchParallel(args), formatSearchResponse);
+      return toolResult(await searchParallel(providerArgs), formatSearchResponse);
     case "search_xiaohongshu":
-      return toolResult(await searchXiaohongshu(args), formatSearchResponse);
+      return toolResult(await searchXiaohongshu(providerArgs), formatSearchResponse);
     case "provider_list":
       return toolResult(providerList(), formatMetadataResponse);
     case "provider_set_config":
       return toolResult(providerSetConfig(args), formatMetadataResponse);
     case "provider_get_config":
       return toolResult(providerGetConfig(args), formatMetadataResponse);
+    case "provider_set_ollama":
+      return toolResult(providerSetSpecificConfig("ollama", args), formatMetadataResponse);
+    case "provider_set_brave":
+      return toolResult(providerSetSpecificConfig("brave", args), formatMetadataResponse);
+    case "provider_set_tavily":
+      return toolResult(providerSetSpecificConfig("tavily", args), formatMetadataResponse);
+    case "provider_set_jina":
+      return toolResult(providerSetSpecificConfig("jina", args), formatMetadataResponse);
+    case "provider_set_serpapi":
+      return toolResult(providerSetSpecificConfig("serpapi", args), formatMetadataResponse);
+    case "provider_set_bing":
+      return toolResult(providerSetSpecificConfig("bing", args), formatMetadataResponse);
+    case "provider_set_parallel":
+      return toolResult(providerSetSpecificConfig("parallel", args), formatMetadataResponse);
+    case "provider_set_searxng":
+      return toolResult(providerSetSpecificConfig("searxng", args), formatMetadataResponse);
+    case "provider_set_xiaohongshu":
+      return toolResult(providerSetSpecificConfig("xiaohongshu", args), formatMetadataResponse);
     case "search_yahoo":
       return toolResult(await searchYahoo(args), formatSearchResponse);
     case "search_google_web":
@@ -669,83 +749,459 @@ async function callTool(params, request) {
 }
 __name(callTool, "callTool");
 __name2(callTool, "callTool");
-function isBadSearchResult(result) {
-  if (!result || result.ok === false) return true;
-  if (!Array.isArray(result.results) || result.results.length === 0) return true;
-  return result.results.every((item) => isNoiseUrl(item.url));
+function evaluateSearchQuality(result, query, engine) {
+  const results = Array.isArray(result?.results) ? result.results : [];
+  const filteredCount = Number.isFinite(result?.filtered_count) ? Number(result.filtered_count) : 0;
+  if (!result) {
+    return { quality_status: "red", quality_reason: "no_result_object", filtered_count: 0, ok: false };
+  }
+  if (result.blocked) {
+    return { quality_status: "blocked", quality_reason: result.block_reason || "blocked", filtered_count: filteredCount, ok: false };
+  }
+  if (!results.length) {
+    if (filteredCount > 0) {
+      if (result.filtered_reason === "intent_mismatch") {
+        return { quality_status: "yellow", quality_reason: "intent_mismatch", filtered_count: filteredCount, ok: false };
+      }
+      if (result.filtered_reason === "low_trust_results") {
+        return { quality_status: "yellow", quality_reason: "low_trust_results", filtered_count: filteredCount, ok: false };
+      }
+      return { quality_status: "junk", quality_reason: result.filtered_reason || "generic_wrapper_results", filtered_count: filteredCount, ok: false };
+    }
+    return { quality_status: "empty", quality_reason: result.error || "no_results", filtered_count: filteredCount, ok: false };
+  }
+  const genericCount = results.filter((item) => isGenericWrapperResult(item, query, engine)).length;
+  const mismatchCount = results.filter((item) => isIntentMismatchResult(item, query, engine)).length;
+  const lowTrustCount = results.filter((item) => isLowTrustResult(item, query, engine)).length;
+  if (genericCount === results.length) {
+    return { quality_status: "junk", quality_reason: "generic_wrapper_results", filtered_count: filteredCount, ok: false };
+  }
+  if (mismatchCount === results.length) {
+    return { quality_status: "yellow", quality_reason: "intent_mismatch", filtered_count: filteredCount, ok: false };
+  }
+  if (lowTrustCount === results.length) {
+    return { quality_status: "yellow", quality_reason: "low_trust_results", filtered_count: filteredCount, ok: false };
+  }
+  if (genericCount > 0 && genericCount + mismatchCount + lowTrustCount >= results.length) {
+    return { quality_status: "yellow", quality_reason: "wrapper_dominant_results", filtered_count: filteredCount, ok: false };
+  }
+  return { quality_status: "green", quality_reason: genericCount > 0 || mismatchCount > 0 || lowTrustCount > 0 ? "usable_with_minor_noise" : "usable_results", filtered_count: filteredCount, ok: true };
+}
+__name(evaluateSearchQuality, "evaluateSearchQuality");
+__name2(evaluateSearchQuality, "evaluateSearchQuality");
+function filterSearchResultsForQuery(results, query, engine = "") {
+  const filteredResults = [];
+  let genericCount = 0;
+  for (const item of Array.isArray(results) ? results : []) {
+    const generic = isGenericWrapperResult(item, query, engine);
+    if (generic) {
+      genericCount++;
+      continue;
+    }
+    filteredResults.push(item);
+  }
+  const filteredCount = Math.max(0, (Array.isArray(results) ? results.length : 0) - filteredResults.length);
+  const filteredReason = filteredCount > 0 && genericCount === filteredCount ? "generic_wrapper_results" : "";
+  return { filteredResults, filteredCount, filteredReason };
+}
+__name(filterSearchResultsForQuery, "filterSearchResultsForQuery");
+__name2(filterSearchResultsForQuery, "filterSearchResultsForQuery");
+function isBadSearchResult(result, query, engine) {
+  return !evaluateSearchQuality(result, query, engine).ok;
 }
 __name(isBadSearchResult, "isBadSearchResult");
 __name2(isBadSearchResult, "isBadSearchResult");
-async function searchAuto(args) {
-  const requested = Array.isArray(args.engines) ? args.engines : ["parallel", "ollama", "xiaohongshu", "bing", "brave", "sogou", "ecosia", "qwant", "naver", "baidu", "wikipedia", "duckduckgo", "google", "archive", "yahoo", "yandex"];
-  const engines = requested.map((name) => String(name).toLowerCase()).filter(Boolean);
-  const attempts = [];
-  const cacheKey = `auto:${engines.join(",")}:${args.query}:${args.limit || 5}`;
-  const cached = getCached(cacheKey);
-  if (cached) return { ...cached, _cached: true };
-  for (const engine of engines) {
+function isGenericWrapperResult(item, query, engine) {
+  const url = String(item?.url || "");
+  const title = String(item?.title || "").toLowerCase();
+  const snippet = String(item?.snippet || "").toLowerCase();
+  const host = safeHostname(url);
+  const queryText = String(query || "").trim().toLowerCase();
+  const combined = `${title} ${snippet}`.trim();
+  if (!url || isNoiseUrl(url)) return true;
+  if (host && isSearchEngineHost(host) && url.toLowerCase().includes("/search")) return true;
+  if (/search results|search again|all results|results for|related searches|more results|see more/i.test(combined)) return true;
+  if (/\b(?:sponsored|advertisement|advertorial|promo|coupon|deals?)\b|赞助|广告|推广/.test(combined)) return true;
+  if (/\b(?:home|homepage|index|category|sections?)\b|worklife|accessibility|help center/.test(title) && !queryText) return true;
+  if (queryText && host && isSearchEngineHost(host) && combined.includes(queryText)) return true;
+  if (engine === "wikipedia" && host && !host.endsWith("wikipedia.org")) return true;
+  if (engine === "bbc" && host && /(?:^|\.)bbc\.(?:com|co\.uk)$/i.test(host)) {
+    let pathname = "";
     try {
-      let result;
-      if (engine === "duckduckgo") result = await searchDuckDuckGo(args);
-      else if (engine === "bing") result = await searchBing(args);
-      else if (engine === "parallel") result = await searchParallel(args);
-      else if (engine === "ollama") result = await searchOllama(args);
-      else if (engine === "xiaohongshu") result = await searchXiaohongshu(args);
-      else if (engine === "yahoo") result = await searchYahoo(args);
-      else if (engine === "google") result = await searchGoogle(args);
-      else if (engine === "yandex") result = await searchYandex(args);
-      else if (engine === "baidu") result = await searchBaidu(args);
-      else if (engine === "wikipedia") result = await searchWikipedia(args);
-      else if (engine === "naver") result = await searchNaver(args);
-      else if (engine === "sogou") result = await searchSogou(args);
-      else if (engine === "brave") result = await searchBrave(args);
-      else if (engine === "qwant") result = await searchQwant(args);
-      else if (engine === "ecosia") result = await searchEcosia(args);
-      else if (engine === "archive") result = await searchArchive(args);
-      else if (engine === "arxiv") result = await searchArxiv(args);
-      else if (engine === "arxiv") result = await searchArxiv(args);
-      else if (engine === "pubmed") result = await searchPubmed(args);
-      else if (engine === "hackernews") result = await searchHackerNews(args);
-      else if (engine === "stackoverflow") result = await searchStackOverflow(args);
-      else if (engine === "reddit") result = await searchReddit(args);
-      else if (engine === "npm") result = await searchNpm(args);
-      else if (engine === "devto") result = await searchDevto(args);
-      else if (engine === "mastodon") result = await searchMastodon(args);
-      else if (engine === "peertube") result = await searchPeerTube(args);
-      else if (engine === "bbc") result = await searchBbc(args);
-      else if (engine === "bing_news") result = await searchBingNews(args);
-      else if (engine === "paperswithcode") result = await searchPapersWithCode(args);
-      else if (engine === "sec_edgar") result = await searchSecEdgar(args);
-      else if (engine === "osm") result = await searchOsm(args);
-      else if (engine === "lemmy") result = await searchLemmy(args);
-      else if (engine === "wikidata") result = await searchWikidata(args);
-      else if (engine === "crates") result = await searchCrates(args);
-      else if (engine === "pypi") result = await searchPypi(args);
-      else continue;
-      attempts.push({ engine, ok: !isBadSearchResult(result), result_count: Array.isArray(result.results) ? result.results.length : 0 });
-      if (!isBadSearchResult(result)) {
-        const final = {
-          ...result,
-          source: result.source || engine,
-          attempts,
-          fallback_used: attempts.length > 1
-        };
-        setCache(cacheKey, final);
-        return final;
-      }
-    } catch (error) {
-      attempts.push({ engine, ok: false, error: error?.message || "failed" });
+      pathname = new URL(url).pathname.toLowerCase();
+    } catch {
+      pathname = "";
     }
+    if (/^\/$/.test(pathname)) return true;
+    if (/^\/(?:news|sport|reel|culture|weather)(?:\/)?$/.test(pathname)) return true;
+    if (/^\/culture\/music(?:\/)?$/.test(pathname)) return true;
+    if (/\/(?:worklife|future|travel|sounds|help|accessibility)(?:\/|$)/i.test(url)) return true;
+    if (/\/(?:aboutthebbc|usingthebbc(?:\/|$)|iplayer\/guidance)(?:\/|$)?/i.test(url)) return true;
+    if (/\/(?:contact|bbcnewsletter|advertisingcontact)(?:\/|$)/i.test(url)) return true;
+    if (/\/editorialguidelines\/guidance\/links-and-feeds(?:\/|$)?/i.test(url)) return true;
+    if (/\b(?:bbc homepage|homepage|news|sport|reel|culture|weather|contact the bbc|bbc emails for you|advertise with us)\b/i.test(title)) return true;
+    if (/\bexternal linking\b/i.test(combined)) return true;
+  }
+  return false;
+}
+__name(isGenericWrapperResult, "isGenericWrapperResult");
+__name2(isGenericWrapperResult, "isGenericWrapperResult");
+function isIntentMismatchResult(item, query, engine = "") {
+  const queryText = String(query || "").trim().toLowerCase();
+  const contentText = `${item?.title || ""} ${item?.snippet || ""}`.toLowerCase();
+  const host = safeHostname(item?.url || "");
+  if (/[㐀-鿿]/.test(queryText)) {
+    const queryTokens = tokenizeSearchText(queryText);
+    const compactQuery = queryText.replace(/\s+/g, "");
+    const compactContent = contentText.replace(/\s+/g, "");
+    const matchedTokens = queryTokens.filter((token) => compactContent.includes(token));
+    if (host === "mp.weixin.qq.com" && !String(item?.snippet || "").trim()) return true;
+    if (host && isSearchEngineHost(host)) return true;
+    return compactQuery ? !compactContent.includes(compactQuery) && matchedTokens.length === 0 : false;
+  }
+  if (engine === "bbc") {
+    const queryTokens = tokenizeSearchText(query);
+    const alphaTokens = queryTokens.filter((token) => /[a-z]/i.test(token));
+    const numericTokens = queryTokens.filter((token) => /\d/.test(token));
+    if (!alphaTokens.length || !numericTokens.length) return false;
+    const rawContent = ` ${contentText.replace(/[^\p{L}\p{N}]+/gu, " ")} `;
+    const alphaMatches = alphaTokens.filter((token) => rawContent.includes(` ${token} `)).length;
+    const numericMatches = numericTokens.filter((token) => rawContent.includes(` ${token} `) || contentText.includes(token)).length;
+    return alphaMatches === 0 && numericMatches > 0;
+  }
+  const queryTokens = tokenizeSearchText(query).filter((token) => token.length >= 3);
+  if (!queryTokens.length) return false;
+  const haystack = tokenizeSearchText(contentText);
+  const matches = queryTokens.filter((token) => haystack.includes(token)).length;
+  return matches === 0;
+}
+__name(isIntentMismatchResult, "isIntentMismatchResult");
+__name2(isIntentMismatchResult, "isIntentMismatchResult");
+function tokenizeSearchText(value) {
+  const text = String(value || "").toLowerCase();
+  const tokens = text.match(/[\p{L}\p{N}]+/gu) || [];
+  return [...new Set(tokens)];
+}
+__name(tokenizeSearchText, "tokenizeSearchText");
+__name2(tokenizeSearchText, "tokenizeSearchText");
+function isLowTrustResult(item, query, engine = "") {
+  const queryText = String(query || "").trim().toLowerCase();
+  if (!queryText || !/[㐀-鿿]/.test(queryText)) return false;
+  if (engine !== "baidu" && engine !== "sogou" && engine !== "bing" && engine !== "bing_cn") return false;
+  const intent = detectSearchIntent(query);
+  if (intent.isDeveloper) return false;
+  const url = String(item?.url || "");
+  const host = safeHostname(url);
+  if (!host || isSearchEngineHost(host)) return false;
+  const title = String(item?.title || "");
+  const snippet = String(item?.snippet || "").trim();
+  const compactQuery = queryText.replace(/\s+/g, "");
+  const compactHost = host.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const titleLower = title.toLowerCase();
+  const suspiciousTld = /\.(?:org|com|net)\.cn$/i.test(host);
+  const hasYear = /20\d{2}/.test(compactHost);
+  const sportsishQuery = /\b(?:nba|cba|f1|epl|uefa|fifa|worldcup|olympics)\b/i.test(compactQuery) || /总决赛|决赛|赛程|比分|战况|情况|冠军|淘汰赛/.test(queryText);
+  const policyishQuery = /政策|禁烟|规定|条例|公告|发布|情况|最新/.test(queryText);
+  const slugSignals = ["nba", "zongjuesai", "juesai", "quanchang", "huifang", "xilie", "bifen", "saicheng", "jinyan", "zhengce", "xin", "zuixin"];
+  const slugMatchCount = slugSignals.filter((token) => compactHost.includes(token)).length;
+  const tokenMatches = tokenizeSearchText(queryText).filter((token) => compactHost.includes(token.replace(/\s+/g, ""))).length;
+  const titleLooksAnswerish = /(总决赛|比分|回放|赛程|政策|禁烟|通知|公告)/.test(title) || titleLower.includes("nba");
+  if ((sportsishQuery || policyishQuery) && suspiciousTld && hasYear && compactHost.length >= 20 && titleLooksAnswerish && !snippet) {
+    if (slugMatchCount >= 2 || tokenMatches >= 2) return true;
+  }
+  return false;
+}
+__name(isLowTrustResult, "isLowTrustResult");
+__name2(isLowTrustResult, "isLowTrustResult");
+function isSearchEngineHost(host) {
+  return /(?:^|\.)(?:bing|google|yahoo|duckduckgo|baidu|sogou|yandex|brave|qwant|ecosia|naver)\./i.test(String(host || ""));
+}
+__name(isSearchEngineHost, "isSearchEngineHost");
+__name2(isSearchEngineHost, "isSearchEngineHost");
+function detectSearchIntent(query) {
+  const text = String(query || "").trim();
+  const lowered = text.toLowerCase();
+  const isChinese = /[㐀-鿿]/.test(text);
+  const isNews = /\b(news|policy|press|regulation|government|announcement|update|breaking)\b|新闻|政策|发布|公告/.test(lowered);
+  const isDeveloper = /\b(api|sdk|docs?|documentation|github|gitlab|stackoverflow|npm|package|library|framework|typescript|javascript|python|java|golang|rust|error|bug)\b/.test(lowered);
+  return { isChinese, isNews, isDeveloper };
+}
+__name(detectSearchIntent, "detectSearchIntent");
+__name2(detectSearchIntent, "detectSearchIntent");
+function defaultSearchAutoEngines(query) {
+  const intent = detectSearchIntent(query);
+  if (intent.isChinese) return ["sogou", "bing_cn", "bing_news", "baidu", "bing_global", "brave", "duckduckgo", "google", "yahoo", "yandex"];
+  if (intent.isNews) return ["bbc", "bing_news", "bing_global", "brave", "duckduckgo", "google", "yahoo", "archive"];
+  if (intent.isDeveloper) return ["github_repos", "stackoverflow", "npm", "devto", "hackernews", "brave", "duckduckgo", "bing_global", "google"];
+  return ["bing_global", "duckduckgo", "google", "yahoo", "brave", "sogou", "baidu", "yandex", "naver", "archive", "wikipedia"];
+}
+__name(defaultSearchAutoEngines, "defaultSearchAutoEngines");
+__name2(defaultSearchAutoEngines, "defaultSearchAutoEngines");
+function fullSearchAutoEngines(query) {
+  const defaults = defaultSearchAutoEngines(query);
+  const publicEngines = [
+    "bing_global",
+    "bing_cn",
+    "bing_news",
+    "duckduckgo",
+    "google",
+    "yahoo",
+    "brave",
+    "sogou",
+    "baidu",
+    "yandex",
+    "naver",
+    "bbc",
+    "archive",
+    "wikipedia",
+    "github_repos",
+    "stackoverflow",
+    "npm",
+    "devto",
+    "hackernews",
+    "reddit",
+    "arxiv",
+    "pubmed",
+    "paperswithcode",
+    "sec_edgar",
+    "osm",
+    "lemmy",
+    "wikidata",
+    "crates",
+    "pypi"
+  ];
+  return [...new Set([...defaults, ...publicEngines])];
+}
+__name(fullSearchAutoEngines, "fullSearchAutoEngines");
+__name2(fullSearchAutoEngines, "fullSearchAutoEngines");
+function getEngineProviderName(engine) {
+  const normalized = String(engine || "").toLowerCase();
+  if (normalized === "bing_global" || normalized === "bing_cn" || normalized === "bing_news") return "bing";
+  return Object.prototype.hasOwnProperty.call(PROVIDER_CONFIG, normalized) ? normalized : null;
+}
+__name(getEngineProviderName, "getEngineProviderName");
+__name2(getEngineProviderName, "getEngineProviderName");
+function isSearchEngineEnabled(engine, requestProviderConfig) {
+  const providerName = getEngineProviderName(engine) || String(engine || "").toLowerCase();
+  const config = getRequestProviderConfig(requestProviderConfig)[providerName];
+  return config ? config.enabled !== false : true;
+}
+__name(isSearchEngineEnabled, "isSearchEngineEnabled");
+__name2(isSearchEngineEnabled, "isSearchEngineEnabled");
+function selectSearchAutoEngines(args) {
+  const autoMode = String(args?.auto_mode || "").toLowerCase();
+  const requested = autoMode === "full" ? fullSearchAutoEngines(args.query) : Array.isArray(args.engines) && args.engines.length ? args.engines : defaultSearchAutoEngines(args.query);
+  const normalized = requested.map((name) => String(name).toLowerCase()).filter(Boolean);
+  const unique = [];
+  for (const engine of normalized) {
+    if (unique.includes(engine)) continue;
+    const providerName = getEngineProviderName(engine);
+    if (providerName && !isSearchEngineEnabled(providerName, args?._providerConfig)) continue;
+    if (!providerName && !isSearchEngineEnabled(engine, args?._providerConfig)) continue;
+    unique.push(engine);
+  }
+  return unique;
+}
+__name(selectSearchAutoEngines, "selectSearchAutoEngines");
+__name2(selectSearchAutoEngines, "selectSearchAutoEngines");
+async function runSearchEngine(engine, args) {
+  const providerArgs = args?._providerConfig ? { ...args, _context: { ...(args?._context || {}), providerConfig: args._providerConfig } } : args;
+  if (engine === "duckduckgo") return await searchDuckDuckGo(args);
+  if (engine === "bing") return await searchBing(args);
+  if (engine === "bing_global") return await searchBingGlobal(args);
+  if (engine === "bing_cn") return await searchBingCn(args);
+  if (engine === "parallel") return await searchParallel(providerArgs);
+  if (engine === "ollama") return await searchOllama(providerArgs);
+  if (engine === "xiaohongshu") return await searchXiaohongshu(providerArgs);
+  if (engine === "yahoo") return await searchYahoo(args);
+  if (engine === "google") return await searchGoogle(args);
+  if (engine === "yandex") return await searchYandex(args);
+  if (engine === "baidu") return await searchBaidu(args);
+  if (engine === "wikipedia") return await searchWikipedia(args);
+  if (engine === "naver") return await searchNaver(args);
+  if (engine === "sogou") return await searchSogou(args);
+  if (engine === "brave") return await searchBrave(args);
+  if (engine === "qwant") return await searchQwant(args);
+  if (engine === "ecosia") return await searchEcosia(args);
+  if (engine === "archive") return await searchArchive(args);
+  if (engine === "arxiv") return await searchArxiv(args);
+  if (engine === "pubmed") return await searchPubmed(args);
+  if (engine === "hackernews") return await searchHackerNews(args);
+  if (engine === "stackoverflow") return await searchStackOverflow(args);
+  if (engine === "reddit") return await searchReddit(args);
+  if (engine === "npm") return await searchNpm(args);
+  if (engine === "devto") return await searchDevto(args);
+  if (engine === "mastodon") return await searchMastodon(args);
+  if (engine === "peertube") return await searchPeerTube(args);
+  if (engine === "bbc") return await searchBbc(args);
+  if (engine === "bing_news") return await searchBingNews(args);
+  if (engine === "paperswithcode") return await searchPapersWithCode(args);
+  if (engine === "sec_edgar") return await searchSecEdgar(args);
+  if (engine === "osm") return await searchOsm(args);
+  if (engine === "lemmy") return await searchLemmy(args);
+  if (engine === "wikidata") return await searchWikidata(args);
+  if (engine === "crates") return await searchCrates(args);
+  if (engine === "pypi") return await searchPypi(args);
+  if (engine === "wiktionary") return await searchWiktionary(args);
+  if (engine === "openlibrary") return await searchOpenLibrary(args);
+  if (engine === "musicbrainz") return await searchMusicbrainz(args);
+  if (engine === "crossref") return await searchCrossref(args);
+  if (engine === "github_repos") return await searchGitHubRepos(args);
+  if (engine === "find_rss") return await findRss(args);
+  return null;
+}
+__name(runSearchEngine, "runSearchEngine");
+__name2(runSearchEngine, "runSearchEngine");
+function parseSiteTargetQuery(query) {
+  const match = String(query || "").trim().match(/^site:([^\s/]+)\s+(.+)$/i);
+  if (!match) return null;
+  return { host: match[1].toLowerCase(), query: match[2].trim() };
+}
+__name(parseSiteTargetQuery, "parseSiteTargetQuery");
+__name2(parseSiteTargetQuery, "parseSiteTargetQuery");
+function filterSiteTargetedResults(results, siteTarget, limit) {
+  if (!siteTarget) return Array.isArray(results) ? results.slice(0, limit) : [];
+  const targetHost = siteTarget.host;
+  return (Array.isArray(results) ? results : []).filter((item) => {
+    const host = safeHostname(item?.url || "").toLowerCase();
+    return host === targetHost || host.endsWith(`.${targetHost}`);
+  }).slice(0, limit);
+}
+__name(filterSiteTargetedResults, "filterSiteTargetedResults");
+__name2(filterSiteTargetedResults, "filterSiteTargetedResults");
+function buildSearchAutoAttempt(engine, result, quality) {
+  return {
+    engine,
+    ok: quality.ok,
+    result_count: Array.isArray(result?.results) ? result.results.length : 0,
+    quality_status: quality.quality_status,
+    quality_reason: quality.quality_reason,
+    filtered_count: quality.filtered_count
+  };
+}
+__name(buildSearchAutoAttempt, "buildSearchAutoAttempt");
+__name2(buildSearchAutoAttempt, "buildSearchAutoAttempt");
+function scoreSearchAutoResult(item, query = "") {
+  const qualityWeight = item.quality_status === "green" ? 220 : item.quality_status === "yellow" ? 110 : 0;
+  const rankWeight = Math.max(0, 30 - (Number(item.rank_within_engine) || 0) * 3);
+  const itemSources = Array.isArray(item?.sources) ? item.sources.filter(Boolean) : item?.source ? [item.source] : [];
+  const multiSourceWeight = Math.max(0, itemSources.length - 1) * 40;
+  const title = String(item?.title || "");
+  const snippet = String(item?.snippet || "");
+  const content = `${title} ${snippet}`.trim();
+  const tokenMatches = tokenizeSearchText(query).filter((token) => token.length >= 2 && content.toLowerCase().includes(token)).length;
+  const tokenWeight = Math.min(45, tokenMatches * 8);
+  const officialHost = safeHostname(item?.url || "");
+  const officialWeight = /(?:^|\.)(?:gov|edu|org|nhc\.gov\.cn|who\.int)$/i.test(officialHost) ? 35 : 0;
+  const genericPenalty = isGenericWrapperResult(item, query, item.engine || item.source || "") ? 60 : 0;
+  const mismatchPenalty = isIntentMismatchResult(item, query, item.engine || item.source || "") ? 80 : 0;
+  const lowTrustPenalty = isLowTrustResult(item, query, item.engine || item.source || "") ? 120 : 0;
+  return qualityWeight + rankWeight + multiSourceWeight + tokenWeight + officialWeight - genericPenalty - mismatchPenalty - lowTrustPenalty;
+}
+__name(scoreSearchAutoResult, "scoreSearchAutoResult");
+__name2(scoreSearchAutoResult, "scoreSearchAutoResult");
+function mergeSearchAutoResults(collectedResults, limit, query = "") {
+  const byUrl = /* @__PURE__ */ new Map();
+  for (const item of collectedResults) {
+    const url = String(item?.url || "").trim();
+    if (!url) continue;
+    const candidate = { ...item, score: scoreSearchAutoResult(item, query) };
+    const existing = byUrl.get(url);
+    if (!existing || candidate.score > existing.score) {
+      const mergedSources = [...new Set([...(Array.isArray(existing?.sources) ? existing.sources : existing?.source ? [existing.source] : []), ...(Array.isArray(candidate.sources) ? candidate.sources : candidate.source ? [candidate.source] : [])].filter(Boolean))];
+      byUrl.set(url, mergedSources.length ? { ...candidate, sources: mergedSources } : candidate);
+      continue;
+    }
+    const mergedSources = [...new Set([...(Array.isArray(existing?.sources) ? existing.sources : existing?.source ? [existing.source] : []), ...(Array.isArray(candidate.sources) ? candidate.sources : candidate.source ? [candidate.source] : [])].filter(Boolean))];
+    if (mergedSources.length) {
+      existing.sources = mergedSources;
+      existing.score += Math.max(10, (mergedSources.length - 1) * 15);
+    }
+  }
+  return [...byUrl.values()].sort((a, b) => b.score - a.score || a.rank_within_engine - b.rank_within_engine).slice(0, clampLimit(limit)).map(({ score, ...item }) => item);
+}
+__name(mergeSearchAutoResults, "mergeSearchAutoResults");
+__name2(mergeSearchAutoResults, "mergeSearchAutoResults");
+function buildSearchAutoResponse({ args, engines, attempts, acceptedResults, siteTarget }) {
+  const mergedResults = mergeSearchAutoResults(acceptedResults, args.limit, args.query);
+  const contributingSources = [...new Set(mergedResults.flatMap((item) => Array.isArray(item?.sources) && item.sources.length ? item.sources : item?.source ? [item.source] : []).filter(Boolean))];
+  const autoMode = String(args?.auto_mode || "").toLowerCase() === "full" ? "full" : "default";
+  if (mergedResults.length) {
+    const finalQuality = mergedResults.some((item) => item.quality_status === "green") ? "green" : "yellow";
+    return {
+      ok: true,
+      source: contributingSources.length > 1 ? "auto" : siteTarget ? "site_targeted" : contributingSources[0] || engines[0] || null,
+      query: typeof args.query === "string" ? args.query.trim() : "",
+      limit: clampLimit(args.limit),
+      results: mergedResults,
+      sources: contributingSources,
+      attempts,
+      fallback_used: attempts.length > 1,
+      quality_status: finalQuality,
+      quality_reason: finalQuality === "green" ? "usable_results" : "usable_with_minor_noise",
+      filtered_count: attempts.reduce((total, item) => total + (Number(item.filtered_count) || 0), 0),
+      merged_count: acceptedResults.length,
+      deduped_count: Math.max(0, acceptedResults.length - mergedResults.length),
+      auto_mode: autoMode,
+      ...siteTarget ? { site_target: siteTarget.host } : {}
+    };
   }
   return {
     ok: false,
-    source: engines[0] || null,
+    source: siteTarget ? "site_targeted" : engines[0] || null,
     query: typeof args.query === "string" ? args.query.trim() : "",
     results: [],
     attempts,
     fallback_used: attempts.length > 1,
-    error: attempts.length ? `No search engine returned parsed results. Tried: ${attempts.map((item) => item.error ? `${item.engine}: ${item.error}` : `${item.engine}: no useful parsed results`).join("; ")}` : "No search engines requested."
+    quality_status: attempts.some((item) => item.quality_status === "blocked") ? "blocked" : attempts.some((item) => item.quality_status === "empty") ? "empty" : "red",
+    quality_reason: attempts.some((item) => item.quality_status === "junk") ? "only_junk_results" : attempts.some((item) => item.quality_status === "empty") ? "no_results" : "no_useful_results",
+    filtered_count: attempts.reduce((total, item) => total + (Number(item.filtered_count) || 0), 0),
+    auto_mode: autoMode,
+    ...siteTarget ? { site_target: siteTarget.host } : {},
+    error: attempts.length ? `No search engine returned parsed results. Tried: ${attempts.map((item) => item.error ? `${item.engine}: ${item.error}` : `${item.engine}: ${item.quality_reason || "no useful parsed results"}`).join("; ")}` : "No search engines requested."
   };
+}
+__name(buildSearchAutoResponse, "buildSearchAutoResponse");
+__name2(buildSearchAutoResponse, "buildSearchAutoResponse");
+async function searchAuto(args) {
+  const engines = selectSearchAutoEngines(args);
+  const attempts = [];
+  const acceptedResults = [];
+  const cacheDisabled = hasRequestScopedProviderOverrides(args?._providerConfig);
+  const cacheKey = `auto:${engines.join(",")}:${args.query}:${args.limit || 5}`;
+  const cached = cacheDisabled ? null : getCached(cacheKey);
+  if (cached) return { ...cached, _cached: true };
+  const siteTarget = parseSiteTargetQuery(args.query);
+  for (const engine of engines) {
+    try {
+      const result = await runSearchEngine(engine, args);
+      if (!result) continue;
+      const originalResults = Array.isArray(result?.results) ? result.results : [];
+      const filteredResults = filterSiteTargetedResults(originalResults, siteTarget, Number(args.limit) || 5);
+      const normalizedResult = siteTarget && Array.isArray(result?.results) ? { ...result, results: filteredResults, filtered_count: Math.max(0, originalResults.length - filteredResults.length) } : result;
+      const quality = evaluateSearchQuality(normalizedResult, args.query, engine);
+      const enrichedResult = { ...normalizedResult, ...quality };
+      attempts.push(buildSearchAutoAttempt(engine, enrichedResult, quality));
+      if (quality.quality_status === "green" || quality.quality_status === "yellow") {
+        const usableResults = Array.isArray(enrichedResult?.results) ? enrichedResult.results : [];
+        usableResults.forEach((item, index) => {
+          acceptedResults.push({
+            ...item,
+            source: enrichedResult.source || engine,
+            engine,
+            quality_status: quality.quality_status,
+            quality_reason: quality.quality_reason,
+            rank_within_engine: index + 1
+          });
+        });
+      }
+    } catch (error) {
+      attempts.push({ engine, ok: false, error: error?.message || "failed", quality_status: "red", quality_reason: error?.message || "failed", filtered_count: 0, result_count: 0 });
+    }
+  }
+  const final = buildSearchAutoResponse({ args, engines, attempts, acceptedResults, siteTarget });
+  if (!cacheDisabled && final.ok) setCache(cacheKey, final);
+  return final;
 }
 __name(searchAuto, "searchAuto");
 __name2(searchAuto, "searchAuto");
@@ -787,7 +1243,7 @@ async function searchDuckDuckGo(args) {
         const link = block.match(/<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
         if (!link) continue;
         const href = decodeDuckUrl(decodeHtml(link[1]));
-        if (isNoiseUrl(href)) continue;
+        if (isNoiseUrl(href) || isDuckDuckGoNoiseUrl(href) || !looksLikeSearchResultUrl(href)) continue;
         const snippet = (block.match(/<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i) || [])[1] || "";
         results.push({ title: cleanText(link[2]), url: href, snippet: cleanText(snippet) });
       }
@@ -795,12 +1251,17 @@ async function searchDuckDuckGo(args) {
         const rows = text.split(/<tr[^>]*>/i);
         for (const row of rows) {
           if (results.length >= limit) break;
-          const link = row.match(/<a[^>]+class="[^"]*result-link[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i) || row.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*class="[^"]*link[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
-          if (!link) continue;
-          const href = decodeDuckUrl(decodeHtml(link[1]));
-          if (isNoiseUrl(href)) continue;
-          const snippet = (row.match(/<td[^>]+class="[^"]*result-snippet[^"]*"[^>]*>([\s\S]*?)<\/td>/i) || [])[1] || "";
-          results.push({ title: cleanText(link[2]), url: href, snippet: cleanText(snippet) });
+          if (/class\s*=\s*(["'])[^"']*result-sponsored[^"']*\1/i.test(row)) continue;
+          const hrefBeforeClassLink = row.match(/<a\b[^>]*href\s*=\s*(["'])(.*?)\1[^>]*class\s*=\s*(["'])[^"']*result-link[^"']*\3[^>]*>([\s\S]*?)<\/a>/i);
+          const classBeforeHrefLink = row.match(/<a\b[^>]*class\s*=\s*(["'])[^"']*result-link[^"']*\1[^>]*href\s*=\s*(["'])(.*?)\2[^>]*>([\s\S]*?)<\/a>/i);
+          const genericLink = row.match(/<a[^>]+href="(https?:\/\/[^\"]+)"[^>]*class="[^"]*link[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+          const href = hrefBeforeClassLink ? hrefBeforeClassLink[2] : classBeforeHrefLink ? classBeforeHrefLink[3] : genericLink ? genericLink[1] : "";
+          const title = hrefBeforeClassLink ? hrefBeforeClassLink[4] : classBeforeHrefLink ? classBeforeHrefLink[4] : genericLink ? genericLink[2] : "";
+          if (!href || !title) continue;
+          const normalizedHref = decodeDuckUrl(decodeHtml(href));
+          if (isNoiseUrl(normalizedHref) || isDuckDuckGoNoiseUrl(normalizedHref) || !looksLikeSearchResultUrl(normalizedHref)) continue;
+          const snippet = (row.match(/<td[^>]+class\s*=\s*(["'])[^"']*result-snippet[^"']*\1[^>]*>([\s\S]*?)<\/td>/i) || [])[2] || "";
+          results.push({ title: cleanText(title), url: normalizedHref, snippet: cleanText(snippet) });
         }
       }
       if (!results.length) results = extractGenericLinks(text, limit, "https://duckduckgo.com");
@@ -828,28 +1289,90 @@ async function searchDuckDuckGo(args) {
 __name(searchDuckDuckGo, "searchDuckDuckGo");
 __name2(searchDuckDuckGo, "searchDuckDuckGo");
 async function searchBing(args) {
-  const query = requireString(args.query, "query");
-  const limit = clampLimit(args.limit);
-  const attempts = [
-    { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}&setlang=en&cc=us`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*" } },
-    { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`, headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Accept": "text/html,*/*" } },
-    { url: `https://www.bing.com/search?q=${encodeURIComponent(query)}&count=${limit}`, headers: {} }
-  ];
-  for (const attempt of attempts) {
-    try {
-      const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
-      const diagnosis = diagnoseSearchHtml("bing", text, response.url);
-      if (diagnosis.blocked) continue;
-      const results = extractBingResults(text, limit);
-      if (results.length > 0) return searchResult({ source: "bing", query, limit, results, blocked: false, block_reason: "" });
-    } catch (e) {
-      continue;
-    }
-  }
-  return searchResult({ source: "bing", query, limit, results: [], blocked: true, block_reason: "captcha_or_verification" });
+  return searchBingRoute(args, {
+    source: "bing",
+    engine: "bing",
+    baseUrl: "https://www.bing.com/search",
+    primaryParams: "setlang=en&cc=us",
+    fallbackParams: "",
+    acceptLanguage: "en-US,en;q=0.9"
+  });
 }
 __name(searchBing, "searchBing");
 __name2(searchBing, "searchBing");
+async function searchBingGlobal(args) {
+  return searchBingRoute(args, {
+    source: "bing_global",
+    engine: "bing",
+    baseUrl: "https://www.bing.com/search",
+    primaryParams: "setlang=en&cc=us",
+    fallbackParams: "",
+    acceptLanguage: "en-US,en;q=0.9"
+  });
+}
+__name(searchBingGlobal, "searchBingGlobal");
+__name2(searchBingGlobal, "searchBingGlobal");
+async function searchBingCn(args) {
+  return searchBingRoute(args, {
+    source: "bing_cn",
+    engine: "bing",
+    baseUrl: "https://cn.bing.com/search",
+    primaryParams: "mkt=zh-CN&setlang=zh-Hans",
+    fallbackParams: "mkt=zh-CN",
+    acceptLanguage: "zh-CN,zh;q=0.9,en;q=0.6"
+  });
+}
+__name(searchBingCn, "searchBingCn");
+__name2(searchBingCn, "searchBingCn");
+async function searchBingRoute(args, route) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const attempts = [
+    {
+      url: `${route.baseUrl}?q=${encodeURIComponent(query)}&count=${limit}${route.primaryParams ? `&${route.primaryParams}` : ""}`,
+      headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*", "Accept-Language": route.acceptLanguage }
+    },
+    {
+      url: `${route.baseUrl}?q=${encodeURIComponent(query)}&count=${limit}${route.fallbackParams ? `&${route.fallbackParams}` : ""}`,
+      headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36", "Accept": "text/html,*/*", "Accept-Language": route.acceptLanguage }
+    },
+    {
+      url: `${route.baseUrl}?q=${encodeURIComponent(query)}&count=${limit}${route.fallbackParams ? `&${route.fallbackParams}` : ""}`,
+      headers: route.acceptLanguage ? { "Accept-Language": route.acceptLanguage } : {}
+    }
+  ];
+  let sawBlocked = false;
+  let blockReason = "";
+  let sawAnyResults = false;
+  for (const attempt of attempts) {
+    try {
+      const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
+      const diagnosis = diagnoseSearchHtml(route.engine, text, response.url);
+      if (diagnosis.blocked) {
+        sawBlocked = true;
+        blockReason = diagnosis.reason || blockReason;
+        continue;
+      }
+      const results = extractBingResults(text, limit);
+      if (results.length > 0) {
+        sawAnyResults = true;
+        const { filteredResults, filteredCount, filteredReason } = filterSearchResultsForQuery(results, query, route.source);
+        if (filteredResults.length > 0) {
+          return searchResult({ source: route.source, query, limit, results: filteredResults, blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
+        }
+        return searchResult({ source: route.source, query, limit, results: [], blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
+      }
+    } catch {
+      continue;
+    }
+  }
+  if (sawBlocked && !sawAnyResults) {
+    return searchResult({ source: route.source, query, limit, results: [], blocked: true, block_reason: blockReason || "captcha_or_verification" });
+  }
+  return searchResult({ source: route.source, query, limit, results: [], blocked: false, block_reason: "" });
+}
+__name(searchBingRoute, "searchBingRoute");
+__name2(searchBingRoute, "searchBingRoute");
 async function searchYahoo(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -860,14 +1383,109 @@ async function searchYahoo(args) {
   ];
   for (const attempt of attempts) {
     try {
-      const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
-      const diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
-      if (diagnosis.blocked) continue;
-      const results = extractYahooResults(text, limit);
+      let text = "";
+      let response = null;
+      let diagnosis = { blocked: false, reason: "" };
+      let shouldRetryWithConsentCookie = false;
+      try {
+        const fetched = await fetchWithUA(attempt.url, attempt.headers);
+        text = fetched.text;
+        response = fetched.response;
+        diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
+        const initialResults = diagnosis.blocked ? [] : extractYahooResults(text, limit);
+        if (initialResults.length > 0) return searchResult({ source: "yahoo", query, limit, results: initialResults, blocked: false, block_reason: "" });
+        shouldRetryWithConsentCookie = diagnosis.reason === "consent_page" || attempt.url.includes("nojs=1") && !diagnosis.blocked;
+      } catch (error) {
+        shouldRetryWithConsentCookie = attempt.url.includes("nojs=1") && /upstream 5\d\d/i.test(String(error?.message || error || ""));
+        if (!shouldRetryWithConsentCookie) throw error;
+      }
+      if (shouldRetryWithConsentCookie) {
+        const consentHeaders = {
+          ...attempt.headers,
+          "Cookie": "GUCS=AV.0",
+          "Referer": "https://search.yahoo.com/",
+          "Accept-Language": attempt.headers?.["Accept-Language"] || "en-US,en;q=0.9"
+        };
+        const retried = await fetchWithUA(attempt.url, consentHeaders);
+        text = retried.text;
+        response = retried.response;
+        diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
+        if (diagnosis.reason === "consent_page" || safeHostname(response?.url) === "consent.yahoo.com") {
+          const consentRetried = await retryYahooWithConsentForm(attempt.url, consentHeaders, text, response?.url || "");
+          if (consentRetried) {
+            text = consentRetried.text;
+            response = consentRetried.response;
+            diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
+          }
+        }
+      }
+      let results = [];
+      if (!diagnosis.blocked) {
+        results = extractYahooResults(text, limit);
+      }
       if (results.length > 0) return searchResult({ source: "yahoo", query, limit, results, blocked: false, block_reason: "" });
+      if (diagnosis.blocked || shouldRetryWithConsentCookie) {
+        continue;
+      }
     } catch (e) {
       continue;
     }
+  }
+  try {
+    let text = "";
+    let response = null;
+    let diagnosis = { blocked: false, reason: "" };
+    let shouldRetryWithConsentCookie = false;
+    const mobileUrl = `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8&nojs=1`;
+    const mobileHeaders = {
+      "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36",
+      "Accept": "text/html,*/*",
+      "Accept-Language": "en-US,en;q=0.9"
+    };
+    try {
+      const mobileAttempt = await fetchWithUA(mobileUrl, mobileHeaders);
+      text = mobileAttempt.text;
+      response = mobileAttempt.response;
+      diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
+      const initialResults = diagnosis.blocked ? [] : extractYahooResults(text, limit);
+      if (initialResults.length > 0) {
+        return searchResult({ source: "yahoo", query, limit, results: initialResults, blocked: false, block_reason: "" });
+      }
+      shouldRetryWithConsentCookie = diagnosis.reason === "consent_page" || !diagnosis.blocked;
+    } catch (error) {
+      shouldRetryWithConsentCookie = /upstream 5\d\d/i.test(String(error?.message || error || ""));
+      if (!shouldRetryWithConsentCookie) throw error;
+    }
+    if (shouldRetryWithConsentCookie) {
+      const consentHeaders = {
+        ...mobileHeaders,
+        "Cookie": "GUCS=AV.0",
+        "Referer": "https://search.yahoo.com/"
+      };
+      const retried = await fetchWithUA(mobileUrl, consentHeaders);
+      text = retried.text;
+      response = retried.response;
+      diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
+      if (diagnosis.reason === "consent_page") {
+        const consentRetried = await retryYahooWithConsentForm(mobileUrl, consentHeaders, text, response?.url || "");
+        if (consentRetried) {
+          text = consentRetried.text;
+          response = consentRetried.response;
+          diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
+        }
+      }
+    }
+    if (!diagnosis.blocked) {
+      const results = extractYahooResults(text, limit);
+      if (results.length > 0) {
+        return searchResult({ source: "yahoo", query, limit, results, blocked: false, block_reason: "" });
+      }
+      if (shouldRetryWithConsentCookie) {
+        return searchResult({ source: "yahoo", query, limit, results: [], blocked: true, block_reason: "consent_page" });
+      }
+      return searchResult({ source: "yahoo", query, limit, results: [], blocked: false, block_reason: "" });
+    }
+  } catch (e) {
   }
   return searchResult({ source: "yahoo", query, limit, results: [], blocked: true, block_reason: "consent_page" });
 }
@@ -913,16 +1531,21 @@ async function searchGoogle(args) {
     try {
       const { text, response } = await fetchWithUA(attempt.url, { ...attempt.headers });
       const diagnosis = diagnoseSearchHtml("google", text, response.url);
-      if (diagnosis.blocked) continue;
+      if (diagnosis.blocked) {
+        continue;
+      }
       let results = [];
-      const re = /<a href="\/url\?q=([^&"]+)[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>/gi;
+      const re = /<a href="\/url\?(?:q|url)=([^&"]+)[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>/gi;
       for (const match of text.matchAll(re)) {
         if (results.length >= limit) break;
-        const u = decodeURIComponent(match[1]);
+        const u = decodeGoogleUrl(`/url?${match[0].includes('/url?url=') ? 'url' : 'q'}=${match[1]}`);
         if (isNoiseUrl(u)) continue;
         results.push({ title: cleanText(match[2]), url: u, snippet: "" });
       }
-      if (!results.length) results = extractGenericLinks(text, limit, "https://www.google.com");
+      if (!results.length) {
+        const generic = extractGenericLinks(text, limit * 4, "https://www.google.com");
+        results = generic.map((item) => ({ ...item, url: decodeGoogleUrl(item.url) })).filter((item) => !isNoiseUrl(item.url));
+      }
       if (results.length > 0) return searchResult({ source: "google", query, limit, results, blocked: false, block_reason: "" });
     } catch (e) {
       continue;
@@ -936,24 +1559,32 @@ async function searchBaidu(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const attempts = [
-    { url: `https://m.baidu.com/s?word=${encodeURIComponent(query)}&pn=0&rn=${limit}`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*", "Accept-Language": "zh-CN,zh;q=0.9" } },
-    { url: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`, headers: {} }
+    { url: `https://m.baidu.com/s?word=${encodeURIComponent(query)}&pn=0&rn=${limit}`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*", "Accept-Language": "zh-CN,zh;q=0.9" }, type: "html", baseUrl: "https://www.baidu.com" },
+    { url: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&tn=json&rn=${limit}&pn=0`, headers: { "Accept": "application/json,text/plain,*/*", "Accept-Language": "zh-CN,zh;q=0.9" }, type: "json" },
+    { url: `https://www.baidu.com/s?wd=${encodeURIComponent(query)}&rn=${limit}`, headers: {}, type: "html", baseUrl: "https://www.baidu.com" }
   ];
   for (const attempt of attempts) {
     try {
+      if (attempt.type === "json") {
+        const data = await fetchJson(attempt.url, { headers: attempt.headers, timeoutMs: DEFAULT_TIMEOUT_MS });
+        const results = extractBaiduJsonResults(data, limit);
+        const { filteredResults, filteredCount, filteredReason } = filterSearchResultsForQuery(results, query, "baidu");
+        if (filteredResults.length > 0) return searchResult({ source: "baidu", query, limit, results: filteredResults, blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
+        if (filteredCount > 0) return searchResult({ source: "baidu", query, limit, results: [], blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
+        continue;
+      }
       const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
       const diagnosis = diagnoseSearchHtml("baidu", text, response.url);
-      if (diagnosis.blocked) continue;
-      let results = [];
-      const re = /<h3[^>]*class="[^"]*t[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<span[^>]+class="[^"]*content-right_8Zs40[^"]*"[^>]*>|<h3[^>]*class="[^"]*t[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-      for (const match of text.matchAll(re)) {
-        if (results.length >= limit) break;
-        const u = decodeHtml(match[1] || match[3]);
-        if (isNoiseUrl(u)) continue;
-        results.push({ title: cleanText(match[2] || match[4]), url: u, snippet: "" });
+      if (diagnosis.blocked) {
+        continue;
       }
-      if (!results.length) results = extractGenericLinks(text, limit, "https://www.baidu.com");
-      if (results.length > 0) return searchResult({ source: "baidu", query, limit, results, blocked: false, block_reason: "" });
+      let results = extractBaiduResults(text, limit);
+      if (!results.length) {
+        results = extractGenericLinks(text, limit * 4, attempt.baseUrl || "https://www.baidu.com").filter((item) => !isBaiduNoiseTitle(item.title) && !isBaiduNoiseUrl(item.url)).slice(0, limit);
+      }
+      const { filteredResults, filteredCount, filteredReason } = filterSearchResultsForQuery(results, query, "baidu");
+      if (filteredResults.length > 0) return searchResult({ source: "baidu", query, limit, results: filteredResults, blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
+      if (filteredCount > 0) return searchResult({ source: "baidu", query, limit, results: [], blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
     } catch (e) {
       continue;
     }
@@ -974,7 +1605,9 @@ async function searchYandex(args) {
     try {
       const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
       const diagnosis = diagnoseSearchHtml("yandex", text, response.url);
-      if (diagnosis.blocked) continue;
+      if (diagnosis.blocked) {
+        continue;
+      }
       const results = extractYandexResults(text, limit);
       if (results.length > 0) return searchResult({ source: "yandex", query, limit, results, language, blocked: false, block_reason: "" });
     } catch (e) {
@@ -1024,24 +1657,54 @@ async function searchNaver(args) {
 }
 __name(searchNaver, "searchNaver");
 __name2(searchNaver, "searchNaver");
+function isSogouDirectNoiseResult(item, query) {
+  const url = String(item?.url || "");
+  const host = safeHostname(url);
+  if (!host) return false;
+  if (host === "mp.weixin.qq.com" && !String(item?.snippet || "").trim()) return true;
+  try {
+    const parsed = new URL(url);
+    if (isSearchEngineHost(host)) {
+      const pathname = parsed.pathname.toLowerCase();
+      if (/^\/(?:web|s|search)(?:\/)?$/.test(pathname) && /(?:query|keyword|wd|q|p|text)=/i.test(parsed.search)) return true;
+    }
+  } catch {
+  }
+  return false;
+}
+__name(isSogouDirectNoiseResult, "isSogouDirectNoiseResult");
+__name2(isSogouDirectNoiseResult, "isSogouDirectNoiseResult");
 async function searchSogou(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const { text, response } = await fetchTextWithResponse(`https://www.sogou.com/web?query=${encodeURIComponent(query)}`);
   const diagnosis = diagnoseSearchHtml("sogou", text, response.url);
   let results = [];
+  const seen = /* @__PURE__ */ new Set();
   const re = /<h3[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   for (const match of text.matchAll(re)) {
     if (results.length >= limit) break;
-    let url = decodeHtml(match[1]);
+    let url = decodeSogouUrl(decodeHtml(match[1]));
     const title = cleanText(match[2]);
     if (!title || title.length < 2) continue;
     if (url.startsWith("javascript:") || url === "#" || url === "/") continue;
-    if (!url.startsWith("http")) url = "https://www.sogou.com" + url;
+    if (!url.startsWith("http")) url = decodeSogouUrl("https://www.sogou.com" + url);
+    if (seen.has(url) || isNoiseUrl(url) || isSogouNoiseUrl(url) || !looksLikeSearchResultUrl(url)) continue;
+    seen.add(url);
     results.push({ title, url, snippet: "" });
   }
-  if (!results.length) results = extractGenericLinks(text, limit, "https://www.sogou.com");
-  return searchResult({ source: "sogou", query, limit, results, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "" });
+  if (!results.length) {
+    results = extractGenericLinks(text, limit * 3, "https://www.sogou.com").map((item) => ({ ...item, url: decodeSogouUrl(item.url) })).filter((item) => {
+      if (seen.has(item.url) || isNoiseUrl(item.url) || isSogouNoiseUrl(item.url) || !looksLikeSearchResultUrl(item.url)) return false;
+      seen.add(item.url);
+      return true;
+    }).slice(0, limit);
+  }
+  const { filteredResults, filteredCount, filteredReason } = filterSearchResultsForQuery(results, query, "sogou");
+  const directFilteredResults = filteredResults.filter((item) => !isSogouDirectNoiseResult(item, query));
+  const directFilteredCount = filteredCount + Math.max(0, filteredResults.length - directFilteredResults.length);
+  const directFilteredReason = directFilteredCount > filteredCount && !directFilteredResults.length && directFilteredResults.length !== filteredResults.length ? "intent_mismatch" : filteredReason;
+  return searchResult({ source: "sogou", query, limit, results: directFilteredResults, blocked: diagnosis.blocked, block_reason: diagnosis.reason || "", filtered_count: directFilteredCount, filtered_reason: directFilteredReason });
 }
 __name(searchSogou, "searchSogou");
 __name2(searchSogou, "searchSogou");
@@ -1260,6 +1923,82 @@ async function searchStackOverflow(args) {
 }
 __name(searchStackOverflow, "searchStackOverflow");
 __name2(searchStackOverflow, "searchStackOverflow");
+function hasCjkText(value) {
+  return /[㐀-鿿]/.test(String(value || ""));
+}
+__name(hasCjkText, "hasCjkText");
+__name2(hasCjkText, "hasCjkText");
+function normalizeCjkQuery(value) {
+  return String(value || "").normalize("NFKC").replace(/[\s\p{P}\p{S}]+/gu, "").toLowerCase();
+}
+__name(normalizeCjkQuery, "normalizeCjkQuery");
+__name2(normalizeCjkQuery, "normalizeCjkQuery");
+function scoreCjkRedditFallbackResult(item, normalizedQuery) {
+  if (!normalizedQuery) return 0;
+  const title = normalizeCjkQuery(item?.title || "");
+  const snippet = normalizeCjkQuery(item?.snippet || "");
+  let score = 0;
+  if (title.includes(normalizedQuery)) score += 100;
+  if (snippet.includes(normalizedQuery)) score += 40;
+  for (let size = Math.min(normalizedQuery.length, 8); size >= 2; size--) {
+    for (let start = 0; start <= normalizedQuery.length - size; start++) {
+      const part = normalizedQuery.slice(start, start + size);
+      if (title.includes(part)) score += size * 8;
+      if (snippet.includes(part)) score += size * 3;
+    }
+  }
+  return score;
+}
+__name(scoreCjkRedditFallbackResult, "scoreCjkRedditFallbackResult");
+__name2(scoreCjkRedditFallbackResult, "scoreCjkRedditFallbackResult");
+function filterRedditFallbackResults(results, subredditName, limit, query) {
+  const normalizedSubreddit = String(subredditName || "").toLowerCase();
+  const normalizedQuery = hasCjkText(query) ? normalizeCjkQuery(query) : "";
+  const filtered = (Array.isArray(results) ? results : []).filter((item) => {
+    const url = String(item?.url || "");
+    const host = safeHostname(url).toLowerCase();
+    if (!(host === "reddit.com" || host.endsWith(".reddit.com"))) return false;
+    try {
+      const pathname = new URL(url).pathname.toLowerCase();
+      if (!pathname || pathname === "/") return false;
+      if (/^\/r\/(all|popular)(\/|$)/.test(pathname)) return false;
+      if (/^\/r\/[^/]+\/(top|hot|new|rising)(\/|$)/.test(pathname)) return false;
+      if (normalizedSubreddit) return pathname.startsWith(`/r/${normalizedSubreddit}/comments/`);
+      return /^\/r\/[^/]+\/comments\//.test(pathname);
+    } catch {
+      return false;
+    }
+  });
+  if (normalizedQuery) {
+    filtered.sort((a, b) => scoreCjkRedditFallbackResult(b, normalizedQuery) - scoreCjkRedditFallbackResult(a, normalizedQuery));
+  }
+  return filtered.slice(0, limit);
+}
+__name(filterRedditFallbackResults, "filterRedditFallbackResults");
+__name2(filterRedditFallbackResults, "filterRedditFallbackResults");
+async function searchRedditFallback(query, limit, subredditName) {
+  const siteQuery = subredditName ? `site:reddit.com/r/${subredditName} ${query}` : `site:reddit.com ${query}`;
+  const fallbackLimit = Math.max(limit, 10);
+  const fallback = await searchAuto({
+    query: siteQuery,
+    limit: fallbackLimit,
+    engines: ["duckduckgo", "brave", "naver", "bing", "sogou"]
+  });
+  const results = filterRedditFallbackResults(fallback?.results, subredditName, limit, query);
+  if (!results.length) return null;
+  return searchResult({
+    source: "reddit",
+    query,
+    limit,
+    results,
+    subreddit: subredditName,
+    fetch_path: fallback?.fetch_path || "",
+    fallback_used: true,
+    attempts: Array.isArray(fallback?.attempts) ? fallback.attempts : void 0
+  });
+}
+__name(searchRedditFallback, "searchRedditFallback");
+__name2(searchRedditFallback, "searchRedditFallback");
 async function searchReddit(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1282,8 +2021,13 @@ async function searchReddit(args) {
       const sub = post.subreddit || subredditName;
       results.push({ title, url, snippet: `r/${sub} | ${score} pts | ${post.num_comments || 0} comments` });
     }
-    return searchResult({ source: "reddit", query, limit, results, subreddit: subredditName, fetch_path: "www.reddit.com" });
+    if (results.length) return searchResult({ source: "reddit", query, limit, results, subreddit: subredditName, fetch_path: "www.reddit.com" });
+    const fallback = await searchRedditFallback(query, limit, subredditName);
+    if (fallback) return fallback;
+    return searchResult({ source: "reddit", query, limit, results: [], subreddit: subredditName, fetch_path: "www.reddit.com" });
   } catch (e) {
+    const fallback = await searchRedditFallback(query, limit, subredditName);
+    if (fallback) return fallback;
     return searchError("reddit", query, limit, e, { subreddit: subredditName, fetch_path: "www.reddit.com" });
   }
 }
@@ -1387,16 +2131,19 @@ async function searchBbc(args) {
     let results = [];
     const { text: html2 } = await fetchTextWithResponse(`https://www.bbc.co.uk/search?q=${encodeURIComponent(query)}`);
     const seen = /* @__PURE__ */ new Set();
-    const re = /<a[^>]+href="(https:\/\/www\.bbc\.(?:com|co\.uk)\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    const re = /<a[^>]+href=["'](https:\/\/www\.bbc\.(?:com|co\.uk)\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
     for (const match of html2.matchAll(re)) {
       if (results.length >= limit) break;
       const url = match[1];
       const title = cleanText(match[2]);
-      if (isNoiseUrl(url) || seen.has(url) || !title || title.length < 8 || url.includes("/weather") || url.includes("/accessibility") || url.includes("/help")) continue;
+      const candidate = { title, url, snippet: "" };
+      if (isNoiseUrl(url) || seen.has(url) || !title || title.length < 8 || isGenericWrapperResult(candidate, query, "bbc") || isIntentMismatchResult(candidate, query, "bbc")) continue;
       seen.add(url);
-      results.push({ title, url, snippet: "" });
+      results.push(candidate);
     }
-    if (!results.length) results = extractGenericLinks(html2, limit, "https://www.bbc.co.uk").filter((r) => r.url.includes("bbc."));
+    if (!results.length) {
+      results = extractGenericLinks(html2, limit * 4, "https://www.bbc.co.uk").filter((r) => r.url.includes("bbc.") && !isGenericWrapperResult(r, query, "bbc") && !isIntentMismatchResult(r, query, "bbc")).slice(0, limit);
+    }
     return searchResult({ source: "bbc", query, limit, results });
   } catch (e) {
     return searchResult({ source: "bbc", query, limit, results: [], error: e?.message || "failed" });
@@ -1414,13 +2161,13 @@ async function searchBingNews(args) {
     for (const item of items) {
       if (results.length >= limit) break;
       const title = (item.match(/<title><!\[CDATA\[([^\]]*)\]\]><\/title>/) || item.match(/<title>([^<]+)<\/title>/) || [])[1] || "";
-      const url = (item.match(/<link>([^<]+)<\/link>/) || [])[1] || "";
-      if (title && url) results.push({ title: cleanText(title), url, snippet: "" });
+      const url = (item.match(/<link><!\[CDATA\[([^\]]*)\]\]><\/link>/) || item.match(/<link>([^<]+)<\/link>/) || [])[1] || "";
+      const normalized = { title: cleanText(title), url: unwrapBingNewsUrl(url), snippet: "" };
+      if (normalized.title && normalized.url && !isGenericWrapperResult(normalized, query, "bing_news")) results.push(normalized);
     }
     if (!results.length) {
       const { text: html } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}`);
-      results = extractGenericLinks(html, limit, "https://www.bing.com");
-      results = results.filter((r) => !r.url.includes("bing.com"));
+      results = extractGenericLinks(html, limit * 4, "https://www.bing.com").map((r) => ({ ...r, url: unwrapBingNewsUrl(r.url) })).filter((r) => r.url && !r.url.includes("bing.com") && !isGenericWrapperResult(r, query, "bing_news")).slice(0, limit);
     }
     return searchResult({ source: "bing_news", query, limit, results });
   } catch (e) {
@@ -1429,6 +2176,26 @@ async function searchBingNews(args) {
 }
 __name(searchBingNews, "searchBingNews");
 __name2(searchBingNews, "searchBingNews");
+function unwrapBingNewsUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    if (!/(^|\.)bing\.com$/i.test(parsed.hostname)) return parsed.toString();
+    for (const key of ["url", "u", "target", "r"]) {
+      const candidate = parsed.searchParams.get(key);
+      if (!candidate) continue;
+      const decoded = decodeURIComponent(candidate);
+      if (/^https?:\/\//i.test(decoded)) return decoded;
+      if (/^https?:\/\//i.test(candidate)) return candidate;
+    }
+    return parsed.toString();
+  } catch {
+    return value;
+  }
+}
+__name(unwrapBingNewsUrl, "unwrapBingNewsUrl");
+__name2(unwrapBingNewsUrl, "unwrapBingNewsUrl");
 async function searchPapersWithCode(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1455,7 +2222,8 @@ async function searchPapersWithCode(args) {
         const author = (item.author || []).map((a) => `${a.given || ""} ${a.family || ""}`.trim()).join(", ");
         const year = (item.published?.["date-parts"] || [[null]])[0][0] || "";
         const doi = item.DOI || "";
-        results.push({ title, url: doi ? `https://doi.org/${doi}` : "", snippet: `${author}${year ? " (" + year + ")" : ""}` });
+        const url = doi ? `https://doi.org/${doi}` : item.URL || "";
+        results.push({ title, url, snippet: `${author}${year ? " (" + year + ")" : ""}` });
       }
     } catch {
     }
@@ -1483,11 +2251,18 @@ async function searchSecEdgar(args) {
         if (results.length >= limit) break;
         const source = hit._source || {};
         const entity = source.entity_name || source.display_names?.[0] || "";
-        const form = source.form_type || "";
-        const filed = source.filed_at || source.date || "";
-        const id = source.file_id || source._id || "";
-        const url = id ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(entity)}&type=${form}` : "";
-        results.push({ title: `${entity} - ${form} (${filed.substring(0, 10)})`, url, snippet: `Filed: ${filed.substring(0, 10)}` });
+        const form = source.form_type || source.form || "";
+        const filed = source.filed_at || source.file_date || source.date || "";
+        const cik = String(source.ciks?.[0] || source.cik || "").replace(/^0+/, "");
+        const accession = String(source.adsh || source.accession_number || source.file_id || source._id || "").trim();
+        const accessionCompact = accession.replace(/-/g, "");
+        const canonicalUrl = cik && accession && accessionCompact ? `https://www.sec.gov/Archives/edgar/data/${cik}/${accessionCompact}/${accession}-index.htm` : "";
+        const fallbackUrl = entity ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(entity)}${form ? `&type=${encodeURIComponent(form)}` : ""}` : "";
+        const url = source.link || source.url || canonicalUrl || fallbackUrl;
+        const titleParts = [entity, form].filter(Boolean);
+        const title = titleParts.length ? titleParts.join(" ") : accession || query;
+        const filedText = filed ? filed.substring(0, 10) : "";
+        results.push({ title, url, snippet: filedText ? `Filed: ${filedText}` : "" });
       }
     } catch {
     }
@@ -1590,19 +2365,35 @@ async function searchPypi(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const data = await fetchJson(`https://pypi.org/search/?q=${encodeURIComponent(query)}&format=json`);
-    let results = [];
-    for (const item of data.items || data.results || []) {
+    const { text, response } = await fetchTextWithResponse(`https://pypi.org/search/?q=${encodeURIComponent(query)}`);
+    const results = [];
+    const seen = /* @__PURE__ */ new Set();
+    const baseUrl = response.url || "https://pypi.org/";
+    const pattern = /<a[^>]+class="[^"]*package-snippet[^"]*"[^>]+href="([^"]+)"[^>]*>[\s\S]*?<span[^>]+class="[^"]*package-snippet__name[^"]*"[^>]*>([\s\S]*?)<\/span>[\s\S]*?<span[^>]+class="[^"]*package-snippet__version[^"]*"[^>]*>([\s\S]*?)<\/span>[\s\S]*?(?:<p[^>]+class="[^"]*package-snippet__description[^"]*"[^>]*>([\s\S]*?)<\/p>)?[\s\S]*?<\/a>/gi;
+    for (const match of text.matchAll(pattern)) {
       if (results.length >= limit) break;
-      results.push({ title: `${item.name || item.project}@${item.version || ""}`, url: `https://pypi.org/project/${item.name || item.project}/`, snippet: item.summary || "" });
+      const href = new URL(decodeHtml(match[1]), baseUrl).toString();
+      if (seen.has(href)) continue;
+      seen.add(href);
+      const name = cleanText(match[2]);
+      const version = cleanText(match[3]);
+      if (!name) continue;
+      results.push({
+        title: version ? `${name}@${version}` : name,
+        url: href,
+        snippet: cleanText(match[4] || "")
+      });
     }
-    if (results.length) return searchResult({ source: "pypi", query, limit, results });
+    if (results.length) return searchResult({ source: "pypi", query, limit, results, fetch_path: safeHostname(response.url) || "pypi.org" });
   } catch {
   }
   try {
     const data = await fetchJson(`https://pypi.org/pypi/${encodeURIComponent(query)}/json`);
     const info = data?.info || {};
-    return searchResult({ source: "pypi", query, limit, results: [{ title: `${info.name}@${info.version}`, url: info.project_url || `https://pypi.org/project/${query}/`, snippet: info.summary || "" }] });
+    if (!info.name) {
+      return searchResult({ source: "pypi", query, limit, results: [], error: "No PyPI package matched the query." });
+    }
+    return searchResult({ source: "pypi", query, limit, results: [{ title: `${info.name}@${info.version}`, url: info.project_url || `https://pypi.org/project/${info.name}/`, snippet: info.summary || "" }] });
   } catch (e) {
     return searchError("pypi", query, limit, e);
   }
@@ -1615,11 +2406,11 @@ async function findRss(args) {
   try {
     const { text } = await fetchTextWithResponse(url);
     const feeds = [];
-    const rssRe = /<link[^>]+rel="alternate"[^>]+type="application\/(?:rss|atom)\+xml"[^>]+href="([^"]+)"[^>]*>/gi;
+    const rssRe = /<link[^>]+rel=["']alternate["'][^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]+href=["']([^"']+)["'][^>]*>/gi;
     for (const match of text.matchAll(rssRe)) {
       feeds.push({ title: match[1], url: new URL(match[1], url).href, snippet: "RSS/Atom feed" });
     }
-    const altRe = /<link[^>]+type="application\/(?:rss|atom)\+xml"[^>]+href="([^"]+)"[^>]*>/gi;
+    const altRe = /<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]+href=["']([^"']+)["'][^>]*>/gi;
     for (const match of text.matchAll(altRe)) {
       const feedUrl = new URL(match[1], url).href;
       if (!feeds.some((f) => f.url === feedUrl)) {
@@ -1636,18 +2427,19 @@ __name2(findRss, "findRss");
 async function searchWiktionary(args) {
   const query = requireString(args.query, "query");
   const lang = /^[a-z]{2,12}$/i.test(args.language || "") ? String(args.language).toLowerCase() : "en";
+  const limit = clampLimit(args.limit);
   try {
-    const data = await fetchJson(`https://${lang}.wiktionary.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=5&origin=*`);
+    const data = await fetchJson(`https://${lang}.wiktionary.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=${limit}&origin=*`);
     let results = [];
     for (const item of data.query?.search || []) {
-      if (results.length >= 5) break;
+      if (results.length >= limit) break;
       const title = item.title || query;
       const snippet = cleanText(item.snippet || "").substring(0, 200);
       results.push({ title, url: `https://${lang}.wiktionary.org/wiki/${encodeURIComponent(title)}`, snippet });
     }
-    return searchResult({ source: "wiktionary", query, limit: 5, results, language: lang, fetch_path: `${lang}.wiktionary.org` });
+    return searchResult({ source: "wiktionary", query, limit, results, language: lang, fetch_path: `${lang}.wiktionary.org` });
   } catch (e) {
-    return searchError("wiktionary", query, 5, e, { language: lang, fetch_path: `${lang}.wiktionary.org` });
+    return searchError("wiktionary", query, limit, e, { language: lang, fetch_path: `${lang}.wiktionary.org` });
   }
 }
 __name(searchWiktionary, "searchWiktionary");
@@ -1707,7 +2499,7 @@ async function instantAnswer(args) {
         Accept: "application/json"
       }
     });
-    const abstract = data.Abstract || "";
+    const abstract = data.Abstract || data.AbstractText || "";
     const answer = data.Answer || "";
     const definition = data.Definition || "";
     const relatedTopics = Array.isArray(data.RelatedTopics) ? data.RelatedTopics : [];
@@ -1715,12 +2507,37 @@ async function instantAnswer(args) {
     const topicText = flattenedTopics.map((item) => item?.Text || "").find(Boolean) || "";
     const firstRelatedUrl = flattenedTopics.map((item) => item?.FirstURL || "").find(Boolean) || "";
     const text = abstract || answer || definition || topicText;
-    const url = data.AbstractURL || data.DefinitionURL || firstRelatedUrl || "";
+    const url = data.AbstractURL || data.DefinitionURL || firstRelatedUrl || data.Redirect || "";
     const source = data.AbstractSource || data.DefinitionSource || "DuckDuckGo";
-    if (!text) {
-      return searchResult({ source: "ddg_instant", query, limit: 1, results: [], fetch_path: "api.duckduckgo.com", error: "No instant answer found." });
+    if (text) {
+      return searchResult({ source: "ddg_instant", query, limit: 1, results: [{ title: data.Heading || query, url, snippet: `${text.substring(0, 300)}${source ? " (Source: " + source + ")" : ""}` }], fetch_path: "api.duckduckgo.com" });
     }
-    return searchResult({ source: "ddg_instant", query, limit: 1, results: [{ title: query, url, snippet: `${text.substring(0, 300)}${source ? " (Source: " + source + ")" : ""}` }], fetch_path: "api.duckduckgo.com" });
+
+    const fallback = await searchDuckDuckGo({ query, limit: 1 });
+    if (Array.isArray(fallback?.results) && fallback.results.length) {
+      return searchResult({ source: "ddg_instant", query, limit: 1, results: [fallback.results[0]], fetch_path: "api.duckduckgo.com", fallback_used: true });
+    }
+
+    const redirectResponse = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+        "Accept": "text/html,*/*"
+      },
+      redirect: "manual"
+    });
+    const redirectUrl = redirectResponse.headers.get("location") || "";
+    if (redirectResponse.status >= 300 && redirectResponse.status < 400 && /^https?:\/\//i.test(redirectUrl)) {
+      return searchResult({
+        source: "ddg_instant",
+        query,
+        limit: 1,
+        results: [{ title: query, url: redirectUrl, snippet: "" }],
+        fetch_path: "api.duckduckgo.com",
+        fallback_used: true
+      });
+    }
+
+    return searchResult({ source: "ddg_instant", query, limit: 1, results: [], fetch_path: "api.duckduckgo.com", error: "No instant answer found." });
   } catch (e) {
     return searchError("ddg_instant", query, 1, e, { fetch_path: "api.duckduckgo.com" });
   }
@@ -1762,8 +2579,12 @@ async function searchWikipedia(args) {
     }));
     return searchResult({ source: "wikipedia", query, limit, results, language });
   } catch {
-    const html = await fetchText(`https://${language}.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}`);
-    return searchResult({ source: "wikipedia", query, limit, results: extractGenericLinks(html, limit, `https://${language}.wikipedia.org`), language });
+    try {
+      const html = await fetchText(`https://${language}.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}`);
+      return searchResult({ source: "wikipedia", query, limit, results: extractGenericLinks(html, limit, `https://${language}.wikipedia.org`), language });
+    } catch (e) {
+      return searchError("wikipedia", query, limit, e, { language, fetch_path: `${language}.wikipedia.org` });
+    }
   }
 }
 __name(searchWikipedia, "searchWikipedia");
@@ -1771,13 +2592,37 @@ __name2(searchWikipedia, "searchWikipedia");
 async function searchGitHubRepos(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const data = await fetchJson(`https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${limit}`);
-  const results = (data.items || []).slice(0, limit).map((repo) => ({
-    title: `${repo.full_name} \u2605${repo.stargazers_count || 0}`,
-    url: repo.html_url,
-    snippet: repo.description || ""
-  }));
-  return searchResult({ source: "github", query, limit, results, total_count: data.total_count || 0 });
+  try {
+    const data = await fetchJson(`https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${limit}`);
+    const normalizedQuery = query.trim().toLowerCase();
+    const queryTokens = normalizedQuery.split(/[^a-z0-9]+/i).filter(Boolean);
+    const rankedItems = (data.items || []).map((repo, index) => {
+      const fullName = String(repo.full_name || "");
+      const fullNameLower = fullName.toLowerCase();
+      const nameLower = String(repo.name || "").toLowerCase();
+      const descriptionLower = String(repo.description || "").toLowerCase();
+      let score = 0;
+      if (normalizedQuery && fullNameLower === normalizedQuery) score += 1e6;
+      else if (normalizedQuery && nameLower === normalizedQuery) score += 9e5;
+      else if (normalizedQuery && fullNameLower.endsWith(`/${normalizedQuery}`)) score += 8e5;
+      for (const token of queryTokens) {
+        if (fullNameLower === token) score += 2e4;
+        if (nameLower === token) score += 3e4;
+        if (fullNameLower.includes(token)) score += 4e3;
+        if (descriptionLower.includes(token)) score += 500;
+      }
+      score += Number(repo.stargazers_count || 0);
+      return { repo, index, score };
+    }).sort((a, b) => b.score - a.score || a.index - b.index);
+    const results = rankedItems.slice(0, limit).map(({ repo }) => ({
+      title: `${repo.full_name} \u2605${repo.stargazers_count || 0}`,
+      url: repo.html_url,
+      snippet: repo.description || ""
+    }));
+    return searchResult({ source: "github", query, limit, results, total_count: data.total_count || 0 });
+  } catch (e) {
+    return searchError("github", query, limit, e, { fetch_path: "api.github.com" });
+  }
 }
 __name(searchGitHubRepos, "searchGitHubRepos");
 __name2(searchGitHubRepos, "searchGitHubRepos");
@@ -1787,7 +2632,8 @@ async function fetchGitHubFile(args) {
   const path = requireString(args.path, "path").replace(/^\/+/, "");
   const ref = args.ref ? requireString(args.ref, "ref") : "main";
   const maxChars = Math.min(Math.max(Number(args.maxChars) || 2e4, 1e3), 5e4);
-  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(ref)}/${path.split("/").map(encodeURIComponent).join("/")}`;
+  const encodedRef = ref.split("/").map(encodeURIComponent).join("/");
+  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${encodedRef}/${path.split("/").map(encodeURIComponent).join("/")}`;
   const text = await fetchText(url, { maxBytes: Math.min(MAX_FETCH_BYTES, maxChars * 4) });
   return {
     owner,
@@ -1805,19 +2651,37 @@ __name2(fetchGitHubFile, "fetchGitHubFile");
 async function fetchMetadata(args) {
   const url = new URL(requireString(args.url, "url"));
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
-  const { text, response } = await fetchTextWithResponse(url.toString(), { maxBytes: 128e3 });
-  const title = cleanText((text.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || "");
-  const description = cleanText((text.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["'][^>]*>/i) || text.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["'][^>]*>/i) || [])[1] || "");
-  const canonical = decodeHtml((text.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["'][^>]*>/i) || [])[1] || "");
-  return {
-    url: url.toString(),
-    finalUrl: response.url,
-    status: response.status,
-    contentType: response.headers.get("content-type") || "",
-    title,
-    description,
-    canonical: canonical ? new URL(canonical, response.url).toString() : ""
-  };
+  try {
+    const { text, response } = await fetchTextWithResponse(url.toString(), { maxBytes: 128e3 });
+    const title = cleanText((text.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || "");
+    const description = cleanText((text.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["'][^>]*>/i) || text.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["'][^>]*>/i) || [])[1] || "");
+    const canonical = decodeHtml((text.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["'][^>]*>/i) || text.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']canonical["'][^>]*>/i) || [])[1] || "");
+    const finalUrl = response.url || url.toString();
+    return {
+      ok: true,
+      url: url.toString(),
+      finalUrl,
+      status: response.status,
+      contentType: response.headers.get("content-type") || "",
+      title,
+      description,
+      canonical: canonical ? new URL(canonical, finalUrl).toString() : ""
+    };
+  } catch (error) {
+    const message = String(error?.message || error || "failed");
+    const statusMatch = message.match(/upstream\s+(\d{3})/i);
+    return {
+      ok: false,
+      url: url.toString(),
+      finalUrl: url.toString(),
+      status: statusMatch ? Number(statusMatch[1]) : 0,
+      contentType: "",
+      title: "",
+      description: "",
+      canonical: "",
+      error: message
+    };
+  }
 }
 __name(fetchMetadata, "fetchMetadata");
 __name2(fetchMetadata, "fetchMetadata");
@@ -1825,16 +2689,33 @@ async function fetchUrl(args) {
   const url = new URL(requireString(args.url, "url"));
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
   const maxChars = Math.min(Math.max(Number(args.maxChars) || 12e3, 1e3), 3e4);
-  const { text, response } = await fetchTextWithResponse(url.toString(), { maxBytes: MAX_FETCH_BYTES });
-  const title = cleanText((text.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || url.toString());
-  return {
-    url: url.toString(),
-    finalUrl: response.url,
-    title,
-    text: htmlToText(text).slice(0, maxChars),
-    maxChars,
-    contentType: response.headers.get("content-type") || ""
-  };
+  try {
+    const { text, response } = await fetchTextWithResponse(url.toString(), { maxBytes: MAX_FETCH_BYTES });
+    const title = cleanText((text.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || url.toString());
+    return {
+      ok: true,
+      url: url.toString(),
+      finalUrl: response.url,
+      title,
+      text: htmlToText(text).slice(0, maxChars),
+      maxChars,
+      contentType: response.headers.get("content-type") || ""
+    };
+  } catch (error) {
+    const message = String(error?.message || error || "failed");
+    const statusMatch = message.match(/upstream\s+(\d{3})/i);
+    return {
+      ok: false,
+      url: url.toString(),
+      finalUrl: url.toString(),
+      title: url.toString(),
+      text: "",
+      maxChars,
+      contentType: "",
+      status: statusMatch ? Number(statusMatch[1]) : 0,
+      error: message
+    };
+  }
 }
 __name(fetchUrl, "fetchUrl");
 __name2(fetchUrl, "fetchUrl");
@@ -1965,8 +2846,9 @@ function providerSetSpecificConfig(provider, args) {
 async function searchOllama(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const apiKey = PROVIDER_CONFIG.ollama?.apiKey || "";
-  const endpoint = PROVIDER_CONFIG.ollama?.baseUrl || "https://api.ollama.com/v1/web-search";
+  const providerConfig = args?._context?.providerConfig;
+  const apiKey = getProviderApiKey("ollama", "OLLAMA_API_KEY", providerConfig);
+  const endpoint = getProviderBaseUrl("ollama", "https://api.ollama.com/v1/web-search", providerConfig);
   if (!apiKey) return searchError("ollama", query, limit, "missing OLLAMA_API_KEY. Use provider_set_config or x-ollama-api-key header to set it.");
   try {
     const resp = await fetch(endpoint, {
@@ -1995,7 +2877,8 @@ async function searchOllama(args) {
 async function searchParallel(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const apiKey = PROVIDER_CONFIG.parallel?.apiKey || "";
+  const providerConfig = args?._context?.providerConfig;
+  const apiKey = getProviderApiKey("parallel", "PARALLEL_API_KEY", providerConfig);
   if (!apiKey) return searchError("parallel", query, limit, "missing PARALLEL_API_KEY. Use provider_set_config to set it.");
   try {
     const resp = await fetch("https://api.parallel.ai/v1/search", {
@@ -2030,10 +2913,11 @@ async function searchXiaohongshu(args) {
   const limit = clampLimit(args.limit);
   const composed = `site:xiaohongshu.com ${query}`;
   let results = [];
-  const parallelKey = PROVIDER_CONFIG.parallel?.apiKey || "";
+  const providerConfig = args?._context?.providerConfig;
+  const parallelKey = getProviderApiKey("parallel", "PARALLEL_API_KEY", providerConfig);
   if (parallelKey) {
     try {
-      const r = await searchParallel({ query: composed, limit });
+      const r = await searchParallel({ query: composed, limit, _context: args?._context });
       if (Array.isArray(r?.results) && r.results.length) {
         results = r.results.filter((x) => (x.url || "").includes("xiaohongshu.com")).slice(0, limit);
         if (results.length) return searchResult({ source: "xiaohongshu", query, limit, results, strategy: "parallel-site-targeted" });
@@ -2080,12 +2964,18 @@ function formatSearchResponse(result) {
     }
     return result.error || `${capitalize(result.source || "search")} search for "${result.query}" returned no parsed results.`;
   }
+  const isAggregated = result.source === "auto" || Array.isArray(result.sources) && result.sources.length > 1;
+  const heading = isAggregated ? `Auto aggregated search results for "${result.query}":` : `${capitalize(result.source || "search")} search results for "${result.query}":`;
   return [
-    `${capitalize(result.source || "search")} search results for "${result.query}":`,
+    heading,
     "",
-    ...result.results.map((item, index) => `${index + 1}. ${item.title}
+    ...result.results.map((item, index) => {
+      const itemSources = Array.isArray(item.sources) ? item.sources.filter(Boolean) : [];
+      const sourceLabel = isAggregated || itemSources.length > 1 ? `[${itemSources.length ? itemSources.join(", ") : item.source || result.source || "search"}] ` : "";
+      return `${index + 1}. ${sourceLabel}${item.title}
 ${item.url}
-${item.snippet || ""}`)
+${item.snippet || ""}`;
+    })
   ].join("\n");
 }
 __name(formatSearchResponse, "formatSearchResponse");
@@ -2139,7 +3029,11 @@ function diagnoseSearchHtml(engine, html, finalUrl = "") {
 ${html}`.toLowerCase();
   const finalHost = safeHostname(finalUrl);
   if (engine === "duckduckgo") {
-    if (/anomaly|automated requests|unusual traffic|captcha|robot/i.test(haystack)) {
+    const hasResultMarkers = /result__a|result-link|uddg=/.test(haystack);
+    if (/anomaly|automated requests|unusual traffic|captcha/i.test(haystack)) {
+      return { blocked: true, reason: "captcha_or_verification" };
+    }
+    if (!hasResultMarkers && /robot/i.test(haystack)) {
       return { blocked: true, reason: "captcha_or_verification" };
     }
   }
@@ -2159,15 +3053,17 @@ ${html}`.toLowerCase();
     }
   }
   if (engine === "bing") {
-    if (finalHost.endsWith("bing.com") && /(?:id|class)=["'][^"']*(?:b_captcha|b_cf|captcha)[^"']*["']/.test(haystack)) {
+    const hasBingResultMarkers = /id=["']b_results["']|id=["']b_content["']|class=["'][^"']*b_algo[^"']*["']/.test(haystack);
+    if (!hasBingResultMarkers && finalHost.endsWith("bing.com") && /(?:id|class)=["'][^"']*(?:b_captcha|b_cf|captcha)[^"']*["']/.test(haystack)) {
       return { blocked: true, reason: "captcha_or_verification" };
     }
-    if (/our systems have detected unusual traffic|verify you are human|please solve the challenge below/.test(haystack)) {
+    if (!hasBingResultMarkers && /our systems have detected unusual traffic|verify you are human|please solve the challenge below/.test(haystack)) {
       return { blocked: true, reason: "captcha_or_verification" };
     }
   }
   if (engine === "yahoo") {
-    if (finalHost === "consent.yahoo.com" || /privacy choices|privacykeuzes|collectconsent|guce/i.test(haystack)) {
+    const hasYahooResultMarkers = /id=["']web["']|searchcentermiddle|algo-sr|comptitle|class=["'][^"']*algo[^"']*["']|class=["'][^"']*s-title[^"']*["']/.test(haystack);
+    if (!hasYahooResultMarkers && (finalHost === "consent.yahoo.com" || /privacy choices|privacykeuzes|collectconsent|guce|id=["']consent-page["']|class=["'][^"']*consent-form[^"']*["']|tcf2-layer1/i.test(haystack))) {
       return { blocked: true, reason: "consent_page" };
     }
     if (/captcha|human verification|unusual traffic|press & hold/.test(haystack)) {
@@ -2207,6 +3103,11 @@ function decodeDuckUrl(href) {
 }
 __name(decodeDuckUrl, "decodeDuckUrl");
 __name2(decodeDuckUrl, "decodeDuckUrl");
+function isDuckDuckGoNoiseUrl(url) {
+  return /duckduckgo\.com\/(?:duckduckgo-help-pages|y\.js\?|traffic\.js\?|iu\/)/i.test(String(url || ""));
+}
+__name(isDuckDuckGoNoiseUrl, "isDuckDuckGoNoiseUrl");
+__name2(isDuckDuckGoNoiseUrl, "isDuckDuckGoNoiseUrl");
 function extractBingResults(html, limit) {
   const results = [];
   const seen = /* @__PURE__ */ new Set();
@@ -2244,10 +3145,27 @@ __name(extractBingResults, "extractBingResults");
 __name2(extractBingResults, "extractBingResults");
 function parseBingBlock(block, baseUrl) {
   const headerMatch = block.match(/<(?:h2|h3)[^>]*>[\s\S]*?<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>[\s\S]*?<\/(?:h2|h3)>/i);
-  const candidates = headerMatch ? [headerMatch] : [...block.matchAll(/<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>/gi)];
+  if (headerMatch) {
+    const attrs = `${headerMatch[1] || ""} ${headerMatch[6] || ""}`;
+    const rawHref = decodeHtml(headerMatch[3] || headerMatch[4] || headerMatch[5] || "");
+    const title = normalizeBingTitle(cleanText(headerMatch[7]), rawHref);
+    if (rawHref && !/^(?:javascript:|#)/i.test(rawHref) && title && title.length >= 2 && !/(?:b_attribution|b_footnote|b_img|cico|expand|share|feedback|musCard|b_pag|b_richcard|b_algoarea|overlay)/i.test(attrs)) {
+      let url;
+      try {
+        url = decodeBingUrl(new URL(rawHref, baseUrl).toString());
+      } catch {
+        url = decodeBingUrl(rawHref);
+      }
+      if (!isNoiseUrl(url) && !isBingNoiseUrl(url) && looksLikeSearchResultUrl(url)) {
+        const snippet = extractBingSnippet(block, title);
+        return { title, url, snippet };
+      }
+    }
+  }
+  const candidates = [...block.matchAll(/<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>/gi)];
   for (const match of candidates) {
     const attrs = `${match[1] || ""} ${match[6] || ""}`;
-    if (/(?:b_attribution|b_footnote|b_img|cico|expand|share|feedback|musCard|b_pag|b_richcard|b_algoarea|overlay)/i.test(attrs)) continue;
+    if (/(?:b_attribution|b_footnote|b_img|cico|expand|share|feedback|musCard|b_pag|b_richcard|b_algoarea|overlay|tilk|siteicon)/i.test(attrs)) continue;
     const rawHref = decodeHtml(match[3] || match[4] || match[5] || "");
     if (!rawHref || /^(?:javascript:|#)/i.test(rawHref)) continue;
     let url;
@@ -2257,7 +3175,7 @@ function parseBingBlock(block, baseUrl) {
       url = decodeBingUrl(rawHref);
     }
     if (isNoiseUrl(url) || isBingNoiseUrl(url) || !looksLikeSearchResultUrl(url)) continue;
-    const title = cleanText(match[7]);
+    const title = normalizeBingTitle(cleanText(match[7]), rawHref);
     if (!title || title.length < 2) continue;
     const snippet = extractBingSnippet(block, title);
     return { title, url, snippet };
@@ -2288,14 +3206,16 @@ function decodeBingUrl(href) {
     for (const key of ["u", "url", "target", "r", "redir", "ru"]) {
       const target = url.searchParams.get(key);
       if (target) {
-        const decoded = normalizeUrlCandidate(safelyDecodeUrlComponent(target).replace(/^a1/i, ""));
+        const stripped = safelyDecodeUrlComponent(target).replace(/^a1/i, "");
+        const decoded = normalizeUrlCandidate(decodeBase64Urlish(stripped) || stripped);
         if (/^https?:\/\//i.test(decoded)) return decoded;
       }
     }
     const pathMatch = url.pathname.match(/\/u\/([^/?#]+)/i);
     if (pathMatch?.[1]) {
-      const decoded = safelyDecodeUrlComponent(pathMatch[1]).replace(/^a1/i, "");
-      if (/^https?:\/\//i.test(decoded)) return normalizeUrlCandidate(decoded);
+      const stripped = safelyDecodeUrlComponent(pathMatch[1]).replace(/^a1/i, "");
+      const decoded = normalizeUrlCandidate(decodeBase64Urlish(stripped) || stripped);
+      if (/^https?:\/\//i.test(decoded)) return decoded;
     }
     return url.toString();
   } catch {
@@ -2304,6 +3224,94 @@ function decodeBingUrl(href) {
 }
 __name(decodeBingUrl, "decodeBingUrl");
 __name2(decodeBingUrl, "decodeBingUrl");
+function decodeBase64Urlish(value) {
+  const text = String(value || "").trim();
+  if (!text || !/^[A-Za-z0-9+/=_-]+$/.test(text) || /^https?:\/\//i.test(text)) return "";
+  const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  try {
+    const decoded = atob(padded);
+    return /^https?:\/\//i.test(decoded) ? decoded : "";
+  } catch {
+    return "";
+  }
+}
+__name(decodeBase64Urlish, "decodeBase64Urlish");
+__name2(decodeBase64Urlish, "decodeBase64Urlish");
+function normalizeBingTitle(title, rawHref = "") {
+  const text = String(title || "").trim();
+  if (!text) return "";
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  const href = String(rawHref || "");
+  const decodedTarget = decodeBingUrl(href);
+  const tailFromBreadcrumbs = normalizeBingBreadcrumbTail(collapsed, decodedTarget);
+  if (tailFromBreadcrumbs) return tailFromBreadcrumbs;
+  const directHost = safeHostname(href);
+  const targetHost = safeHostname(decodedTarget);
+  const host = targetHost || directHost;
+  const hostPattern = host ? host.replace(/^www\./i, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
+  if (hostPattern) {
+    const attributionPrefix = new RegExp(`^(?:${hostPattern})(?:\s+https?:\/\/\s*${hostPattern})?(?:\s+[›>»]\s+[^›>»]+)+\s+`, "i");
+    const stripped = collapsed.replace(attributionPrefix, "").trim();
+    if (stripped && stripped.length >= 2) return stripped;
+  }
+  return collapsed;
+}
+__name(normalizeBingTitle, "normalizeBingTitle");
+__name2(normalizeBingTitle, "normalizeBingTitle");
+function normalizeBingBreadcrumbTail(title, decodedTarget) {
+  const collapsed = String(title || "").trim();
+  if (!collapsed.includes("›") && !collapsed.includes(">") && !collapsed.includes("»")) return "";
+  const parts = collapsed.split(/[›>»]/).map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return "";
+  let tail = parts[parts.length - 1] || "";
+  const slugWords = bingTitleSlugWords(decodedTarget);
+  const duplicateSlugTitle = tail.match(/^([a-z0-9]+(?:[-_][a-z0-9]+)+)\s+(.+)$/i);
+  if (duplicateSlugTitle) {
+    const slug = duplicateSlugTitle[1].replace(/[-_]+/g, " ").trim().toLowerCase();
+    const remainder = duplicateSlugTitle[2].trim();
+    if (slug && remainder && slug === remainder.toLowerCase()) return remainder;
+  }
+  if (slugWords) {
+    const slugTokens = slugWords.split(/\s+/).filter(Boolean);
+    if (slugTokens.length) {
+      const joinedPattern = slugTokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[-_\\s]+");
+      const slugPrefix = new RegExp(`^(?:${joinedPattern})(?:\s+|$)`, "i");
+      tail = tail.replace(slugPrefix, "").trim();
+      if (!tail) return slugTokens.map((token) => token.charAt(0).toUpperCase() + token.slice(1)).join(" ");
+    }
+  }
+  return tail && tail.length >= 2 ? tail : "";
+}
+__name(normalizeBingBreadcrumbTail, "normalizeBingBreadcrumbTail");
+__name2(normalizeBingBreadcrumbTail, "normalizeBingBreadcrumbTail");
+function bingTitleSlugWords(url) {
+  try {
+    const pathname = new URL(String(url || "")).pathname;
+    const segment = pathname.split("/").filter(Boolean).pop() || "";
+    return segment.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim().toLowerCase();
+  } catch {
+    return "";
+  }
+}
+__name(bingTitleSlugWords, "bingTitleSlugWords");
+__name2(bingTitleSlugWords, "bingTitleSlugWords");
+function decodeGoogleUrl(href) {
+  try {
+    const url = new URL(decodeHtml(String(href || "")), "https://www.google.com");
+    for (const key of ["q", "url", "target", "u"]) {
+      const target = url.searchParams.get(key);
+      if (!target) continue;
+      const decoded = normalizeUrlCandidate(safelyDecodeUrlComponent(target));
+      if (/^https?:\/\//i.test(decoded)) return decoded;
+    }
+    return url.toString();
+  } catch {
+    return href;
+  }
+}
+__name(decodeGoogleUrl, "decodeGoogleUrl");
+__name2(decodeGoogleUrl, "decodeGoogleUrl");
 function isBingNoiseUrl(url) {
   return /bing\.com\/(?:search|images|videos|maps|news)|go\.microsoft\.com|r\.bing\.com|th\.bing\.com|cc\.bingj\.com/i.test(String(url || ""));
 }
@@ -2390,6 +3398,11 @@ function decodeYahooUrl(href) {
       const target = url.searchParams.get(key);
       if (target) return normalizeUrlCandidate(safelyDecodeUrlComponent(target));
     }
+    const pathMatch = url.pathname.match(/\/RU=(.+?)(?:\/(?:RK|RS)=|$)/i);
+    if (pathMatch?.[1]) {
+      const decoded = normalizeUrlCandidate(safelyDecodeUrlComponent(pathMatch[1]));
+      if (/^https?:\/\//i.test(decoded)) return decoded;
+    }
     return url.toString();
   } catch {
     return href;
@@ -2397,6 +3410,88 @@ function decodeYahooUrl(href) {
 }
 __name(decodeYahooUrl, "decodeYahooUrl");
 __name2(decodeYahooUrl, "decodeYahooUrl");
+function extractHtmlAttribute(tag, name) {
+  const match = String(tag || "").match(new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+  return decodeHtml(match?.[2] || match?.[3] || match?.[4] || "").trim();
+}
+__name(extractHtmlAttribute, "extractHtmlAttribute");
+__name2(extractHtmlAttribute, "extractHtmlAttribute");
+function extractYahooConsentForm(html, fallbackUrl = "") {
+  for (const formMatch of String(html || "").matchAll(/<form[^>]*>[\s\S]*?<\/form>/gi)) {
+    const formHtml = formMatch[0];
+    const fields = {};
+    for (const inputMatch of formHtml.matchAll(/<input\b[^>]*>/gi)) {
+      const inputTag = inputMatch[0];
+      if (extractHtmlAttribute(inputTag, "type").toLowerCase() !== "hidden") continue;
+      const name = extractHtmlAttribute(inputTag, "name");
+      if (!name) continue;
+      fields[name] = extractHtmlAttribute(inputTag, "value");
+    }
+    const formTagMatch = formHtml.match(/<form[^>]*>/i);
+    const rawAction = extractHtmlAttribute(formTagMatch?.[0] || "", "action");
+    let action = rawAction ? (() => {
+      try {
+        return new URL(rawAction, fallbackUrl || "https://consent.yahoo.com/").toString();
+      } catch {
+        return rawAction;
+      }
+    })() : fallbackUrl || fields.sessionId ? `https://consent.yahoo.com/v2/collectConsent?sessionId=${encodeURIComponent(fields.sessionId || "")}` : "https://consent.yahoo.com/v2/collectConsent";
+    if (!/consent\.yahoo\.com\/v2\/collectConsent/i.test(action)) continue;
+    if (Object.keys(fields).length) return { action, fields };
+  }
+  return null;
+}
+__name(extractYahooConsentForm, "extractYahooConsentForm");
+__name2(extractYahooConsentForm, "extractYahooConsentForm");
+function mergeYahooCookies(existingCookie, setCookieHeaders) {
+  const cookieMap = /* @__PURE__ */ new Map();
+  for (const part of String(existingCookie || "").split(/;\s*/)) {
+    const index = part.indexOf("=");
+    if (index <= 0) continue;
+    cookieMap.set(part.slice(0, index).trim(), part.slice(index + 1).trim());
+  }
+  const headerList = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+  for (const headerValue of headerList) {
+    for (const chunk of String(headerValue || "").split(/,(?=\s*[A-Za-z0-9_.-]+=)/)) {
+      const firstPart = chunk.split(";")[0] || "";
+      const index = firstPart.indexOf("=");
+      if (index <= 0) continue;
+      cookieMap.set(firstPart.slice(0, index).trim(), firstPart.slice(index + 1).trim());
+    }
+  }
+  return [...cookieMap.entries()].map(([name, value]) => `${name}=${value}`).join("; ");
+}
+__name(mergeYahooCookies, "mergeYahooCookies");
+__name2(mergeYahooCookies, "mergeYahooCookies");
+async function retryYahooWithConsentForm(url, headers, html, consentPageUrl = "") {
+  const consentForm = extractYahooConsentForm(html, consentPageUrl);
+  if (!consentForm) return null;
+  const body = new URLSearchParams({ ...consentForm.fields, agree: "agree" }).toString();
+  const consentResponse = await fetch(consentForm.action, {
+    method: "POST",
+    headers: {
+      ...headers,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Origin": "https://consent.yahoo.com",
+      "Referer": consentForm.action,
+      "Accept": "text/html,*/*"
+    },
+    body,
+    redirect: "manual"
+  });
+  if (consentResponse.status >= 400) throw new Error(`upstream ${consentResponse.status} for ${consentForm.action}`);
+  const setCookieHeaders = typeof consentResponse.headers.getSetCookie === "function" ? consentResponse.headers.getSetCookie() : consentResponse.headers.get("set-cookie") || "";
+  const mergedCookie = mergeYahooCookies(headers?.["Cookie"] || headers?.cookie || "", setCookieHeaders);
+  const retryUrl = consentResponse.headers.get("location") || consentForm.fields.originalDoneUrl || url;
+  return fetchWithUA(retryUrl, {
+    ...headers,
+    ...(mergedCookie ? { "Cookie": mergedCookie } : {}),
+    "Referer": "https://consent.yahoo.com/",
+    "Accept-Language": headers?.["Accept-Language"] || "en-US,en;q=0.9"
+  });
+}
+__name(retryYahooWithConsentForm, "retryYahooWithConsentForm");
+__name2(retryYahooWithConsentForm, "retryYahooWithConsentForm");
 function isYahooNoiseUrl(url) {
   return /search\.yahoo\.com\/search|r\.search\.yahoo\.com|yahoo\.com\/(?:search|news|video|images)/i.test(String(url || ""));
 }
@@ -2427,6 +3522,27 @@ function decodeYandexUrl(href) {
 }
 __name(decodeYandexUrl, "decodeYandexUrl");
 __name2(decodeYandexUrl, "decodeYandexUrl");
+function decodeSogouUrl(href) {
+  try {
+    const url = new URL(decodeHtml(String(href || "")), "https://www.sogou.com");
+    for (const key of ["url", "target", "u", "ru"]) {
+      const target = url.searchParams.get(key);
+      if (!target) continue;
+      const decoded = normalizeUrlCandidate(safelyDecodeUrlComponent(target));
+      if (/^https?:\/\//i.test(decoded)) return decoded;
+    }
+    return url.toString();
+  } catch {
+    return href;
+  }
+}
+__name(decodeSogouUrl, "decodeSogouUrl");
+__name2(decodeSogouUrl, "decodeSogouUrl");
+function isSogouNoiseUrl(url) {
+  return /(?:^|\.)sogou\.com$/i.test(safeHostname(url)) && /\/link(?:\?|$)|\/web\?|\/sogou\?/i.test(String(url || ""));
+}
+__name(isSogouNoiseUrl, "isSogouNoiseUrl");
+__name2(isSogouNoiseUrl, "isSogouNoiseUrl");
 function decodeUnicodeEscapes(value) {
   return String(value || "").replace(/\\u([0-9a-f]{4})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 }
@@ -2517,6 +3633,57 @@ function extractYandexSnippet(block, title) {
 }
 __name(extractYandexSnippet, "extractYandexSnippet");
 __name2(extractYandexSnippet, "extractYandexSnippet");
+function extractBaiduResults(html, limit) {
+  const results = [];
+  const seen = /* @__PURE__ */ new Set();
+  const blockPattern = /<div[^>]+class=(?:"[^"]*c-result result[^"]*"|'[^']*c-result result[^']*')[^>]*>[\s\S]*?<\/div>/gi;
+  for (const match of html.matchAll(blockPattern)) {
+    if (results.length >= limit) break;
+    const block = match[0];
+    const titleMatch = block.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
+    const title = cleanText(titleMatch?.[1] || "");
+    if (!title || title.length < 2 || isBaiduNoiseTitle(title)) continue;
+    const url = extractBaiduResultUrl(block);
+    if (!url || seen.has(url) || isNoiseUrl(url) || isBaiduNoiseUrl(url)) continue;
+    seen.add(url);
+    results.push({ title, url, snippet: "" });
+  }
+  return results;
+}
+__name(extractBaiduResults, "extractBaiduResults");
+__name2(extractBaiduResults, "extractBaiduResults");
+function extractBaiduJsonResults(data, limit) {
+  const results = [];
+  const seen = /* @__PURE__ */ new Set();
+  const entries = Array.isArray(data?.feed?.entry) ? data.feed.entry : [];
+  for (const entry of entries) {
+    if (results.length >= limit) break;
+    const title = cleanText(entry?.title || entry?.name || "");
+    const url = normalizeUrlCandidate(String(entry?.url || entry?.link || "").trim());
+    const snippet = cleanText(entry?.abs || entry?.desc || entry?.description || "");
+    if (!title || title.length < 2 || isBaiduNoiseTitle(title)) continue;
+    if (!url || seen.has(url) || isNoiseUrl(url) || isBaiduNoiseUrl(url) || !looksLikeSearchResultUrl(url)) continue;
+    seen.add(url);
+    results.push({ title, url, snippet });
+  }
+  return results;
+}
+__name(extractBaiduJsonResults, "extractBaiduJsonResults");
+__name2(extractBaiduJsonResults, "extractBaiduJsonResults");
+function extractBaiduResultUrl(block) {
+  const rlDataUrl = block.match(/rl-link-data-url="([^"]+)"/i)?.[1];
+  if (rlDataUrl) return decodeHtml(rlDataUrl);
+  const dataLogMatch = block.match(/data-log="([^"]+)"/i)?.[1];
+  if (dataLogMatch) {
+    const decodedLog = decodeHtml(dataLogMatch);
+    const muMatch = decodedLog.match(/&quot;mu&quot;:&quot;([^&]+?)&quot;/i) || decodedLog.match(/"mu":"([^"]+)"/i);
+    if (muMatch?.[1]) return decodeHtml(muMatch[1]);
+  }
+  const linkMatch = block.match(/<a[^>]+href="([^"]+)"[^>]*>[\s\S]*?<h3[^>]*>/i);
+  return linkMatch?.[1] ? decodeHtml(linkMatch[1]) : "";
+}
+__name(extractBaiduResultUrl, "extractBaiduResultUrl");
+__name2(extractBaiduResultUrl, "extractBaiduResultUrl");
 function extractGenericLinks(html, limit, baseUrl) {
   const results = [];
   const seen = /* @__PURE__ */ new Set();
@@ -2558,6 +3725,16 @@ function looksLikeSearchResultUrl(url) {
 }
 __name(looksLikeSearchResultUrl, "looksLikeSearchResultUrl");
 __name2(looksLikeSearchResultUrl, "looksLikeSearchResultUrl");
+function isBaiduNoiseTitle(title) {
+  return /^(?:\d+小时|\d+天|\d+周|\d+月|24小时|1周内|1个月内|半年内|一年内)$/i.test(String(title || "").trim());
+}
+__name(isBaiduNoiseTitle, "isBaiduNoiseTitle");
+__name2(isBaiduNoiseTitle, "isBaiduNoiseTitle");
+function isBaiduNoiseUrl(url) {
+  return /(?:^https?:\/\/)?m?\.baidu\.com\/(?:from=|sf\?|s\?|ssid=|pu=)|(?:[?&])pd=(?:sd_ptime(?:_[a-z0-9]+)?|csaitab)(?:[&#]|$)/i.test(String(url || ""));
+}
+__name(isBaiduNoiseUrl, "isBaiduNoiseUrl");
+__name2(isBaiduNoiseUrl, "isBaiduNoiseUrl");
 function isNoiseUrl(url) {
   return /\/preferences|\/settings|\/login|\/account|setlang=|\/search\?|\/images\/|\/maps\?|\/html\/?$|\/more\/?$|\/support\/?|\/legal\/?|duckduckgo\.com\/?$|baidu\.com\/?$|yandex\.com\/?$|yandex\.com\/search|yabs\.yandex|yandex\.ru\/images|hao123\.com|voice\.baidu\.com|policies\.google|support\.google|go\.microsoft\.com|account\.microsoft|bing\.com\/ck\/a|consent\.yahoo\.com|search\.yahoo\.com\/v2\/partners|guce\.yahoo\.com/i.test(String(url || ""));
 }
