@@ -20,13 +20,15 @@ The project focuses on two jobs:
 
 ## Full tool list
 
-The current `main` branch exposes **40 tools**.
+The current `main` branch exposes **42 tools**.
 
 ### General web search
 
 - `search_auto`
 - `search_duckduckgo`
 - `search_bing`
+- `search_bing_global`
+- `search_bing_cn`
 - `search_yahoo`
 - `search_google_web`
 - `search_baidu`
