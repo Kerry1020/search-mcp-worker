@@ -97,10 +97,10 @@ This makes it suitable for agents that need a general search tool but still want
 
 `GET /` or `GET /healthz`
 
-Example:
+Example after deployment:
 
 ```bash
-curl https://search-mcp.qdp.qzz.io/healthz
+curl https://<your-domain>/healthz
 ```
 
 Typical response:
@@ -110,7 +110,7 @@ Typical response:
   "ok": true,
   "name": "search-mcp-worker",
   "version": "0.7.4",
-  "mcp_endpoint": "https://search-mcp.qdp.qzz.io/mcp"
+  "mcp_endpoint": "https://<your-domain>/mcp"
 }
 ```
 
@@ -228,9 +228,7 @@ curl http://127.0.0.1:8789/healthz
 npx wrangler deploy
 ```
 
-Configured route in `wrangler.toml`:
-
-- `search-mcp.qdp.qzz.io/*`
+After deployment, bind your own custom domain or use your own Worker hostname for `/healthz` and `/mcp`. Do not hardcode someone else's endpoint in your client config.
 
 ## Project structure
 
