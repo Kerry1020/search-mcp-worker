@@ -7,6 +7,8 @@ const README_TOOL_NAMES = [
   'search_auto',
   'search_duckduckgo',
   'search_bing',
+  'search_bing_global',
+  'search_bing_cn',
   'search_yahoo',
   'search_google_web',
   'search_baidu',
@@ -25,6 +27,8 @@ const README_TOOL_NAMES = [
   'search_peertube',
   'search_bbc',
   'search_bing_news',
+  'search_sina_news',
+  'search_163_news',
   'search_paperswithcode',
   'search_sec_edgar',
   'search_osm',
@@ -58,10 +62,8 @@ const NON_PUBLIC_TOOL_NAMES = [
   'provider_set_bing',
   'provider_set_parallel',
   'provider_set_searxng',
-  'provider_set_xiaohongshu',
   'search_ollama',
   'search_parallel',
-  'search_xiaohongshu',
   'search_brave',
   'search_qwant',
   'search_ecosia'
@@ -106,3 +108,4 @@ test('non-public tool names stay off tools/list even if legacy handlers still ex
     assert.equal(toolNames.includes(name), false, `${name} should remain hidden legacy fallback only`);
   }
 });
+
