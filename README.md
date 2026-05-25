@@ -2,25 +2,26 @@
 
 English | [简体中文](./README.zh-CN.md)
 
-`search-mcp-worker` is a Cloudflare Worker that exposes a lightweight MCP server for web search and page fetching. It is designed for agents and automation workflows that need a single MCP endpoint instead of wiring together multiple search providers manually.
+`search-mcp-worker` is a Cloudflare Worker that exposes a single MCP endpoint for public web search and lightweight page fetching. It is meant for agents and automation that want one stable JSON-RPC surface instead of stitching together many separate search providers.
 
-The project focuses on two jobs:
+## What this worker is for
 
-1. search across several public web sources
-2. fetch and clean page content into readable text
+This project focuses on two jobs:
 
-## What it does
+1. search across public web sources through MCP tools
+2. fetch a public page and turn it into readable text or metadata
 
-- Runs as a single Cloudflare Worker
-- Exposes an MCP-compatible JSON-RPC endpoint at `/mcp`
-- Supports multiple search tools for general web search, Wikipedia, Reddit, and public X/Twitter discovery
-- Includes page-fetch tools for generic URLs and Reddit threads
-- Uses fallback search paths when a primary engine returns weak or empty results
-- Keeps deployment simple: no database, no extra backend, no headless browser
+It is intentionally small:
 
-## Full tool list
+- one Cloudflare Worker
+- one MCP endpoint at `/mcp`
+- no database
+- no browser cluster
+- no authenticated social APIs
 
-The current `main` branch exposes **42 tools**.
+## Current tool surface
+
+The current worker exposes **42 public tools**.
 
 ### General web search
 
@@ -36,7 +37,7 @@ The current `main` branch exposes **42 tools**.
 - `search_naver`
 - `search_sogou`
 
-### Research, knowledge, developer, and domain search
+### News, research, developer, and vertical sources
 
 - `search_archive`
 - `search_arxiv`
@@ -50,6 +51,8 @@ The current `main` branch exposes **42 tools**.
 - `search_peertube`
 - `search_bbc`
 - `search_bing_news`
+- `search_sina_news`
+- `search_163_news`
 - `search_paperswithcode`
 - `search_sec_edgar`
 - `search_osm`
@@ -64,7 +67,7 @@ The current `main` branch exposes **42 tools**.
 - `search_wikipedia`
 - `search_github_repos`
 
-### Fetch / extraction
+### Fetch tools
 
 - `fetch_github_file`
 - `fetch_metadata`
@@ -76,11 +79,17 @@ The current `main` branch exposes **42 tools**.
 - `find_rss`
 - `debug_capture_search_html`
 
-### Notes on coverage
+## How `search_auto` behaves
 
-- `search_auto` is the umbrella entrypoint for multi-engine fallback.
-- Several domain-specific tools target academic, developer, financial, map, library, and social/community sources.
-- `debug_capture_search_html` is mainly for parser troubleshooting, not normal end-user search flows.
+`search_auto` is the main entrypoint when you want the worker to choose engines for you.
+
+- It tries a small engine set first.
+- It falls back when early engines return empty or weak results.
+- It reranks merged results before returning them.
+- The top-level `source` is `"auto"` when more than one engine contributed useful results.
+- The response also exposes `fallback_used`, `quality_status`, and `quality_reason` so callers can judge result quality.
+
+This makes it suitable for agents that need a general search tool but still want structured signals about how trustworthy the result set is.
 
 ## Endpoints
 
@@ -91,16 +100,25 @@ The current `main` branch exposes **42 tools**.
 Example:
 
 ```bash
-curl https://your-worker.example.com/healthz
+curl https://search-mcp.qdp.qzz.io/healthz
 ```
 
-Returns basic server metadata, version, MCP endpoint, and tool names.
+Typical response:
+
+```json
+{
+  "ok": true,
+  "name": "search-mcp-worker",
+  "version": "0.7.4",
+  "mcp_endpoint": "https://search-mcp.qdp.qzz.io/mcp"
+}
+```
 
 ### MCP
 
 `POST /mcp`
 
-This endpoint speaks JSON-RPC and supports the core MCP flow implemented by this worker:
+The worker supports the basic MCP JSON-RPC flow:
 
 - `initialize`
 - `notifications/initialized`
@@ -131,7 +149,7 @@ This endpoint speaks JSON-RPC and supports the core MCP flow implemented by this
 }
 ```
 
-### Call a search tool
+### Call `search_auto`
 
 ```json
 {
@@ -139,16 +157,16 @@ This endpoint speaks JSON-RPC and supports the core MCP flow implemented by this
   "id": 3,
   "method": "tools/call",
   "params": {
-    "name": "search_bing",
+    "name": "search_auto",
     "arguments": {
       "query": "Cloudflare Workers MCP",
-      "max_results": 5
+      "limit": 5
     }
   }
 }
 ```
 
-### Call a fetch tool
+### Call `fetch_url`
 
 ```json
 {
@@ -167,23 +185,25 @@ This endpoint speaks JSON-RPC and supports the core MCP flow implemented by this
 
 ## Response shape
 
-Tool calls return MCP text content plus structured JSON. In practice, clients can use the structured payload directly.
+Tool calls return MCP text content plus a structured payload. In practice, most clients should read the structured payload directly.
 
-Search results generally look like this:
+A typical search response looks like this:
 
 ```json
 {
   "ok": true,
-  "status": 200,
   "query": "Cloudflare Workers MCP",
-  "source": "bing",
-  "fallback_used": false,
+  "source": "auto",
+  "fallback_used": true,
+  "quality_status": "green",
+  "quality_reason": "usable_results",
   "results": [
     {
       "rank": 1,
-      "url": "https://example.com",
-      "title": "Example result",
-      "snippet": "Example snippet"
+      "source": "duckduckgo",
+      "url": "https://developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare/",
+      "title": "MCP servers for Cloudflare",
+      "snippet": "Use Cloudflare Workers to host MCP servers..."
     }
   ]
 }
@@ -196,7 +216,7 @@ npm install
 npx wrangler dev --local --port 8789
 ```
 
-Then test:
+Then check the local worker:
 
 ```bash
 curl http://127.0.0.1:8789/healthz
@@ -208,7 +228,7 @@ curl http://127.0.0.1:8789/healthz
 npx wrangler deploy
 ```
 
-Current route configured in `wrangler.toml`:
+Configured route in `wrangler.toml`:
 
 - `search-mcp.qdp.qzz.io/*`
 
@@ -216,38 +236,41 @@ Current route configured in `wrangler.toml`:
 
 ```text
 search-mcp-worker/
-├── src/index.js        # Worker entrypoint, MCP routing, tool implementations
-├── wrangler.toml       # Cloudflare Worker config
-├── package.json        # local development dependencies
+├── src/index.js             # Worker entrypoint, MCP routing, tool implementations
+├── src/mcp/tool-schemas.js  # MCP input schemas
+├── src/core/provider-defaults.js
+├── wrangler.toml
+├── package.json
 ├── README.md
 └── README.zh-CN.md
 ```
 
-## Design notes
+## What this worker does not do
 
-- This project relies on publicly reachable web endpoints and HTML parsing for several engines.
-- Search result quality depends on upstream markup stability, indexing coverage, and rate limiting.
-- Some engines may challenge requests or return degraded HTML in certain regions.
-- `search_twitter_x` does not call a private X API. It finds public pages through site-scoped web search.
-- `fetch_url` returns cleaned text, not full readability-grade article extraction.
+This worker is intentionally pragmatic. It is not trying to be:
+
+- a full commercial SERP API replacement
+- a browser automation platform
+- a JavaScript-rendering crawler
+- a full article readability engine
+- a private authenticated connector for closed platforms
 
 ## Good use cases
 
-- give an LLM one MCP endpoint for basic web search
-- fetch readable text from a webpage before summarization
-- search Wikipedia or Reddit without adding extra providers
-- deploy a small search MCP service on Cloudflare with minimal operational overhead
+- give an LLM one MCP endpoint for broad public search
+- search across web, academic, developer, and news sources with one tool surface
+- fetch readable text from a public page before summarization
+- deploy a small MCP search service on Cloudflare with low operational overhead
 
-## Limits
+## Practical limits
 
-This worker is intentionally simple. It is not trying to be:
+This project relies heavily on public upstream HTML and public APIs.
 
-- a full SERP API replacement
-- a browser automation system
-- a JavaScript-rendering scraper
-- a long-form article extraction engine
-- a private authenticated social-media connector
+That means quality depends on:
 
-## License / usage
+- upstream markup staying stable
+- index coverage of the chosen engine
+- regional behavior and challenge pages
+- provider throttling and transient failures
 
-Use and adapt it however fits your deployment model. If you expose it publicly, expect search engines to throttle or reshape traffic over time.
+If you expose the worker publicly, expect some engines to drift over time and plan to keep parsers and ranking rules maintained.

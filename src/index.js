@@ -22,8 +22,7 @@ var PROVIDER_CONFIG = {
   serpapi: { apiKey: "", baseUrl: "", enabled: true },
   bing: { apiKey: "", baseUrl: "", enabled: true },
   parallel: { apiKey: "", baseUrl: "", enabled: true },
-  ollama: { apiKey: "", baseUrl: "https://api.ollama.com/v1/web-search", enabled: true },
-  xiaohongshu: { apiKey: "", baseUrl: "", enabled: true }
+  ollama: { apiKey: "", baseUrl: "https://api.ollama.com/v1/web-search", enabled: true }
 };
 function getProviderConfig(name) {
   const key = String(name || "").toLowerCase();
@@ -221,6 +220,16 @@ var TOOLS = [
     inputSchema: querySchema()
   },
   {
+    name: "search_sina_news",
+    description: "Search Sina News articles. Returns Chinese news headlines and URLs.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_163_news",
+    description: "Search 163 News articles. Returns Chinese news headlines and URLs.",
+    inputSchema: querySchema()
+  },
+  {
     name: "search_paperswithcode",
     description: "Search Papers With Code for ML/AI papers with code implementations. Returns paper titles, links, and tasks.",
     inputSchema: querySchema()
@@ -403,7 +412,7 @@ var TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        provider: { type: "string", description: "Provider name, e.g. ollama/brave/tavily/jina/searxng/serpapi/bing/parallel/xiaohongshu" },
+        provider: { type: "string", description: "Provider name, e.g. ollama/brave/tavily/jina/searxng/serpapi/bing/parallel" },
         api_key: { type: "string", description: "API key/token" },
         base_url: { type: "string", description: "Custom provider base URL (optional)" },
         enabled: { type: "boolean", description: "Enable/disable provider" }
@@ -461,11 +470,6 @@ var TOOLS = [
     inputSchema: providerConfigSchema({ provider: "searxng", needsBaseUrl: true, needsApiKey: false, note: "Only configure if you use your own SearXNG instance." })
   },
   {
-    name: "provider_set_xiaohongshu",
-    description: "Configure the Xiaohongshu provider for this worker runtime. Current implementation uses built-in site-targeted search and does not require configuration.",
-    inputSchema: providerConfigSchema({ provider: "xiaohongshu", needsApiKey: false, needsBaseUrl: false, note: "Built-in Xiaohongshu site-targeted search, no configuration needed. Leave enabled." })
-  },
-  {
     name: "search_ollama",
     description: "Search via Ollama search provider API (requires provider key set via provider_set_config).",
     inputSchema: querySchema()
@@ -473,11 +477,6 @@ var TOOLS = [
   {
     name: "search_parallel",
     description: "Search via Parallel AI search API (requires provider key set via provider_set_config). High quality results.",
-    inputSchema: querySchema()
-  },
-  {
-    name: "search_xiaohongshu",
-    description: "Search Xiaohongshu content using site-targeted fallback strategy.",
     inputSchema: querySchema()
   }
 ];
@@ -493,10 +492,8 @@ var NON_PUBLIC_TOOL_NAMES = new Set([
   "provider_set_bing",
   "provider_set_parallel",
   "provider_set_searxng",
-  "provider_set_xiaohongshu",
   "search_ollama",
   "search_parallel",
-  "search_xiaohongshu",
   "search_brave",
   "search_qwant",
   "search_ecosia"
@@ -573,7 +570,7 @@ function querySchema(extra = {}) {
   if (extra.region) properties.region = { type: "string", description: "DuckDuckGo region, default us-en" };
   if (extra.language) properties.language = { type: "string", description: "Search language code, default en" };
   if (extra.autoMode) properties.auto_mode = { type: "string", description: "Auto aggregation mode: default uses intent-aware engines; full fans out across all enabled public search engines before reranking." };
-  if (extra.engines) properties.engines = { type: "array", items: { type: "string" }, description: "Optional engine order: duckduckgo, bing, yahoo, google, yandex, baidu, naver, sogou, wikipedia, arxiv, pubmed, hackernews, stackoverflow, reddit, npm, devto, mastodon, peertube, bbc, bing_news, archive, paperswithcode, sec_edgar, osm, lemmy, wikidata, crates, pypi, ollama, xiaohongshu" };
+  if (extra.engines) properties.engines = { type: "array", items: { type: "string" }, description: "Optional engine order: duckduckgo, bing, yahoo, google, yandex, baidu, naver, sogou, wikipedia, arxiv, pubmed, hackernews, stackoverflow, reddit, npm, devto, mastodon, peertube, bbc, bing_news, archive, paperswithcode, sec_edgar, osm, lemmy, wikidata, crates, pypi, ollama" };
   return { type: "object", properties, required: ["query"] };
 }
 function providerConfigSchema({ provider, needsApiKey = true, needsBaseUrl = false, note = "" }) {
@@ -637,8 +634,6 @@ async function callTool(params, requestProviderConfig) {
       return toolResult(await searchOllama(providerArgs), formatSearchResponse);
     case "search_parallel":
       return toolResult(await searchParallel(providerArgs), formatSearchResponse);
-    case "search_xiaohongshu":
-      return toolResult(await searchXiaohongshu(providerArgs), formatSearchResponse);
     case "provider_list":
       return toolResult(providerList(), formatMetadataResponse);
     case "provider_set_config":
@@ -661,8 +656,6 @@ async function callTool(params, requestProviderConfig) {
       return toolResult(providerSetSpecificConfig("parallel", args), formatMetadataResponse);
     case "provider_set_searxng":
       return toolResult(providerSetSpecificConfig("searxng", args), formatMetadataResponse);
-    case "provider_set_xiaohongshu":
-      return toolResult(providerSetSpecificConfig("xiaohongshu", args), formatMetadataResponse);
     case "search_yahoo":
       return toolResult(await searchYahoo(args), formatSearchResponse);
     case "search_google_web":
@@ -705,6 +698,10 @@ async function callTool(params, requestProviderConfig) {
       return toolResult(await searchBbc(args), formatSearchResponse);
     case "search_bing_news":
       return toolResult(await searchBingNews(args), formatSearchResponse);
+    case "search_sina_news":
+      return toolResult(await searchSinaNews(args), formatSearchResponse);
+    case "search_163_news":
+      return toolResult(await search163News(args), formatSearchResponse);
     case "search_paperswithcode":
       return toolResult(await searchPapersWithCode(args), formatSearchResponse);
     case "search_sec_edgar":
@@ -855,8 +852,7 @@ function isIntentMismatchResult(item, query, engine = "") {
     const compactQuery = queryText.replace(/\s+/g, "");
     const compactContent = contentText.replace(/\s+/g, "");
     const matchedTokens = queryTokens.filter((token) => compactContent.includes(token));
-    if (host === "mp.weixin.qq.com" && !String(item?.snippet || "").trim()) return true;
-    if (host && isSearchEngineHost(host)) return true;
+    if (isClearCjkMismatchResult(item, query, engine)) return true;
     return compactQuery ? !compactContent.includes(compactQuery) && matchedTokens.length === 0 : false;
   }
   if (engine === "bbc") {
@@ -884,6 +880,55 @@ function tokenizeSearchText(value) {
 }
 __name(tokenizeSearchText, "tokenizeSearchText");
 __name2(tokenizeSearchText, "tokenizeSearchText");
+function hasMeaningfulCjkTokenMatch(item, query) {
+  const normalizedQuery = normalizeCjkQuery(query);
+  const normalizedContent = normalizeCjkQuery(`${item?.title || ""} ${item?.snippet || ""}`);
+  if (!normalizedQuery || !normalizedContent) return false;
+  if (normalizedContent.includes(normalizedQuery)) return true;
+  const meaningfulTokens = tokenizeSearchText(query).map((token) => normalizeCjkQuery(token)).filter((token) => token && !/^\d+$/.test(token) && !/^20\d{2}$/.test(token) && !/^(?:年|月|日|最新|情况|世界|中国)$/.test(token));
+  return meaningfulTokens.some((token) => normalizedContent.includes(token));
+}
+__name(hasMeaningfulCjkTokenMatch, "hasMeaningfulCjkTokenMatch");
+__name2(hasMeaningfulCjkTokenMatch, "hasMeaningfulCjkTokenMatch");
+function isCommunityMismatchResult(item, query, engine = "") {
+  if (engine !== "bing_cn" && engine !== "bing" && engine !== "sogou") return false;
+  if (!hasCjkText(query)) return false;
+  const intent = detectSearchIntent(query);
+  if (intent.isDeveloper) return false;
+  const url = String(item?.url || "");
+  const title = String(item?.title || "").toLowerCase();
+  const snippet = String(item?.snippet || "").toLowerCase();
+  const host = safeHostname(url).toLowerCase();
+  const combined = `${title} ${snippet}`;
+  const communitySignal = /(?:^|\.)(?:forum|community|bbs)\./.test(host) || /\b(?:forum|community|discussion|thread|帖子|论坛|社区)\b/.test(combined);
+  if (!communitySignal) return false;
+  return !hasMeaningfulCjkTokenMatch(item, query);
+}
+__name(isCommunityMismatchResult, "isCommunityMismatchResult");
+__name2(isCommunityMismatchResult, "isCommunityMismatchResult");
+function isWeakCjkMatchResult(item, query, engine = "") {
+  if (engine !== "bing_cn" && engine !== "bing" && engine !== "sogou" && engine !== "baidu") return false;
+  if (!hasCjkText(query)) return false;
+  const intent = detectSearchIntent(query);
+  if (intent.isDeveloper) return false;
+  return !hasMeaningfulCjkTokenMatch(item, query);
+}
+__name(isWeakCjkMatchResult, "isWeakCjkMatchResult");
+__name2(isWeakCjkMatchResult, "isWeakCjkMatchResult");
+function isClearCjkMismatchResult(item, query, engine = "") {
+  const host = safeHostname(item?.url || "");
+  if (host === "mp.weixin.qq.com" && !String(item?.snippet || "").trim()) return true;
+  if (host && isSearchEngineHost(host)) return true;
+  return isCommunityMismatchResult(item, query, engine);
+}
+__name(isClearCjkMismatchResult, "isClearCjkMismatchResult");
+__name2(isClearCjkMismatchResult, "isClearCjkMismatchResult");
+function isHardIntentMismatchResult(item, query, engine = "") {
+  if (!hasCjkText(query)) return false;
+  return isClearCjkMismatchResult(item, query, engine);
+}
+__name(isHardIntentMismatchResult, "isHardIntentMismatchResult");
+__name2(isHardIntentMismatchResult, "isHardIntentMismatchResult");
 function isLowTrustResult(item, query, engine = "") {
   const queryText = String(query || "").trim().toLowerCase();
   if (!queryText || !/[㐀-鿿]/.test(queryText)) return false;
@@ -1012,7 +1057,6 @@ async function runSearchEngine(engine, args) {
   if (engine === "bing_cn") return await searchBingCn(args);
   if (engine === "parallel") return await searchParallel(providerArgs);
   if (engine === "ollama") return await searchOllama(providerArgs);
-  if (engine === "xiaohongshu") return await searchXiaohongshu(providerArgs);
   if (engine === "yahoo") return await searchYahoo(args);
   if (engine === "google") return await searchGoogle(args);
   if (engine === "yandex") return await searchYandex(args);
@@ -1035,6 +1079,8 @@ async function runSearchEngine(engine, args) {
   if (engine === "peertube") return await searchPeerTube(args);
   if (engine === "bbc") return await searchBbc(args);
   if (engine === "bing_news") return await searchBingNews(args);
+  if (engine === "sina_news") return await searchSinaNews(args);
+  if (engine === "163_news") return await search163News(args);
   if (engine === "paperswithcode") return await searchPapersWithCode(args);
   if (engine === "sec_edgar") return await searchSecEdgar(args);
   if (engine === "osm") return await searchOsm(args);
@@ -1125,12 +1171,14 @@ __name2(mergeSearchAutoResults, "mergeSearchAutoResults");
 function buildSearchAutoResponse({ args, engines, attempts, acceptedResults, siteTarget }) {
   const mergedResults = mergeSearchAutoResults(acceptedResults, args.limit, args.query);
   const contributingSources = [...new Set(mergedResults.flatMap((item) => Array.isArray(item?.sources) && item.sources.length ? item.sources : item?.source ? [item.source] : []).filter(Boolean))];
+  const successfulSources = [...new Set((Array.isArray(acceptedResults) ? acceptedResults : []).flatMap((item) => Array.isArray(item?.sources) && item.sources.length ? item.sources : item?.source ? [item.source] : []).filter(Boolean))];
   const autoMode = String(args?.auto_mode || "").toLowerCase() === "full" ? "full" : "default";
+  const aggregateSource = siteTarget ? "site_targeted" : successfulSources.length > 1 ? "auto" : successfulSources[0] || engines[0] || null;
   if (mergedResults.length) {
     const finalQuality = mergedResults.some((item) => item.quality_status === "green") ? "green" : "yellow";
     return {
       ok: true,
-      source: contributingSources.length > 1 ? "auto" : siteTarget ? "site_targeted" : contributingSources[0] || engines[0] || null,
+      source: aggregateSource,
       query: typeof args.query === "string" ? args.query.trim() : "",
       limit: clampLimit(args.limit),
       results: mergedResults,
@@ -1148,7 +1196,7 @@ function buildSearchAutoResponse({ args, engines, attempts, acceptedResults, sit
   }
   return {
     ok: false,
-    source: siteTarget ? "site_targeted" : engines[0] || null,
+    source: aggregateSource,
     query: typeof args.query === "string" ? args.query.trim() : "",
     results: [],
     attempts,
@@ -1568,9 +1616,9 @@ async function searchBaidu(args) {
       if (attempt.type === "json") {
         const data = await fetchJson(attempt.url, { headers: attempt.headers, timeoutMs: DEFAULT_TIMEOUT_MS });
         const results = extractBaiduJsonResults(data, limit);
-        const { filteredResults, filteredCount, filteredReason } = filterSearchResultsForQuery(results, query, "baidu");
-        if (filteredResults.length > 0) return searchResult({ source: "baidu", query, limit, results: filteredResults, blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
-        if (filteredCount > 0) return searchResult({ source: "baidu", query, limit, results: [], blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
+        if (results.length > 0) {
+          return finalizeVerticalSearchResults({ source: "baidu", query, limit, results, blocked: false, block_reason: "" });
+        }
         continue;
       }
       const { text, response } = await fetchWithUA(attempt.url, attempt.headers);
@@ -1582,9 +1630,9 @@ async function searchBaidu(args) {
       if (!results.length) {
         results = extractGenericLinks(text, limit * 4, attempt.baseUrl || "https://www.baidu.com").filter((item) => !isBaiduNoiseTitle(item.title) && !isBaiduNoiseUrl(item.url)).slice(0, limit);
       }
-      const { filteredResults, filteredCount, filteredReason } = filterSearchResultsForQuery(results, query, "baidu");
-      if (filteredResults.length > 0) return searchResult({ source: "baidu", query, limit, results: filteredResults, blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
-      if (filteredCount > 0) return searchResult({ source: "baidu", query, limit, results: [], blocked: false, block_reason: "", filtered_count: filteredCount, filtered_reason: filteredReason });
+      if (results.length > 0) {
+        return finalizeVerticalSearchResults({ source: "baidu", query, limit, results, blocked: false, block_reason: "" });
+      }
     } catch (e) {
       continue;
     }
@@ -1834,7 +1882,9 @@ async function searchArxiv(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const xml = await fetchText(`https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&max_results=${limit}`);
+    const { text: xml } = await fetchArxivAtom(`https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&max_results=${limit}`, {
+      timeoutMs: 2e4
+    });
     let results = [];
     const entries = xml.split("<entry>");
     for (let i = 1; i < entries.length && results.length < limit; i++) {
@@ -1843,12 +1893,18 @@ async function searchArxiv(args) {
       const id = (entry.match(/<id>([^<]+)<\/id>/) || [])[1] || "";
       const summary = (entry.match(/<summary>([\s\S]*?)<\/summary>/) || [])[1]?.trim().replace(/\n/g, " ").substring(0, 200) || "";
       const authors = (entry.match(/<name>([^<]+)<\/name>/g) || []).map((a) => a.replace(/<\/?name>/g, "")).join(", ");
-      const pdfUrl = id.replace("abs", "pdf");
       if (title && id) results.push({ title, url: id, snippet: summary, authors });
     }
-    return searchResult({ source: "arxiv", query, limit, results });
+    return searchResult({ source: "arxiv", query, limit, results, fetch_path: "export.arxiv.org" });
   } catch (e) {
-    return searchResult({ source: "arxiv", query, limit, results: [], error: e?.message || "failed" });
+    const fallback = await searchSiteTargetVertical(args, {
+      source: "arxiv",
+      host: "arxiv.org"
+    });
+    if (fallback?.ok) {
+      return fallback;
+    }
+    return searchResult({ source: "arxiv", query, limit, results: [], error: e?.message || "failed", fetch_path: "export.arxiv.org" });
   }
 }
 __name(searchArxiv, "searchArxiv");
@@ -1900,6 +1956,191 @@ async function searchHackerNews(args) {
 }
 __name(searchHackerNews, "searchHackerNews");
 __name2(searchHackerNews, "searchHackerNews");
+function classifyVerticalResultType(item, source) {
+  const url = String(item?.url || "");
+  const title = String(item?.title || "").toLowerCase();
+  const snippet = String(item?.snippet || "").toLowerCase();
+  let pathname = "";
+  try {
+    pathname = new URL(url).pathname.toLowerCase();
+  } catch {
+    pathname = "";
+  }
+  if (source === "bbc") {
+    if (/^\/news\/articles\//.test(pathname)) return "article";
+    if (/^\/news\/topics\//.test(pathname)) return "topic_page";
+    if (/^\/$/.test(pathname) || /^\/(?:news|sport|reel|culture|weather)(?:\/)?$/.test(pathname)) return "homepage";
+    return "result";
+  }
+  if (source === "bing_news") {
+    const host = safeHostname(url).toLowerCase();
+    if (/(^|\.)bing\.com$/.test(host) && (/^\/news(?:\/search)?\/?$/.test(pathname) || pathname === "/")) return "landing_page";
+    return "article";
+  }
+  if (source === "sina_news") {
+    const host = safeHostname(url).toLowerCase();
+    if (/(^|\.)search\.sina\.com\.cn$/.test(host)) return "search_page";
+    if (/(^|\.)sina\.com\.cn$/.test(host)) {
+      if (/\/\d{4}-\d{2}-\d{2}\/doc-/i.test(pathname) || /\/article_[a-z0-9]+_/i.test(pathname)) return "article";
+      if (pathname === "/" || pathname === "") return "homepage";
+      return "channel_page";
+    }
+    return "result";
+  }
+  if (source === "163_news") {
+    const host = safeHostname(url).toLowerCase();
+    if (/(^|\.)so\.163\.com$/.test(host) || ((host === "www.163.com" || host === "163.com") && pathname.startsWith("/search"))) return "search_page";
+    if (host === "www.163.com" || host === "163.com" || host === "dy.163.com") {
+      if (/\/article\/[a-z0-9]+\.html$/i.test(pathname)) return "article";
+      if (/\/special\//i.test(pathname)) return "topic_page";
+      if (pathname === "/" || pathname === "") return "homepage";
+      return "channel_page";
+    }
+    return "result";
+  }
+  if (source === "stackoverflow") {
+    if (/^\/questions\/\d+(?:\/|$)/.test(pathname)) return "question";
+    if (/^\/questions\/tagged\//.test(pathname)) return "tag_page";
+    if (/^\/users\//.test(pathname)) return "user_profile";
+    return "result";
+  }
+  if (source === "wikipedia") {
+    if (/\bmay refer to\b|\bdisambiguation\b/.test(`${title} ${snippet}`)) return "disambiguation";
+    return "article";
+  }
+  return "result";
+}
+__name(classifyVerticalResultType, "classifyVerticalResultType");
+__name2(classifyVerticalResultType, "classifyVerticalResultType");
+function isPreferredVerticalResultType(resultType, source) {
+  if (source === "bbc") return resultType === "article";
+  if (source === "bing_news") return resultType === "article";
+  if (source === "sina_news") return resultType === "article";
+  if (source === "163_news") return resultType === "article";
+  if (source === "stackoverflow") return resultType === "question";
+  if (source === "wikipedia") return resultType === "article";
+  return false;
+}
+__name(isPreferredVerticalResultType, "isPreferredVerticalResultType");
+__name2(isPreferredVerticalResultType, "isPreferredVerticalResultType");
+function shouldDropVerticalResultType(resultType, source, hasPreferred) {
+  if (!hasPreferred) return false;
+  if (source === "bbc") return resultType === "homepage" || resultType === "topic_page";
+  if (source === "bing_news") return resultType === "landing_page";
+  if (source === "sina_news") return resultType === "homepage" || resultType === "channel_page" || resultType === "search_page";
+  if (source === "163_news") return resultType === "homepage" || resultType === "channel_page" || resultType === "topic_page" || resultType === "search_page";
+  if (source === "stackoverflow") return resultType === "tag_page" || resultType === "user_profile";
+  if (source === "wikipedia") return resultType === "disambiguation";
+  return false;
+}
+__name(shouldDropVerticalResultType, "shouldDropVerticalResultType");
+__name2(shouldDropVerticalResultType, "shouldDropVerticalResultType");
+function scoreVerticalResult(item, query, source) {
+  const title = String(item?.title || "");
+  const snippet = String(item?.snippet || "");
+  const content = `${title} ${snippet}`.toLowerCase();
+  const resultType = String(item?.result_type || "");
+  const rank = Number(item?.rank_within_engine) || 99;
+  let score = Math.max(0, 40 - rank * 3);
+  const typeWeights = {
+    article: 90,
+    note: 95,
+    question: 90,
+    thread: 90,
+    result: 20,
+    topic_page: -40,
+    channel_page: -70,
+    homepage: -80,
+    landing_page: -80,
+    tag_page: -70,
+    user_profile: -90,
+    disambiguation: -85,
+    profile: -90,
+    search_page: -80,
+    listing_page: -70,
+    community_home: -80
+  };
+  score += typeWeights[resultType] || 0;
+  const tokens = tokenizeSearchText(query).filter((token) => token.length >= 2);
+  for (const token of tokens) {
+    if (title.toLowerCase().includes(token)) score += 14;
+    else if (content.includes(token)) score += 6;
+  }
+  if (hasCjkText(query)) {
+    const normalizedQuery = normalizeCjkQuery(query);
+    const normalizedTitle = normalizeCjkQuery(title);
+    const normalizedSnippet = normalizeCjkQuery(snippet);
+    if (normalizedQuery && normalizedTitle.includes(normalizedQuery)) score += 60;
+    else if (normalizedQuery && normalizedSnippet.includes(normalizedQuery)) score += 24;
+  }
+  if (source === "wikipedia" && /\([^)]*\)/.test(title)) score += 12;
+  return score;
+}
+__name(scoreVerticalResult, "scoreVerticalResult");
+__name2(scoreVerticalResult, "scoreVerticalResult");
+function finalizeVerticalSearchResults({ source, query, limit, results, blocked, block_reason, ...extra }) {
+  const normalized = (Array.isArray(results) ? results : []).map((item, index) => {
+    const resultType = classifyVerticalResultType(item, source);
+    return {
+      ...item,
+      source: item?.source || source,
+      engine: item?.engine || source,
+      rank_within_engine: Number(item?.rank_within_engine) || index + 1,
+      result_type: resultType
+    };
+  });
+  const hasPreferred = normalized.some((item) => isPreferredVerticalResultType(item.result_type, source));
+  let genericCount = 0;
+  let mismatchCount = 0;
+  let lowTrustCount = 0;
+  let typeDropCount = 0;
+  const filteredResults = normalized.filter((item) => {
+    if (isGenericWrapperResult(item, query, source)) {
+      genericCount++;
+      return false;
+    }
+    if (isHardIntentMismatchResult(item, query, source)) {
+      mismatchCount++;
+      return false;
+    }
+    if (isLowTrustResult(item, query, source)) {
+      lowTrustCount++;
+      return false;
+    }
+    if (shouldDropVerticalResultType(item.result_type, source, hasPreferred)) {
+      typeDropCount++;
+      return false;
+    }
+    return true;
+  }).sort((a, b) => scoreVerticalResult(b, query, source) - scoreVerticalResult(a, query, source) || a.rank_within_engine - b.rank_within_engine).slice(0, limit);
+  const filteredCount = Math.max(0, normalized.length - filteredResults.length);
+  let filteredReason = "";
+  if (filteredCount > 0) {
+    const reasons = [
+      ["generic_wrapper_results", genericCount],
+      ["intent_mismatch", mismatchCount],
+      ["low_trust_results", lowTrustCount],
+      ["vertical_result_type", typeDropCount]
+    ].filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1]);
+    filteredReason = reasons.length === 1 ? reasons[0][0] : reasons[0]?.[0] || "vertical_precision_filter";
+  }
+  const quality = evaluateSearchQuality({ results: filteredResults, filtered_count: filteredCount, filtered_reason: filteredReason }, query, source);
+  return searchResult({
+    source,
+    query,
+    limit,
+    results: filteredResults,
+    blocked,
+    block_reason,
+    ...extra,
+    filtered_count: filteredCount,
+    filtered_reason: filteredReason,
+    quality_status: quality.quality_status,
+    quality_reason: quality.quality_reason
+  });
+}
+__name(finalizeVerticalSearchResults, "finalizeVerticalSearchResults");
+__name2(finalizeVerticalSearchResults, "finalizeVerticalSearchResults");
 async function searchStackOverflow(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -1916,7 +2157,7 @@ async function searchStackOverflow(args) {
       const tags = (item.tags || []).join(", ");
       results.push({ title, url, snippet: `Score: ${score} | Answers: ${answers}${tags ? " | " + tags : ""}` });
     }
-    return searchResult({ source: "stackoverflow", query, limit, results });
+    return finalizeVerticalSearchResults({ source: "stackoverflow", query, limit, results, site });
   } catch (e) {
     return searchResult({ source: "stackoverflow", query, limit, results: [], error: e?.message || "failed" });
   }
@@ -1976,23 +2217,25 @@ function filterRedditFallbackResults(results, subredditName, limit, query) {
 }
 __name(filterRedditFallbackResults, "filterRedditFallbackResults");
 __name2(filterRedditFallbackResults, "filterRedditFallbackResults");
-async function searchRedditFallback(query, limit, subredditName) {
+async function searchRedditFallback(query, limit, subredditName, providerConfig) {
   const siteQuery = subredditName ? `site:reddit.com/r/${subredditName} ${query}` : `site:reddit.com ${query}`;
   const fallbackLimit = Math.max(limit, 10);
   const fallback = await searchAuto({
     query: siteQuery,
     limit: fallbackLimit,
-    engines: ["duckduckgo", "brave", "naver", "bing", "sogou"]
+    engines: ["duckduckgo", "brave", "naver", "bing", "sogou"],
+    ...providerConfig ? { _providerConfig: providerConfig } : {}
   });
   const results = filterRedditFallbackResults(fallback?.results, subredditName, limit, query);
   if (!results.length) return null;
+  const fallbackAttempt = Array.isArray(fallback?.attempts) ? fallback.attempts.find((item) => item.ok && item.result_count > 0) || fallback.attempts.find((item) => item.result_count > 0) || fallback.attempts[0] : null;
   return searchResult({
     source: "reddit",
     query,
     limit,
     results,
     subreddit: subredditName,
-    fetch_path: fallback?.fetch_path || "",
+    fetch_path: fallbackAttempt?.engine === "duckduckgo" ? "lite.duckduckgo.com" : fallback?.fetch_path || fallbackAttempt?.engine || "",
     fallback_used: true,
     attempts: Array.isArray(fallback?.attempts) ? fallback.attempts : void 0
   });
@@ -2022,11 +2265,11 @@ async function searchReddit(args) {
       results.push({ title, url, snippet: `r/${sub} | ${score} pts | ${post.num_comments || 0} comments` });
     }
     if (results.length) return searchResult({ source: "reddit", query, limit, results, subreddit: subredditName, fetch_path: "www.reddit.com" });
-    const fallback = await searchRedditFallback(query, limit, subredditName);
+    const fallback = await searchRedditFallback(query, limit, subredditName, args?._context?.providerConfig);
     if (fallback) return fallback;
     return searchResult({ source: "reddit", query, limit, results: [], subreddit: subredditName, fetch_path: "www.reddit.com" });
   } catch (e) {
-    const fallback = await searchRedditFallback(query, limit, subredditName);
+    const fallback = await searchRedditFallback(query, limit, subredditName, args?._context?.providerConfig);
     if (fallback) return fallback;
     return searchError("reddit", query, limit, e, { subreddit: subredditName, fetch_path: "www.reddit.com" });
   }
@@ -2132,19 +2375,23 @@ async function searchBbc(args) {
     const { text: html2 } = await fetchTextWithResponse(`https://www.bbc.co.uk/search?q=${encodeURIComponent(query)}`);
     const seen = /* @__PURE__ */ new Set();
     const re = /<a[^>]+href=["'](https:\/\/www\.bbc\.(?:com|co\.uk)\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    const candidateLimit = Math.max(limit * 12, 40);
+    const anchorScanLimit = Math.max(limit * 40, 120);
+    let scannedAnchors = 0;
     for (const match of html2.matchAll(re)) {
-      if (results.length >= limit) break;
+      scannedAnchors++;
+      if (scannedAnchors > anchorScanLimit) break;
       const url = match[1];
       const title = cleanText(match[2]);
       const candidate = { title, url, snippet: "" };
-      if (isNoiseUrl(url) || seen.has(url) || !title || title.length < 8 || isGenericWrapperResult(candidate, query, "bbc") || isIntentMismatchResult(candidate, query, "bbc")) continue;
+      if (isNoiseUrl(url) || seen.has(url) || !title || title.length < 4 || isIntentMismatchResult(candidate, query, "bbc")) continue;
       seen.add(url);
-      results.push(candidate);
+      if (results.length < candidateLimit) results.push(candidate);
     }
     if (!results.length) {
-      results = extractGenericLinks(html2, limit * 4, "https://www.bbc.co.uk").filter((r) => r.url.includes("bbc.") && !isGenericWrapperResult(r, query, "bbc") && !isIntentMismatchResult(r, query, "bbc")).slice(0, limit);
+      results = extractGenericLinks(html2, candidateLimit, "https://www.bbc.co.uk").filter((r) => r.url.includes("bbc.") && !isIntentMismatchResult(r, query, "bbc")).slice(0, candidateLimit);
     }
-    return searchResult({ source: "bbc", query, limit, results });
+    return finalizeVerticalSearchResults({ source: "bbc", query, limit, results });
   } catch (e) {
     return searchResult({ source: "bbc", query, limit, results: [], error: e?.message || "failed" });
   }
@@ -2163,21 +2410,94 @@ async function searchBingNews(args) {
       const title = (item.match(/<title><!\[CDATA\[([^\]]*)\]\]><\/title>/) || item.match(/<title>([^<]+)<\/title>/) || [])[1] || "";
       const url = (item.match(/<link><!\[CDATA\[([^\]]*)\]\]><\/link>/) || item.match(/<link>([^<]+)<\/link>/) || [])[1] || "";
       const normalized = { title: cleanText(title), url: unwrapBingNewsUrl(url), snippet: "" };
-      if (normalized.title && normalized.url && !isGenericWrapperResult(normalized, query, "bing_news")) results.push(normalized);
+      if (normalized.title && normalized.url) results.push(normalized);
     }
     if (!results.length) {
       const { text: html } = await fetchTextWithResponse(`https://www.bing.com/news/search?q=${encodeURIComponent(query)}`);
-      results = extractGenericLinks(html, limit * 4, "https://www.bing.com").map((r) => ({ ...r, url: unwrapBingNewsUrl(r.url) })).filter((r) => r.url && !r.url.includes("bing.com") && !isGenericWrapperResult(r, query, "bing_news")).slice(0, limit);
+      results = extractGenericLinks(html, limit * 4, "https://www.bing.com").map((r) => ({ ...r, url: unwrapBingNewsUrl(r.url) })).filter((r) => r.url).slice(0, limit * 4);
     }
-    return searchResult({ source: "bing_news", query, limit, results });
+    return finalizeVerticalSearchResults({ source: "bing_news", query, limit, results });
   } catch (e) {
     return searchResult({ source: "bing_news", query, limit, results: [], error: e?.message || "failed" });
   }
 }
 __name(searchBingNews, "searchBingNews");
 __name2(searchBingNews, "searchBingNews");
+function extractSinaNewsApiResults(payload, limit) {
+  const results = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of payload?.data?.list || []) {
+    if (results.length >= limit) break;
+    const title = cleanText(item?.title || "");
+    const url = String(item?.url || "").trim();
+    if (!title || title.length < 2 || !/^https?:\/\//i.test(url) || seen.has(url) || isNoiseUrl(url)) continue;
+    seen.add(url);
+    const snippet = cleanText(item?.searchSummary || item?.summary || item?.content || "");
+    results.push({ title, url, snippet });
+  }
+  return results;
+}
+__name(extractSinaNewsApiResults, "extractSinaNewsApiResults");
+__name2(extractSinaNewsApiResults, "extractSinaNewsApiResults");
+function extract163SearchResults(html, limit) {
+  const results = [];
+  const seen = /* @__PURE__ */ new Set();
+  const section = extractSectionAroundMarker(html, ["keyword_list", "keyword_new"], 5e4) || html;
+  const blockRe = /<div[^>]+class="[^"]*keyword_new[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>?/gi;
+  for (const match of section.matchAll(blockRe)) {
+    if (results.length >= limit) break;
+    const block = match[1];
+    const anchor = /<h3[^>]*>[\s\S]*?<a[^>]+href=("([^"]+)"|'([^']+)')[^>]*>([\s\S]*?)<\/a>/i.exec(block);
+    if (!anchor) continue;
+    const url = decodeHtml(anchor[2] || anchor[3] || "").trim();
+    const title = cleanText(anchor[4]);
+    if (!title || title.length < 2 || !/^https?:\/\//i.test(url) || seen.has(url) || isNoiseUrl(url)) continue;
+    seen.add(url);
+    const sourceMatch = /<div[^>]+class="[^"]*keyword_source[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(block);
+    const timeMatch = /<div[^>]+class="[^"]*keyword_time[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(block);
+    const snippet = [cleanText(sourceMatch?.[1] || ""), cleanText(timeMatch?.[1] || "")].filter(Boolean).join(" | ");
+    results.push({ title, url, snippet });
+  }
+  if (results.length) return results;
+  return extractGenericLinks(section, Math.max(limit * 6, 12), "https://www.163.com").filter((item) => {
+    const host = safeHostname(item.url);
+    return host === "www.163.com" || host === "163.com" || host === "dy.163.com";
+  });
+}
+__name(extract163SearchResults, "extract163SearchResults");
+__name2(extract163SearchResults, "extract163SearchResults");
+async function searchSinaNews(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://search.sina.com.cn/api/news?q=${encodeURIComponent(query)}`);
+    const results = extractSinaNewsApiResults(data, Math.max(limit * 6, 12));
+    if (results.length) {
+      return finalizeVerticalSearchResults({ source: "sina_news", query, limit, results });
+    }
+  } catch {
+  }
+  return searchSiteTargetVertical(args, { source: "sina_news", host: "sina.com.cn" });
+}
+__name(searchSinaNews, "searchSinaNews");
+__name2(searchSinaNews, "searchSinaNews");
+async function search163News(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const { text: html } = await fetchTextWithResponse(`https://www.163.com/search?keyword=${encodeURIComponent(query)}`);
+    const results = extract163SearchResults(html, Math.max(limit * 6, 12));
+    if (results.length) {
+      return finalizeVerticalSearchResults({ source: "163_news", query, limit, results });
+    }
+  } catch {
+  }
+  return searchSiteTargetVertical(args, { source: "163_news", host: "163.com" });
+}
+__name(search163News, "search163News");
+__name2(search163News, "search163News");
 function unwrapBingNewsUrl(url) {
-  const value = String(url || "").trim();
+  const value = decodeHtml(String(url || "")).trim();
   if (!value) return "";
   try {
     const parsed = new URL(value);
@@ -2385,6 +2705,9 @@ async function searchPypi(args) {
       });
     }
     if (results.length) return searchResult({ source: "pypi", query, limit, results, fetch_path: safeHostname(response.url) || "pypi.org" });
+    if (/\s/.test(query)) {
+      return searchResult({ source: "pypi", query, limit, results: [], error: "No PyPI package matched the query.", fetch_path: safeHostname(response.url) || "pypi.org" });
+    }
   } catch {
   }
   try {
@@ -2458,6 +2781,32 @@ async function searchOpenLibrary(args) {
       const olid = (doc.edition_key || [])[0] || doc.key || "";
       const url = olid.startsWith("/works/") ? `https://openlibrary.org${olid}` : olid ? `https://openlibrary.org/books/${olid}` : `https://openlibrary.org/search?q=${encodeURIComponent(title || query)}`;
       results.push({ title, url, snippet: `${author}${year ? " (" + year + ")" : ""}` });
+    }
+    const queryTokens = query.toLowerCase().split(/\s+/).map((token) => token.trim()).filter((token) => token.length >= 3);
+    if (queryTokens.length >= 2 && results.length) {
+      const normalizedQuery = query.toLowerCase();
+      const ranked = results.map((item, index) => {
+        const title = String(item.title || "").toLowerCase();
+        const snippet = String(item.snippet || "").toLowerCase();
+        const titleHasExactPhrase = title.includes(normalizedQuery);
+        const snippetHasExactPhrase = snippet.includes(normalizedQuery);
+        const titleTokenMatches = queryTokens.filter((token) => title.includes(token)).length;
+        const snippetTokenMatches = queryTokens.filter((token) => snippet.includes(token)).length;
+        const strongMatch = titleHasExactPhrase || snippetHasExactPhrase || titleTokenMatches === queryTokens.length && queryTokens.length >= 3;
+        return {
+          item,
+          index,
+          strongMatch,
+          titleHasExactPhrase,
+          snippetHasExactPhrase,
+          titleTokenMatches,
+          snippetTokenMatches
+        };
+      }).filter((entry) => entry.strongMatch).sort((a, b) => Number(b.titleHasExactPhrase) - Number(a.titleHasExactPhrase) || Number(b.snippetHasExactPhrase) - Number(a.snippetHasExactPhrase) || b.titleTokenMatches - a.titleTokenMatches || b.snippetTokenMatches - a.snippetTokenMatches || a.index - b.index);
+      if (!ranked.length) {
+        return searchResult({ source: "openlibrary", query, limit, results: [], error: "No OpenLibrary result matched the query.", fetch_path: "openlibrary.org" });
+      }
+      results = ranked.map((entry) => entry.item).slice(0, limit);
     }
     return searchResult({ source: "openlibrary", query, limit, results, fetch_path: "openlibrary.org" });
   } catch (e) {
@@ -2572,16 +2921,16 @@ async function searchWikipedia(args) {
   const api = `https://${language}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=${limit}&origin=*`;
   try {
     const data = await fetchJson(api);
-    const results = (data?.query?.search || []).slice(0, limit).map((item) => ({
+    const results = (data?.query?.search || []).slice(0, limit * 4).map((item) => ({
       title: item.title,
       url: `https://${language}.wikipedia.org/wiki/${encodeURIComponent(item.title.replaceAll(" ", "_"))}`,
       snippet: cleanText(item.snippet || "")
     }));
-    return searchResult({ source: "wikipedia", query, limit, results, language });
+    return finalizeVerticalSearchResults({ source: "wikipedia", query, limit, results, language });
   } catch {
     try {
       const html = await fetchText(`https://${language}.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}`);
-      return searchResult({ source: "wikipedia", query, limit, results: extractGenericLinks(html, limit, `https://${language}.wikipedia.org`), language });
+      return finalizeVerticalSearchResults({ source: "wikipedia", query, limit, results: extractGenericLinks(html, limit * 4, `https://${language}.wikipedia.org`), language });
     } catch (e) {
       return searchError("wikipedia", query, limit, e, { language, fetch_path: `${language}.wikipedia.org` });
     }
@@ -2593,25 +2942,40 @@ async function searchGitHubRepos(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const data = await fetchJson(`https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${limit}`);
+    const candidateLimit = Math.min(Math.max(limit * 8, 20), 50);
+    const data = await fetchJson(`https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${candidateLimit}`);
     const normalizedQuery = query.trim().toLowerCase();
     const queryTokens = normalizedQuery.split(/[^a-z0-9]+/i).filter(Boolean);
     const rankedItems = (data.items || []).map((repo, index) => {
       const fullName = String(repo.full_name || "");
       const fullNameLower = fullName.toLowerCase();
-      const nameLower = String(repo.name || "").toLowerCase();
+      const nameLower = String(repo.name || fullName.split("/").pop() || "").toLowerCase();
       const descriptionLower = String(repo.description || "").toLowerCase();
+      const stars = Number(repo.stargazers_count || 0);
       let score = 0;
+      let nameTokenMatches = 0;
+      let fullNameTokenMatches = 0;
+      let descriptionTokenMatches = 0;
       if (normalizedQuery && fullNameLower === normalizedQuery) score += 1e6;
       else if (normalizedQuery && nameLower === normalizedQuery) score += 9e5;
       else if (normalizedQuery && fullNameLower.endsWith(`/${normalizedQuery}`)) score += 8e5;
+      if (normalizedQuery && nameLower.includes(normalizedQuery)) score += 3e5;
+      if (normalizedQuery && fullNameLower.includes(normalizedQuery)) score += 2e5;
+      if (normalizedQuery && descriptionLower.includes(normalizedQuery)) score += 2e4;
       for (const token of queryTokens) {
-        if (fullNameLower === token) score += 2e4;
-        if (nameLower === token) score += 3e4;
-        if (fullNameLower.includes(token)) score += 4e3;
-        if (descriptionLower.includes(token)) score += 500;
+        if (nameLower.includes(token)) nameTokenMatches += 1;
+        if (fullNameLower.includes(token)) fullNameTokenMatches += 1;
+        if (descriptionLower.includes(token)) descriptionTokenMatches += 1;
       }
-      score += Number(repo.stargazers_count || 0);
+      score += nameTokenMatches * 25e3;
+      score += fullNameTokenMatches * 8e3;
+      score += descriptionTokenMatches * 1e3;
+      if (queryTokens.length >= 2) {
+        if (nameTokenMatches === queryTokens.length) score += 18e4;
+        if (fullNameTokenMatches === queryTokens.length) score += 12e4;
+        if (descriptionTokenMatches === queryTokens.length) score += 12e3;
+      }
+      score += Math.log10(stars + 1) * 5e3;
       return { repo, index, score };
     }).sort((a, b) => b.score - a.score || a.index - b.index);
     const results = rankedItems.slice(0, limit).map(({ repo }) => ({
@@ -2685,17 +3049,79 @@ async function fetchMetadata(args) {
 }
 __name(fetchMetadata, "fetchMetadata");
 __name2(fetchMetadata, "fetchMetadata");
+function parseLenientJsonObject(text) {
+  const source = String(text || "").trim();
+  if (!source) return null;
+  try {
+    return JSON.parse(source);
+  } catch {
+  }
+  let normalized = "";
+  let inString = false;
+  let escaped = false;
+  let identifier = "";
+  const flushIdentifier = () => {
+    if (!identifier) return;
+    normalized += identifier === "undefined" ? "null" : identifier;
+    identifier = "";
+  };
+  for (const char of source) {
+    if (escaped) {
+      if (identifier) flushIdentifier();
+      normalized += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      if (identifier) flushIdentifier();
+      normalized += char;
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      if (!inString && identifier) flushIdentifier();
+      normalized += char;
+      inString = !inString;
+      continue;
+    }
+    if (!inString && /[A-Za-z_$]/.test(char)) {
+      identifier += char;
+      continue;
+    }
+    if (!inString && identifier) flushIdentifier();
+    if (inString && char === "\n") {
+      normalized += "\\n";
+      continue;
+    }
+    if (inString && char === "\r") {
+      normalized += "\\r";
+      continue;
+    }
+    if (inString && char === "\t") {
+      normalized += "\\t";
+      continue;
+    }
+    normalized += char;
+  }
+  if (identifier) flushIdentifier();
+  try {
+    return JSON.parse(normalized);
+  } catch {
+    return null;
+  }
+}
 async function fetchUrl(args) {
   const url = new URL(requireString(args.url, "url"));
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
   const maxChars = Math.min(Math.max(Number(args.maxChars) || 12e3, 1e3), 3e4);
   try {
     const { text, response } = await fetchTextWithResponse(url.toString(), { maxBytes: MAX_FETCH_BYTES });
+    const fallbackFinalUrl = response.url || url.toString();
     const title = cleanText((text.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || url.toString());
     return {
       ok: true,
       url: url.toString(),
-      finalUrl: response.url,
+      finalUrl: fallbackFinalUrl,
       title,
       text: htmlToText(text).slice(0, maxChars),
       maxChars,
@@ -2818,6 +3244,14 @@ async function fetchJson(url, options = {}) {
 }
 __name(fetchJson, "fetchJson");
 __name2(fetchJson, "fetchJson");
+async function fetchArxivAtom(url, options = {}) {
+  return fetchWithUA(url, {
+    Accept: "application/atom+xml",
+    "User-Agent": `${SERVER_NAME}/${SERVER_VERSION} (https://search-mcp.qdp.qzz.io)`
+  }, options);
+}
+__name(fetchArxivAtom, "fetchArxivAtom");
+__name2(fetchArxivAtom, "fetchArxivAtom");
 function providerList() {
   const out = {};
   for (const [k, v] of Object.entries(PROVIDER_CONFIG)) {
@@ -2879,9 +3313,10 @@ async function searchParallel(args) {
   const limit = clampLimit(args.limit);
   const providerConfig = args?._context?.providerConfig;
   const apiKey = getProviderApiKey("parallel", "PARALLEL_API_KEY", providerConfig);
+  const endpoint = getProviderBaseUrl("parallel", "https://api.parallel.ai/v1/search", providerConfig);
   if (!apiKey) return searchError("parallel", query, limit, "missing PARALLEL_API_KEY. Use provider_set_config to set it.");
   try {
-    const resp = await fetch("https://api.parallel.ai/v1/search", {
+    const resp = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -2903,39 +3338,51 @@ async function searchParallel(args) {
         snippet: excerpts
       });
     }
-    return searchResult({ source: "parallel", query, limit, results, fetch_path: "api.parallel.ai" });
+    return searchResult({ source: "parallel", query, limit, results, fetch_path: safeHostname(endpoint) });
   } catch (error) {
     return searchError("parallel", query, limit, error?.message || "failed");
   }
 }
-async function searchXiaohongshu(args) {
+async function searchSiteTargetVertical(args, { source, host, preferredEngines = [searchSogou, searchBing, searchGoogle, searchBaidu, searchYandex] }) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const composed = `site:xiaohongshu.com ${query}`;
-  let results = [];
-  const providerConfig = args?._context?.providerConfig;
-  const parallelKey = getProviderApiKey("parallel", "PARALLEL_API_KEY", providerConfig);
-  if (parallelKey) {
-    try {
-      const r = await searchParallel({ query: composed, limit, _context: args?._context });
-      if (Array.isArray(r?.results) && r.results.length) {
-        results = r.results.filter((x) => (x.url || "").includes("xiaohongshu.com")).slice(0, limit);
-        if (results.length) return searchResult({ source: "xiaohongshu", query, limit, results, strategy: "parallel-site-targeted" });
-      }
-    } catch {}
+  const composed = `site:${host} ${query}`;
+  try {
+    const { text } = await fetchTextWithResponse(`https://www.sogou.com/web?query=${encodeURIComponent(composed)}`);
+    const seen = /* @__PURE__ */ new Set();
+    const raw = [];
+    const re = /<h3[^>]*>[\s\S]*?<a[^>]+href=("([^"]+)"|'([^']+)')[^>]*>([\s\S]*?)<\/a>/gi;
+    for (const match of text.matchAll(re)) {
+      if (raw.length >= Math.max(limit * 8, 16)) break;
+      let url = decodeSogouUrl(decodeHtml(match[2] || match[3] || ""));
+      const title = cleanText(match[4]);
+      if (!title || title.length < 2) continue;
+      if (url.startsWith("javascript:") || url === "#" || url === "/") continue;
+      if (!url.startsWith("http")) url = decodeSogouUrl(`https://www.sogou.com${url}`);
+      if (seen.has(url) || isNoiseUrl(url) || isSogouNoiseUrl(url) || !looksLikeSearchResultUrl(url)) continue;
+      seen.add(url);
+      raw.push({ title, url, snippet: "" });
+    }
+    const filtered = filterSiteTargetedResults(raw, { host }, Math.max(limit * 4, 8));
+    if (filtered.length) {
+      return finalizeVerticalSearchResults({ source, query, limit, results: filtered, blocked: false, block_reason: "", strategy: "site-targeted-fallback", fetch_path: "sogou" });
+    }
+  } catch {
   }
-  const preferred = [searchSogou, searchBing, searchGoogle, searchBaidu, searchYandex];
-  for (const fn of preferred) {
+  for (const fn of preferredEngines) {
     try {
-      const r = await fn({ query: composed, limit });
-      if (Array.isArray(r?.results) && r.results.length) {
-        results = r.results.filter((x) => (x.url || "").includes("xiaohongshu.com")).slice(0, limit);
-        if (results.length) break;
+      const result = await fn({ query: composed, limit: Math.max(limit * 4, 8) });
+      const filtered = filterSiteTargetedResults(result.results, { host }, Math.max(limit * 4, 8));
+      if (filtered.length) {
+        return finalizeVerticalSearchResults({ source, query, limit, results: filtered, blocked: result?.blocked, block_reason: result?.block_reason || "", strategy: "site-targeted-fallback", fetch_path: result?.fetch_path || result?.source || "" });
       }
-    } catch {}
+    } catch {
+    }
   }
-  return searchResult({ source: "xiaohongshu", query, limit, results, strategy: "site-targeted-fallback" });
+  return searchResult({ source, query, limit, results: [], strategy: "site-targeted-fallback" });
 }
+__name(searchSiteTargetVertical, "searchSiteTargetVertical");
+__name2(searchSiteTargetVertical, "searchSiteTargetVertical");
 
 function searchError(source, query, limit, error, extra = {}) {
   return searchResult({ source, query, limit, results: [], error: typeof error === "string" ? error : error?.message || "failed", ...extra });
