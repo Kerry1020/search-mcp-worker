@@ -1183,5 +1183,5 @@ test('generic search_auto defaults do not start with provider-specific hidden en
   const structured = payload.result.structuredContent;
   assert.equal(structured.ok, true);
   assert.equal(structured.attempts[0].engine, 'bing_global');
-  assert.equal(structured.attempts[0].engine === 'parallel' || structured.attempts[0].engine === 'ollama' || structured.attempts[0].engine === 'xiaohongshu', false);
+  assert.equal(structured.attempts[0].engine === 'parallel' || structured.attempts[0].engine === 'ollama', false);
 });

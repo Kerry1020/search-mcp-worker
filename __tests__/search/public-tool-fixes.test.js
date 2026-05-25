@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 
 import worker from '../../src/index.js';
 
-async function jsonRpc(body) {
+async function jsonRpc(body, extraHeaders = {}) {
   const request = new Request('https://worker.test/mcp', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
     body: JSON.stringify(body)
   });
   const response = await worker.fetch(request);
@@ -65,6 +65,171 @@ test('search_pypi returns package hits from the PyPI search page when JSON endpo
   assert.equal(structured.results.length, 2);
   assert.deepEqual(structured.results.map((item) => item.title), ['httpx@0.27.0', 'httpie@3.2.4']);
   assert.match(structured.results[0].url, /https:\/\/pypi\.org\/project\/httpx\//);
+});
+
+test('search_pypi does not surface exact-package JSON 404s for free-text queries when the HTML search page has no package hits', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    if (href === 'https://pypi.org/search/?q=Claude%20Code') {
+      return new Response(`
+        <html>
+          <body>
+            <h1>Search</h1>
+            <p>No matching projects.</p>
+          </body>
+        </html>
+      `, {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+        url: href
+      });
+    }
+
+    if (href === 'https://pypi.org/pypi/Claude%20Code/json') {
+      return new Response('not found', {
+        status: 404,
+        headers: { 'content-type': 'text/plain; charset=utf-8' }
+      });
+    }
+
+    throw new Error(`unexpected url: ${href}`);
+  };
+
+  const payload = await jsonRpc({
+    jsonrpc: '2.0',
+    id: 1.1,
+    method: 'tools/call',
+    params: {
+      name: 'search_pypi',
+      arguments: {
+        query: 'Claude Code',
+        limit: 1
+      }
+    }
+  });
+
+  const structured = payload.result.structuredContent;
+  assert.equal(structured.source, 'pypi');
+  assert.equal(structured.ok, false);
+  assert.deepEqual(structured.results, []);
+  assert.equal(structured.error, 'No PyPI package matched the query.');
+});
+
+test('search_openlibrary drops generic split-token matches for multi-word queries when no result contains the full query phrase', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    if (href === 'https://openlibrary.org/search.json?q=Claude%20Code&limit=3') {
+      return Response.json({
+        docs: [
+          {
+            title: 'The Code of Hammurabi',
+            author_name: ['Hammurabi'],
+            first_publish_year: 1790,
+            key: '/works/OL24497948W'
+          },
+          {
+            title: 'Myth and meaning',
+            author_name: ['Claude Lévi-Strauss'],
+            first_publish_year: 1978,
+            key: '/works/OL2596024W'
+          },
+          {
+            title: 'Claude Debussy',
+            author_name: ['David J. Code'],
+            first_publish_year: 2010,
+            key: '/works/OL36444071W'
+          }
+        ]
+      });
+    }
+
+    throw new Error(`unexpected url: ${href}`);
+  };
+
+  const payload = await jsonRpc({
+    jsonrpc: '2.0',
+    id: 1.2,
+    method: 'tools/call',
+    params: {
+      name: 'search_openlibrary',
+      arguments: {
+        query: 'Claude Code',
+        limit: 3
+      }
+    }
+  });
+
+  const structured = payload.result.structuredContent;
+  assert.equal(structured.source, 'openlibrary');
+  assert.equal(structured.ok, false);
+  assert.deepEqual(structured.results, []);
+  assert.equal(structured.error, 'No OpenLibrary result matched the query.');
+});
+
+test('search_openlibrary drops live-shape title token collisions that do not contain the query phrase', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    if (href === 'https://openlibrary.org/search.json?q=Claude%20Code&limit=3') {
+      return Response.json({
+        docs: [
+          {
+            title: 'The Code of Hammurabi',
+            author_name: ['Hammurabi'],
+            first_publish_year: 1790,
+            key: '/works/OL24497948W'
+          },
+          {
+            title: 'Myth and meaning',
+            author_name: ['Claude Lévi-Strauss'],
+            first_publish_year: 1978,
+            key: '/works/OL2596024W'
+          },
+          {
+            title: 'Claude McKay, Code Name Sasha',
+            author_name: ['Gary Edward Holcomb'],
+            first_publish_year: 2007,
+            key: '/works/OL8497185W'
+          }
+        ]
+      });
+    }
+
+    throw new Error(`unexpected url: ${href}`);
+  };
+
+  const payload = await jsonRpc({
+    jsonrpc: '2.0',
+    id: 1.21,
+    method: 'tools/call',
+    params: {
+      name: 'search_openlibrary',
+      arguments: {
+        query: 'Claude Code',
+        limit: 3
+      }
+    }
+  });
+
+  const structured = payload.result.structuredContent;
+  assert.equal(structured.source, 'openlibrary');
+  assert.equal(structured.ok, false);
+  assert.deepEqual(structured.results, []);
+  assert.equal(structured.error, 'No OpenLibrary result matched the query.');
 });
 
 test('instant_answer returns a useful related-topic fallback when abstract and answer are empty', async (t) => {
@@ -327,7 +492,112 @@ test('fetch_url returns structured tool output instead of top-level JSON-RPC err
   assert.match(structured.error, /upstream 403/);
 });
 
+test('search_arxiv uses an arXiv-friendly API request shape instead of browser-style fetch headers', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
 
+  globalThis.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.startsWith('https://export.arxiv.org/api/query?search_query=all:Claude')) {
+      assert.equal(options.headers.Accept, 'application/atom+xml');
+      assert.match(options.headers['User-Agent'], /search-mcp-worker/i);
+      return new Response(`<?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <entry>
+            <id>https://arxiv.org/abs/1234.5678</id>
+            <title>Claude for Science</title>
+            <summary>Paper summary</summary>
+            <author><name>Alice</name></author>
+          </entry>
+        </feed>`, {
+        status: 200,
+        headers: { 'content-type': 'application/atom+xml; charset=utf-8' }
+      });
+    }
+
+    throw new Error(`unexpected url: ${href}`);
+  };
+
+  const payload = await jsonRpc({
+    jsonrpc: '2.0',
+    id: 7.1,
+    method: 'tools/call',
+    params: {
+      name: 'search_arxiv',
+      arguments: {
+        query: 'Claude',
+        limit: 3
+      }
+    }
+  });
+
+  assert.equal(payload.error, undefined);
+  const structured = payload.result.structuredContent;
+  assert.equal(structured.ok, true);
+  assert.equal(structured.source, 'arxiv');
+  assert.equal(structured.results[0].title, 'Claude for Science');
+  assert.equal(structured.results[0].url, 'https://arxiv.org/abs/1234.5678');
+});
+
+test('search_arxiv falls back to site-targeted web search when the official API is rate limited', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async (url, options = {}) => {
+    const href = String(url);
+    if (href.startsWith('https://export.arxiv.org/api/query?search_query=all:Claude%20Code')) {
+      assert.equal(options.headers.Accept, 'application/atom+xml');
+      return new Response('rate limited', {
+        status: 429,
+        headers: { 'content-type': 'text/plain; charset=utf-8' }
+      });
+    }
+
+    if (href.startsWith('https://www.sogou.com/web?query=site%3Aarxiv.org%20Claude%20Code')) {
+      return new Response(`
+        <html>
+          <body>
+            <h3><a href="https://www.sogou.com/link?url=ignore">搜狗首页</a></h3>
+            <h3><a href="https://arxiv.org/abs/2505.01234">Claude Code for Scientific Discovery</a></h3>
+          </body>
+        </html>
+      `, {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+        url: href
+      });
+    }
+
+    throw new Error(`unexpected url: ${href}`);
+  };
+
+  const payload = await jsonRpc({
+    jsonrpc: '2.0',
+    id: 7.15,
+    method: 'tools/call',
+    params: {
+      name: 'search_arxiv',
+      arguments: {
+        query: 'Claude Code',
+        limit: 1
+      }
+    }
+  });
+
+  assert.equal(payload.error, undefined);
+  const structured = payload.result.structuredContent;
+  assert.equal(structured.ok, true, JSON.stringify(payload, null, 2));
+  assert.equal(structured.source, 'arxiv');
+  assert.equal(structured.strategy, 'site-targeted-fallback');
+  assert.equal(structured.fetch_path, 'sogou');
+  assert.equal(structured.results.length, 1);
+  assert.equal(structured.results[0].url, 'https://arxiv.org/abs/2505.01234');
+  assert.equal(structured.results[0].title, 'Claude Code for Scientific Discovery');
+});
 
 test('search_bing_global honors request-scoped bing provider disablement', async () => {
   const payload = await jsonRpc({
@@ -3110,6 +3380,141 @@ test('search_github_repos reranks exact full_name matches ahead of broader highe
   assert.equal(structured.results[0].title, 'anthropic/claude-code ★12000');
 });
 
+test('search_github_repos broadens GitHub candidates so claude-code repos outrank weak high-star matches', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    if (href.startsWith('https://api.github.com/search/repositories?')) {
+      const requestUrl = new URL(href);
+      const perPage = Number(requestUrl.searchParams.get('per_page'));
+      if (perPage <= 3) {
+        return Response.json({
+          total_count: 8,
+          items: [
+            {
+              full_name: 'affaan-m/ECC',
+              name: 'ECC',
+              stargazers_count: 189439,
+              html_url: 'https://github.com/affaan-m/ECC',
+              description: 'Efficient competitive coding toolkit'
+            },
+            {
+              full_name: 'thedotmack/claude-mem',
+              name: 'claude-mem',
+              stargazers_count: 77729,
+              html_url: 'https://github.com/thedotmack/claude-mem',
+              description: 'Persistent memory for Claude'
+            },
+            {
+              full_name: 'JuliusBrussee/caveman',
+              name: 'caveman',
+              stargazers_count: 64104,
+              html_url: 'https://github.com/JuliusBrussee/caveman',
+              description: 'Code generation agent'
+            }
+          ]
+        });
+      }
+
+      return Response.json({
+        total_count: 8,
+        items: [
+          {
+            full_name: 'affaan-m/ECC',
+            name: 'ECC',
+            stargazers_count: 189439,
+            html_url: 'https://github.com/affaan-m/ECC',
+            description: 'Efficient competitive coding toolkit'
+          },
+          {
+            full_name: 'thedotmack/claude-mem',
+            name: 'claude-mem',
+            stargazers_count: 77729,
+            html_url: 'https://github.com/thedotmack/claude-mem',
+            description: 'Persistent memory for Claude'
+          },
+          {
+            full_name: 'JuliusBrussee/caveman',
+            name: 'caveman',
+            stargazers_count: 64104,
+            html_url: 'https://github.com/JuliusBrussee/caveman',
+            description: 'Code generation agent'
+          },
+          {
+            full_name: 'shanraisshan/claude-code-best-practice',
+            name: 'claude-code-best-practice',
+            stargazers_count: 54593,
+            html_url: 'https://github.com/shanraisshan/claude-code-best-practice',
+            description: 'Claude Code best practices'
+          },
+          {
+            full_name: 'santifer/career-ops',
+            name: 'career-ops',
+            stargazers_count: 46935,
+            html_url: 'https://github.com/santifer/career-ops',
+            description: 'Career operations toolkit'
+          },
+          {
+            full_name: 'hesreallyhim/awesome-claude-code',
+            name: 'awesome-claude-code',
+            stargazers_count: 44652,
+            html_url: 'https://github.com/hesreallyhim/awesome-claude-code',
+            description: 'Awesome Claude Code resources'
+          },
+          {
+            full_name: 'davila7/claude-code-templates',
+            name: 'claude-code-templates',
+            stargazers_count: 27520,
+            html_url: 'https://github.com/davila7/claude-code-templates',
+            description: 'Claude Code templates'
+          },
+          {
+            full_name: 'musistudio/claude-code-router',
+            name: 'claude-code-router',
+            stargazers_count: 34305,
+            html_url: 'https://github.com/musistudio/claude-code-router',
+            description: 'Routing for Claude Code'
+          }
+        ]
+      });
+    }
+
+    throw new Error(`unexpected url: ${href}`);
+  };
+
+  const payload = await jsonRpc({
+    jsonrpc: '2.0',
+    id: 4.31,
+    method: 'tools/call',
+    params: {
+      name: 'search_github_repos',
+      arguments: {
+        query: 'anthropic claude code',
+        limit: 3
+      }
+    }
+  });
+
+  assert.equal(payload.error, undefined, JSON.stringify(payload, null, 2));
+  const structured = payload.result.structuredContent;
+  assert.equal(structured.ok, true, JSON.stringify(payload, null, 2));
+  assert.equal(structured.results.length, 3);
+  assert.notEqual(structured.results[0].url, 'https://github.com/affaan-m/ECC', JSON.stringify(structured.results, null, 2));
+  assert.equal(
+    structured.results.slice(0, 3).some((item) => [
+      'https://github.com/hesreallyhim/awesome-claude-code',
+      'https://github.com/davila7/claude-code-templates',
+      'https://github.com/musistudio/claude-code-router'
+    ].includes(item.url)),
+    true,
+    JSON.stringify(structured.results, null, 2)
+  );
+});
+
 test('search_bing_news unwraps Bing redirect links from RSS items and reports empty results cleanly when HTML fallback has no usable stories', async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {
@@ -3157,6 +3562,55 @@ test('search_bing_news unwraps Bing redirect links from RSS items and reports em
   assert.equal(structured.results.length, 1);
   assert.equal(structured.results[0].title, 'Claude Code news roundup');
   assert.equal(structured.results[0].url, 'https://example.com/claude-code-news');
+});
+
+test('search_bing_news unwraps non-CDATA RSS links whose redirect params are HTML-escaped', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  globalThis.fetch = async (url) => {
+    const href = String(url);
+    if (href.startsWith('https://www.bing.com/news/search?q=') && href.includes('&format=rss')) {
+      return new Response(`
+        <rss>
+          <channel>
+            <item>
+              <title>Anthropic开发者大会：“让Claude Code自己来”</title>
+              <link>https://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;url=https%3A%2F%2Fnews.qq.com%2Frain%2Fa%2F20260522A06PBJ00&amp;c=123</link>
+            </item>
+          </channel>
+        </rss>
+      `, {
+        status: 200,
+        headers: { 'content-type': 'application/rss+xml; charset=utf-8' }
+      });
+    }
+
+    throw new Error(`unexpected url: ${href}`);
+  };
+
+  const payload = await jsonRpc({
+    jsonrpc: '2.0',
+    id: 15.15,
+    method: 'tools/call',
+    params: {
+      name: 'search_bing_news',
+      arguments: {
+        query: 'Claude Code',
+        limit: 1
+      }
+    }
+  });
+
+  assert.equal(payload.error, undefined, JSON.stringify(payload, null, 2));
+  const structured = payload.result.structuredContent;
+  assert.equal(structured.ok, true, JSON.stringify(payload, null, 2));
+  assert.equal(structured.source, 'bing_news');
+  assert.equal(structured.results.length, 1);
+  assert.equal(structured.results[0].title, 'Anthropic开发者大会：“让Claude Code自己来”');
+  assert.equal(structured.results[0].url, 'https://news.qq.com/rain/a/20260522A06PBJ00');
 });
 
 test('search_bing_news falls back to a clean empty result when RSS and HTML pages expose no usable non-Bing stories', async (t) => {
