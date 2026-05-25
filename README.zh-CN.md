@@ -99,10 +99,10 @@
 
 `GET /` 或 `GET /healthz`
 
-示例：
+示例（部署后替换成你自己的域名）：
 
 ```bash
-curl https://search-mcp.qdp.qzz.io/healthz
+curl https://<your-domain>/healthz
 ```
 
 典型返回：
@@ -112,7 +112,7 @@ curl https://search-mcp.qdp.qzz.io/healthz
   "ok": true,
   "name": "search-mcp-worker",
   "version": "0.7.4",
-  "mcp_endpoint": "https://search-mcp.qdp.qzz.io/mcp"
+  "mcp_endpoint": "https://<your-domain>/mcp"
 }
 ```
 
@@ -230,9 +230,7 @@ curl http://127.0.0.1:8789/healthz
 npx wrangler deploy
 ```
 
-`wrangler.toml` 当前配置的路由：
-
-- `search-mcp.qdp.qzz.io/*`
+部署后请绑定你自己的自定义域名，或使用你自己的 Worker hostname 来访问 `/healthz` 和 `/mcp`。不要把别人的实际服务端点直接写进客户端配置里。
 
 ## 项目结构
 
