@@ -6,7 +6,7 @@
 
 ## Canonical Tool Names (from `/health` endpoint)
 
-These are the **exact** tool names exposed by the live service. All references in this document use these names.
+These are the **exact** search and fetch tool names exposed by the live service. Provider admin/internal tools are omitted. All references in this document use these names.
 
 ```
 search_auto
