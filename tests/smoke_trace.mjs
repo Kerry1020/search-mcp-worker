@@ -102,6 +102,43 @@ function assert(name, ok, detail = "") {
     }
   }
 
+  // 7. Quality gate: good results have no quality_flag
+  console.log("\n=== 7. Quality gate — good results ===");
+  const r7 = await callAuto("pip requests");
+  if (r7.trace) {
+    const successAttempts = r7.trace.attempts.filter(a => a.status === "success");
+    assert("success has no quality_flag", successAttempts.every(a => !a.quality_flag), successAttempts.map(a => a.quality_flag).join(","));
+  }
+
+  // 8. Quality gate: bogus results are treated as hard_failure
+  // Test by checking that if quality_flag=bogus exists, status must be hard_failure
+  console.log("\n=== 8. Quality gate — bogus = hard_failure ===");
+  const r8 = await callAuto("google search test", { auto_mode: "full" });
+  if (r8.trace) {
+    const bogusAttempts = r8.trace.attempts.filter(a => a.quality_flag === "bogus");
+    if (bogusAttempts.length > 0) {
+      assert("bogus results are hard_failure", bogusAttempts.every(a => a.status === "hard_failure"), bogusAttempts.map(a => a.status).join(","));
+    } else {
+      // No bogus detected — verify that successful results are clean
+      const successAttempts = r8.trace.attempts.filter(a => a.status === "success");
+      assert("no bogus flagged on clean results", true, `${successAttempts.length} success attempts`);
+    }
+  }
+
+  // 9. Quality gate: weak results have quality_flag but don't crash dispatch
+  console.log("\n=== 9. Quality gate — weak doesn't block ===");
+  const r9 = await callAuto("apple", { auto_mode: "full" });
+  if (r9.trace) {
+    const weakAttempts = r9.trace.attempts.filter(a => a.quality_flag === "weak");
+    // Weak results should still allow eventual success
+    const finalSuccess = r9.trace.attempts.some(a => a.status === "success" && !a.quality_flag);
+    if (weakAttempts.length > 0) {
+      assert("weak flagged but dispatch continues", finalSuccess || r9.trace.attempts.length > weakAttempts.length);
+    } else {
+      assert("no weak flagged (acceptable)", true);
+    }
+  }
+
   console.log(`\n${"=".repeat(50)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);

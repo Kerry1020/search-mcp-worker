@@ -682,12 +682,18 @@ function classifyResultQuality(result, query) {
   if (!result || !Array.isArray(result.results) || result.results.length === 0) return "good";
   const results = result.results;
 
-  // Bogus check: consent/challenge leak into results
-  const BOGUS_PATTERNS = /before you continue|accept all|verify you are human|privacy choices|privacykeuzes|collectconsent|guce\.yahoo|consent\.yahoo|captcha|are you a robot|attention required|cf-challenge/i;
+  // Bogus check: consent/challenge leak into results (multi-signal)
+  const BOGUS_TEXT = /before you continue|accept all|verify you are human|privacy choices|privacykeuzes|collectconsent|captcha|are you a robot|attention required/i;
+  const BOGUS_URL = /consent\.yahoo|guce\.yahoo|guce\.com|cf-challenge|\/consent|\/challenge|bing\.com\/secure/i;
+  let bogusTextHits = 0, bogusUrlHits = 0;
   for (const r of results) {
-    const text = `${r.title || ""} ${r.snippet || ""} ${r.url || ""}`;
-    if (BOGUS_PATTERNS.test(text)) return "bogus";
+    const text = `${r.title || ""} ${r.snippet || ""}`;
+    const url = r.url || "";
+    if (BOGUS_TEXT.test(text)) bogusTextHits++;
+    if (BOGUS_URL.test(url)) bogusUrlHits++;
   }
+  // Require at least 2 results with text signals OR any URL signal + 1 text hit
+  if (bogusTextHits >= 2 || (bogusUrlHits >= 1 && bogusTextHits >= 1)) return "bogus";
 
   // Weak checks (only downgrade, not reject)
   let weakReasons = 0;
@@ -883,14 +889,13 @@ async function searchAuto(args) {
         // Quality gate: detect bogus/weak results even when status appears success
         const quality = classifyResultQuality(result, args.query || "");
         if (quality === "bogus") {
-          // Consent/challenge leak detected in results — treat as hard_failure
           status2 = "hard_failure";
           errorType = "bogus_results_detected";
           attempts[attempts.length - 1].status = "hard_failure";
           attempts[attempts.length - 1].error_type = "bogus_results_detected";
-          attempts[attempts.length - 1].quality = "bogus";
+          attempts[attempts.length - 1].quality_flag = "bogus";
         } else {
-          if (quality === "weak") attempts[attempts.length - 1].quality = "weak";
+          if (quality === "weak") attempts[attempts.length - 1].quality_flag = "weak";
           const final = {
             ...result,
             source: result.source || engine,
