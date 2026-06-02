@@ -185,6 +185,32 @@ function assert(name, ok, detail = "") {
     assert("pip requests hits pypi_api", pypiHit, "no pypi_api attempt");
   }
 
+  // 14. sina_news returns Chinese news results
+  console.log("\n=== 14. sina_news — Chinese news search ===");
+  const r14sina = await (async () => {
+    const body = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_sina_news", arguments: { query: "高考作文", limit: 3 } } };
+    const res = await fetch(`${BASE}/mcp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+    return await res.json();
+  })();
+  {
+    const text = r14sina?.result?.content?.[0]?.text || "";
+    assert("sina_news returns results", text.includes("1."), text.slice(0, 200));
+    assert("sina_news not blocked", !text.includes("blocked") || text.includes("0 results") === false, text.slice(0, 100));
+  }
+
+  // 15. 163_news returns Chinese news results
+  console.log("\n=== 15. 163_news — Chinese news search ===");
+  const r15_163 = await (async () => {
+    const body = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_163_news", arguments: { query: "上海天气", limit: 3 } } };
+    const res = await fetch(`${BASE}/mcp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+    return await res.json();
+  })();
+  {
+    const text = r15_163?.result?.content?.[0]?.text || "";
+    assert("163_news returns results", text.includes("1."), text.slice(0, 200));
+    assert("163_news not blocked", !text.includes("blocked") || text.includes("0 results") === false, text.slice(0, 100));
+  }
+
   console.log(`\n${"=".repeat(50)}`);
   console.log(`Results: ${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);

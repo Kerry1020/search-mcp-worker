@@ -741,7 +741,7 @@ function classifyResultQuality(result, query) {
 __name(classifyResultQuality, "classifyResultQuality");
 __name2(classifyResultQuality, "classifyResultQuality");
 async function searchAuto(args) {
-  const LEVEL_A = ["hackernews", "reddit", "arxiv", "stackoverflow", "wikipedia", "npm", "github", "devto", "pubmed", "crates", "wikidata", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz", "sina_news", "163_news"];
+  const LEVEL_A = ["hackernews", "reddit", "arxiv", "stackoverflow", "wikipedia", "npm", "github", "devto", "pubmed", "crates", "wikidata", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
   const LEVEL_B = ["sogou", "naver", "bing", "bing_news", "yahoo", "archive"];
   const LEVEL_C = ["google", "google_web", "duckduckgo", "yandex", "baidu", "pypi"];
   const ALL_LEVEL_C = new Set(LEVEL_C);
@@ -803,12 +803,12 @@ async function searchAuto(args) {
     });
   } else if (intent === "news") {
     orderedA.sort((a, b) => {
-      const newsFirst = ["bbc", "reddit", "hackernews", "mastodon", "lemmy"];
+      const newsFirst = ["bbc", "sina_news", "163_news", "reddit", "hackernews", "mastodon", "lemmy"];
       return (newsFirst.includes(b) ? 1 : 0) - (newsFirst.includes(a) ? 1 : 0);
     });
   } else if (intent === "cjk_general") {
     orderedA.sort((a, b) => {
-      const cjkFirst = ["wikipedia", "reddit", "wikidata", "stackoverflow"];
+      const cjkFirst = ["wikipedia", "sina_news", "163_news", "reddit", "wikidata", "stackoverflow"];
       const cjkLast = ["hackernews", "devto", "npm", "crates"];
       if (cjkFirst.includes(a)) return -1;
       if (cjkFirst.includes(b)) return 1;
