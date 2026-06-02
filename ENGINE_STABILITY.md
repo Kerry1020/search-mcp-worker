@@ -9,18 +9,49 @@
 These are the **exact** tool names exposed by the live service. All references in this document use these names.
 
 ```
-search_auto, search_duckduckgo, search_bing, search_yahoo,
-search_google_web, search_baidu, search_yandex, search_naver,
-search_sogou, search_archive, search_arxiv, search_pubmed,
-search_hackernews, search_stackoverflow, search_reddit, search_npm,
-search_devto, search_mastodon, search_peertube, search_bbc,
-search_bing_news, search_paperswithcode, search_sec_edgar, search_osm,
-search_lemmy, search_wikidata, search_crates, search_pypi,
-search_wiktionary, search_openlibrary, search_musicbrainz,
-search_crossref, search_wikipedia, search_github_repos,
-search_ollama, search_parallel, search_xiaohongshu,
-fetch_url, fetch_metadata, fetch_github_file,
-instant_answer, find_rss, debug_capture_search_html
+search_auto
+search_duckduckgo
+search_bing
+search_yahoo
+search_google_web
+search_baidu
+search_yandex
+search_naver
+search_sogou
+search_archive
+search_arxiv
+search_pubmed
+search_hackernews
+search_stackoverflow
+search_reddit
+search_npm
+search_devto
+search_mastodon
+search_peertube
+search_bbc
+search_bing_news
+search_paperswithcode
+search_sec_edgar
+search_osm
+search_lemmy
+search_wikidata
+search_crates
+search_pypi
+search_wiktionary
+search_openlibrary
+search_musicbrainz
+search_crossref
+search_wikipedia
+search_github_repos
+search_ollama
+search_parallel
+search_xiaohongshu
+fetch_url
+fetch_metadata
+fetch_github_file
+instant_answer
+find_rss
+debug_capture_search_html
 ```
 
 ---
@@ -62,7 +93,7 @@ Designed for programmatic access. JSON/Atom/API. Independent of IP reputation. L
 **Total: 25 engines**
 
 > "Level A engines form the reliability backbone of this service."
-> Confidence: H=high (n≥3, consistent), M=medium (n<3 or occasional empty), L=low (insufficient data).
+> Confidence: H=high (n≥3, cross-intent/language consistent), M=medium (n<3 or occasional empty on niche queries), L=low (insufficient data or highly variable). Evidence sample sizes reflect distinct queries, not repeated calls.
 
 ---
 
@@ -201,19 +232,21 @@ Prepend: `⚠ Experimental. Frequently blocked by upstream.`
 
 ### Ecosystem → Engine Order (Level A only, within search_auto)
 
+> **Locked set** = ecosystem-native registries + generic-safe sources (GitHub, StackOverflow, Reddit, Wikipedia). Cross-ecosystem package registries (npm/crates/pypi_api) are excluded from the locked set to prevent cross-ecosystem mismatches. They remain available in `[remaining Level A]` as generic fallback.
+
 **Python:**
 ```
-pypi_api → github → stackoverflow → reddit → npm → crates → [remaining Level A]
+pypi_api → github → stackoverflow → reddit → [remaining Level A]
 ```
 
 **JS:**
 ```
-npm → github → stackoverflow → devto → reddit → crates → [remaining Level A]
+npm → github → stackoverflow → devto → reddit → [remaining Level A]
 ```
 
 **Rust:**
 ```
-crates → github → stackoverflow → reddit → npm → [remaining Level A]
+crates → github → stackoverflow → reddit → [remaining Level A]
 ```
 
 **Unknown (no ecosystem signal):**
@@ -251,7 +284,9 @@ npm → crates → pypi_api → github → stackoverflow → reddit → [remaini
 
 ### Trace Contract (v1)
 
-Every `search_auto` response includes `_trace`:
+Every `search_auto` response includes `_trace` (always, including failure paths). Response body increase is minimal (~200-500 bytes per attempt).
+
+> **Virtual engine names in trace**: Internal aliases like `pypi_api` appear in trace as `search_pypi_api` (prefixed with `search_` for consistency). These are NOT standalone tools — they route to `search_pypi` with specific parameters (e.g., `pypi_mode="api"`). See Appendix A "Virtual Engines" for the full mapping.
 
 ```json
 {
@@ -261,7 +296,7 @@ Every `search_auto` response includes `_trace`:
       "level": "A",
       "ms": 31,
       "status": "success|empty|hard_failure",
-      "error_type": null|captcha|challenge|consent|http_client_error|http_server_error|unknown,
+      "error_type": null|captcha|challenge|consent|http_client_error|http_server_error|challenge_page_detected|unknown,
       "result_count": 1,
       "normalized_query": "requests"
     }
