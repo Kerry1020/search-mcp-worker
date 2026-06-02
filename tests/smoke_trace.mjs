@@ -7,12 +7,22 @@ const BASE = process.argv[2] || "https://search-mcp.qdp.qzz.io";
 
 async function callAuto(query, extra = {}) {
   const body = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "search_auto", arguments: { query, limit: 3, ...extra } } };
-  const res = await fetch(`${BASE}/mcp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const json = await res.json();
-  const text = json.result?.content?.[0]?.text || "";
-  const idx = text.indexOf("--- trace ---");
-  if (idx < 0) return { text: text.slice(0, 300), trace: null };
-  return { text: text.slice(0, idx), trace: JSON.parse(text.slice(idx + "--- trace ---".length)) };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(`${BASE}/mcp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
+      clearTimeout(timer);
+      const json = await res.json();
+      const text = json.result?.content?.[0]?.text || "";
+      const idx = text.indexOf("--- trace ---");
+      if (idx < 0) return { text: text.slice(0, 300), trace: null };
+      return { text: text.slice(0, idx), trace: JSON.parse(text.slice(idx + "--- trace ---".length)) };
+    } catch (e) {
+      if (attempt === 1) throw e;
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
 }
 
 const LEVEL_C = new Set(["search_google_web", "search_duckduckgo", "search_yandex", "search_baidu"]);
@@ -137,6 +147,42 @@ function assert(name, ok, detail = "") {
     } else {
       assert("no weak flagged (acceptable)", true);
     }
+  }
+
+  // 10. short_ambiguous: apple must NOT route to arxiv
+  console.log("\n=== 10. short_ambiguous — no arxiv for apple ===");
+  const r10 = await callAuto("apple");
+  if (r10.trace) {
+    assert("apple intent is short_ambiguous", r10.trace.intent === "short_ambiguous", r10.trace.intent);
+    const arxivAttempts = r10.trace.attempts.filter(a => a.engine === "search_arxiv");
+    assert("apple does not hit arxiv", arxivAttempts.length === 0, `${arxivAttempts.length} arxiv attempts`);
+  }
+
+  // 11. howto: "how to bake bread" must NOT end at lemmy
+  console.log("\n=== 11. howto — no lemmy for bake bread ===");
+  const r11 = await callAuto("how to bake bread");
+  if (r11.trace) {
+    assert("bake bread intent is howto", r11.trace.intent === "howto", r11.trace.intent);
+    const lemmyAttempts = r11.trace.attempts.filter(a => a.engine === "search_lemmy");
+    assert("bake bread does not hit lemmy", lemmyAttempts.length === 0, `${lemmyAttempts.length} lemmy attempts`);
+  }
+
+  // 12. Regression: academic intent still uses arxiv
+  console.log("\n=== 12. Regression — academic still uses arxiv ===");
+  const r12 = await callAuto("transformer architecture");
+  if (r12.trace) {
+    assert("transformer architecture is academic", r12.trace.intent === "academic", r12.trace.intent);
+    const arxivHit = r12.trace.attempts.some(a => a.engine === "search_arxiv");
+    assert("academic query hits arxiv", arxivHit, "no arxiv attempt");
+  }
+
+  // 13. Regression: pkg_exact still uses pypi_api
+  console.log("\n=== 13. Regression — pip requests still uses pypi_api ===");
+  const r13 = await callAuto("pip requests");
+  if (r13.trace) {
+    assert("pip requests is pkg_exact", r13.trace.intent === "pkg_exact", r13.trace.intent);
+    const pypiHit = r13.trace.attempts.some(a => a.engine === "search_pypi_api");
+    assert("pip requests hits pypi_api", pypiHit, "no pypi_api attempt");
   }
 
   console.log(`\n${"=".repeat(50)}`);
