@@ -1,0 +1,276 @@
+[
+  {
+    "provider": "search_sogou",
+    "level": "B",
+    "query": "天气预报",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_naver",
+    "level": "B",
+    "query": "한국 날씨",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_bing",
+    "level": "B",
+    "query": "python tutorial",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_bing_news",
+    "level": "B",
+    "query": "AI news",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_yahoo",
+    "level": "B",
+    "query": "best laptops 2026",
+    "result_count": 0,
+    "issues": [],
+    "status": "EMPTY_OK"
+  },
+  {
+    "provider": "search_archive",
+    "level": "B",
+    "query": "example.com",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_google_web",
+    "level": "C",
+    "query": "test query",
+    "result_count": 0,
+    "issues": [],
+    "status": "EMPTY_OK"
+  },
+  {
+    "provider": "search_duckduckgo",
+    "level": "C",
+    "query": "test query",
+    "result_count": 0,
+    "issues": [],
+    "status": "EMPTY_OK"
+  },
+  {
+    "provider": "search_yandex",
+    "level": "C",
+    "query": "test query",
+    "result_count": 0,
+    "issues": [],
+    "status": "EMPTY_OK"
+  },
+  {
+    "provider": "search_baidu",
+    "level": "C",
+    "query": "测试查询",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_pypi",
+    "level": "C",
+    "query": "requests",
+    "result_count": 1,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_arxiv",
+    "level": "A",
+    "query": "transformer attention",
+    "status": "ERROR",
+    "issues": [
+      "fetch failed"
+    ]
+  },
+  {
+    "provider": "search_crossref",
+    "level": "A",
+    "query": "machine learning",
+    "status": "ERROR",
+    "issues": [
+      "fetch failed"
+    ]
+  },
+  {
+    "provider": "search_pubmed",
+    "level": "A",
+    "query": "covid vaccine",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_paperswithcode",
+    "level": "A",
+    "query": "object detection",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_wikipedia",
+    "level": "A",
+    "query": "quantum computing",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_wikidata",
+    "level": "A",
+    "query": "Albert Einstein",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_wiktionary",
+    "level": "A",
+    "query": "serendipity",
+    "result_count": 5,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_openlibrary",
+    "level": "A",
+    "query": "dune frank herbert",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_github_repos",
+    "level": "A",
+    "query": "react framework",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_hackernews",
+    "level": "A",
+    "query": "rust programming",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_stackoverflow",
+    "level": "A",
+    "query": "python list comprehension",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_npm",
+    "level": "A",
+    "query": "express",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_crates",
+    "level": "A",
+    "query": "serde",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_devto",
+    "level": "A",
+    "query": "typescript tips",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_reddit",
+    "level": "A",
+    "query": "machine learning",
+    "result_count": 0,
+    "issues": [],
+    "status": "EMPTY_OK"
+  },
+  {
+    "provider": "search_lemmy",
+    "level": "A",
+    "query": "linux",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_mastodon",
+    "level": "A",
+    "query": "open source",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_peertube",
+    "level": "A",
+    "query": "programming",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_osm",
+    "level": "A",
+    "query": "restaurant Tokyo",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_musicbrainz",
+    "level": "A",
+    "query": "radiohead",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_sec_edgar",
+    "level": "A",
+    "query": "Apple Inc",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_bbc",
+    "level": "A",
+    "query": "climate change",
+    "result_count": 3,
+    "issues": [],
+    "status": "PASS"
+  },
+  {
+    "provider": "search_instant_answer",
+    "level": "A",
+    "query": "capital of France",
+    "result_count": 0,
+    "issues": [],
+    "status": "EMPTY_OK"
+  }
+]
