@@ -209,6 +209,16 @@ var TOOLS = [
     inputSchema: querySchema()
   },
   {
+    name: "search_sina_news",
+    description: "Search Sina News articles. Returns Chinese news headlines and URLs.",
+    inputSchema: querySchema()
+  },
+  {
+    name: "search_163_news",
+    description: "Search 163 News articles. Returns Chinese news headlines and URLs.",
+    inputSchema: querySchema()
+  },
+  {
     name: "search_paperswithcode",
     description: "Search Papers With Code for ML/AI papers with code implementations. Returns paper titles, links, and tasks.",
     inputSchema: querySchema()
@@ -625,6 +635,10 @@ async function callTool(params, request) {
       return toolResult(await searchBbc(args), formatSearchResponse);
     case "search_bing_news":
       return toolResult(await searchBingNews(args), formatSearchResponse);
+    case "search_sina_news":
+      return toolResult(await searchSinaNews(args), formatSearchResponse);
+    case "search_163_news":
+      return toolResult(await search163News(args), formatSearchResponse);
     case "search_paperswithcode":
       return toolResult(await searchPapersWithCode(args), formatSearchResponse);
     case "search_sec_edgar":
@@ -727,7 +741,7 @@ function classifyResultQuality(result, query) {
 __name(classifyResultQuality, "classifyResultQuality");
 __name2(classifyResultQuality, "classifyResultQuality");
 async function searchAuto(args) {
-  const LEVEL_A = ["hackernews", "reddit", "arxiv", "stackoverflow", "wikipedia", "npm", "github", "devto", "pubmed", "crates", "wikidata", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+  const LEVEL_A = ["hackernews", "reddit", "arxiv", "stackoverflow", "wikipedia", "npm", "github", "devto", "pubmed", "crates", "wikidata", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz", "sina_news", "163_news"];
   const LEVEL_B = ["sogou", "naver", "bing", "bing_news", "yahoo", "archive"];
   const LEVEL_C = ["google", "google_web", "duckduckgo", "yandex", "baidu", "pypi"];
   const ALL_LEVEL_C = new Set(LEVEL_C);
@@ -879,6 +893,8 @@ async function searchAuto(args) {
       else if (engine === "peertube") result = await searchPeerTube(args);
       else if (engine === "bbc") result = await searchBbc(args);
       else if (engine === "bing_news") result = await searchBingNews(args);
+      else if (engine === "sina_news") result = await searchSinaNews(args);
+      else if (engine === "163_news") result = await search163News(args);
       else if (engine === "paperswithcode") result = await searchPapersWithCode(args);
       else if (engine === "sec_edgar") result = await searchSecEdgar(args);
       else if (engine === "osm") result = await searchOsm(args);
@@ -1635,6 +1651,77 @@ async function searchBingNews(args) {
 }
 __name(searchBingNews, "searchBingNews");
 __name2(searchBingNews, "searchBingNews");
+function extractSinaNewsApiResults(payload, limit) {
+  const results = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of payload?.data?.list || []) {
+    if (results.length >= limit) break;
+    const title = cleanText(item?.title || "");
+    const url = String(item?.url || "").trim();
+    if (!title || title.length < 2 || !/^https?:\/\//i.test(url) || seen.has(url) || isNoiseUrl(url)) continue;
+    seen.add(url);
+    const snippet = cleanText(item?.searchSummary || item?.summary || item?.content || "");
+    results.push({ title, url, snippet });
+  }
+  return results;
+}
+__name(extractSinaNewsApiResults, "extractSinaNewsApiResults");
+__name2(extractSinaNewsApiResults, "extractSinaNewsApiResults");
+function extract163SearchResults(html, limit) {
+  const results = [];
+  const seen = /* @__PURE__ */ new Set();
+  const section = extractSectionAroundMarker(html, ["keyword_list", "keyword_new"], 5e4) || html;
+  const blockRe = /<div[^>]+class="[^"]*keyword_new[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>?/gi;
+  for (const match of section.matchAll(blockRe)) {
+    if (results.length >= limit) break;
+    const block = match[1];
+    const anchor = /<h3[^>]*>[\s\S]*?<a[^>]+href=("([^"]+)"|'([^']+)')[^>]*>([\s\S]*?)<\/a>/i.exec(block);
+    if (!anchor) continue;
+    const url = decodeHtml(anchor[2] || anchor[3] || "").trim();
+    const title = cleanText(anchor[4]);
+    if (!title || title.length < 2 || !/^https?:\/\//i.test(url) || seen.has(url) || isNoiseUrl(url)) continue;
+    seen.add(url);
+    const sourceMatch = /<div[^>]+class="[^"]*keyword_source[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(block);
+    const timeMatch = /<div[^>]+class="[^"]*keyword_time[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(block);
+    const snippet = [cleanText(sourceMatch?.[1] || ""), cleanText(timeMatch?.[1] || "")].filter(Boolean).join(" | ");
+    results.push({ title, url, snippet });
+  }
+  if (results.length) return results;
+  return extractGenericLinks(section, Math.max(limit * 6, 12), "https://www.163.com").filter((item) => {
+    const host = safeHostname(item.url);
+    return host === "www.163.com" || host === "163.com" || host === "dy.163.com";
+  });
+}
+__name(extract163SearchResults, "extract163SearchResults");
+__name2(extract163SearchResults, "extract163SearchResults");
+async function searchSinaNews(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const data = await fetchJson(`https://search.sina.com.cn/api/news?q=${encodeURIComponent(query)}`);
+    const results = extractSinaNewsApiResults(data, limit);
+    if (results.length) {
+      return searchResult({ source: "sina_news", query, limit, results });
+    }
+  } catch {}
+  return searchResult({ source: "sina_news", query, limit, results: [], error: "sina API unavailable" });
+}
+__name(searchSinaNews, "searchSinaNews");
+__name2(searchSinaNews, "searchSinaNews");
+async function search163News(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    const { text: html } = await fetchTextWithResponse(`https://www.163.com/search?keyword=${encodeURIComponent(query)}`);
+    const results = extract163SearchResults(html, limit);
+    if (results.length) {
+      return searchResult({ source: "163_news", query, limit, results });
+    }
+  } catch {}
+  return searchResult({ source: "163_news", query, limit, results: [], error: "163 search unavailable" });
+}
+__name(search163News, "search163News");
+__name2(search163News, "search163News");
 async function searchPapersWithCode(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
