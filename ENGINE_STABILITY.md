@@ -312,3 +312,33 @@ Field rules:
 - `normalized_query`: Only present when the engine received a modified query (e.g., stripped channel words, token-filtered).
 - `error_type`: Non-null only when `status=hard_failure`.
 - `intent_signals`: Machine-readable list of which rules fired. Used for debugging and regression testing.
+
+---
+
+## Appendix C — Regression Testing
+
+**Script**: `tests/smoke_trace.mjs`  
+**Run**: `node tests/smoke_trace.mjs [BASE_URL]`  
+**Required**: Every change to `searchAuto` or engine dispatch must pass all assertions.
+
+### Invariant Assertions (6 categories, 12 checks)
+
+| # | Assertion | Smoke Query | Validates |
+|---|-----------|-------------|-----------|
+| 1 | No Level C in default mode | `weather london` | Hard Rule: A→B→C, C default disabled |
+| 2 | `hard_failure` must have `error_type` | `google search test` (full) | Failure classification correctness |
+| 3 | `normalized_query` excludes channel words | `pip requests` | Query normalization for alias engines |
+| 4a | Python lock: no npm/crates in first 3 | `pip requests` | Ecosystem locking |
+| 4b | JS lock: no crates/pypi_api in first 3 | `npm react` | Ecosystem locking |
+| 4c | Rust lock: no npm/pypi_api in first 3 | `cargo tokio` | Ecosystem locking |
+| 5a | pkg intent: no Level B HTML | `pip requests` | Intent gate |
+| 5b | academic intent: no Level B HTML | `transformer attention` | Intent gate |
+| 5c | tech intent: no Level B HTML | `rust tokio async` | Intent gate |
+| 6 | All attempts have required fields | `python flask tutorial` | Trace contract completeness |
+
+### Adding New Assertions
+
+When adding engines or changing dispatch logic, add a new test case that:
+1. Calls `search_auto` with a query that exercises the new behavior
+2. Asserts the trace output matches the expected pattern
+3. Documents the assertion purpose in this table
