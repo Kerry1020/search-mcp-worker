@@ -10,6 +10,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: cloudflare/wrangler-action@v3
+
+      - name: Inject build metadata
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          echo "Injecting BUILD_SHA=$SHORT_SHA BUILD_TIME=$BUILD_TIME"
+          sed -i "s/var BUILD_SHA = \"unknown\"/var BUILD_SHA = \"$SHORT_SHA\"/" src/index.js
+          sed -i "s/var BUILD_TIME = new Date().toISOString()/var BUILD_TIME = \"$BUILD_TIME\"/" src/index.js
+          grep "BUILD_SHA\|BUILD_TIME" src/index.js
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting for deployment to propagate..."
+          sleep 5
+          EXPECTED_SHA=$(grep "BUILD_SHA" src/index.js | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "Expected SHA: $EXPECTED_SHA"
+          HEALTH=$(curl -sf https://search-mcp.qdp.qzz.io/health || echo '{"ok":false}')
+          echo "Health response: $HEALTH"
+          ACTUAL_SHA=$(echo "$HEALTH" | python3 -c "import sys,json; print(json.load(sys.stdin).get('build',{}).get('sha','MISSING'))" 2>/dev/null || echo "PARSE_FAILED")
+          echo "Actual SHA: $ACTUAL_SHA"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "ERROR: SHA mismatch! Expected $EXPECTED_SHA, got $ACTUAL_SHA"
+            exit 1
+          fi
+          echo "✅ Deployment verified: SHA matches"
+
+      - name: Run smoke test
+        run: |
+          npm install node-fetch@3 || true
+          node tests/smoke_trace.mjs https://search-mcp.qdp.qzz.io || echo "⚠️ Smoke test failed (non-blocking for now)"

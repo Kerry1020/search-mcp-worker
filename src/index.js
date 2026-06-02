@@ -6,6 +6,8 @@ var __defProp2 = Object.defineProperty;
 var __name2 = /* @__PURE__ */ __name((target, value) => __defProp2(target, "name", { value, configurable: true }), "__name");
 var SERVER_NAME = "search-mcp-worker";
 var SERVER_VERSION = "0.7.4";
+var BUILD_SHA = "unknown";
+var BUILD_TIME = "unknown";
 var MAX_FETCH_BYTES = 512e3;
 var DEFAULT_TIMEOUT_MS = 12e3;
 var JSON_HEADERS = {
@@ -538,6 +540,7 @@ var worker_default = {
         ok: true,
         name: SERVER_NAME,
         version: SERVER_VERSION,
+        build: { sha: BUILD_SHA, time: BUILD_TIME },
         mcp_endpoint: `${url.origin}/mcp`,
         endpoints: ["/mcp", "/health", "/healthz"],
         tools: PUBLIC_TOOLS.map((tool) => tool.name)
