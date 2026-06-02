@@ -676,6 +676,50 @@ function isBadSearchResult(result) {
 }
 __name(isBadSearchResult, "isBadSearchResult");
 __name2(isBadSearchResult, "isBadSearchResult");
+function classifyResultQuality(result, query) {
+  // Quality gate: detect bogus/weak results at the result level
+  // Returns "good" | "weak" | "bogus"
+  if (!result || !Array.isArray(result.results) || result.results.length === 0) return "good";
+  const results = result.results;
+
+  // Bogus check: consent/challenge leak into results
+  const BOGUS_PATTERNS = /before you continue|accept all|verify you are human|privacy choices|privacykeuzes|collectconsent|guce\.yahoo|consent\.yahoo|captcha|are you a robot|attention required|cf-challenge/i;
+  for (const r of results) {
+    const text = `${r.title || ""} ${r.snippet || ""} ${r.url || ""}`;
+    if (BOGUS_PATTERNS.test(text)) return "bogus";
+  }
+
+  // Weak checks (only downgrade, not reject)
+  let weakReasons = 0;
+
+  // Check 1: empty titles
+  const emptyTitles = results.filter(r => !r.title || r.title.length < 3).length;
+  if (emptyTitles > results.length * 0.5) weakReasons++;
+
+  // Check 2: high URL duplication
+  const urls = results.map(r => (r.url || "").toLowerCase()).filter(Boolean);
+  const uniqueUrls = new Set(urls);
+  if (urls.length > 0 && uniqueUrls.size < urls.length * 0.5) weakReasons++;
+
+  // Check 3: keyword coverage (at least some results mention query terms)
+  if (query && query.length > 2) {
+    const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+    const matched = results.filter(r => {
+      const text = `${r.title || ""} ${r.snippet || ""} ${r.url || ""}`.toLowerCase();
+      return queryTerms.some(t => text.includes(t));
+    });
+    if (matched.length === 0 && results.length > 0) weakReasons++;
+  }
+
+  // Check 4: tracking/redirect domain concentration
+  const TRACKING_DOMAINS = /google\.com\/url|bing\.com\/ck\/a|click\.serv0\.com|redirect/i;
+  const trackingCount = results.filter(r => TRACKING_DOMAINS.test(r.url || "")).length;
+  if (trackingCount > results.length * 0.5) weakReasons++;
+
+  return weakReasons >= 2 ? "weak" : "good";
+}
+__name(classifyResultQuality, "classifyResultQuality");
+__name2(classifyResultQuality, "classifyResultQuality");
 async function searchAuto(args) {
   const LEVEL_A = ["hackernews", "reddit", "arxiv", "stackoverflow", "wikipedia", "npm", "github", "devto", "pubmed", "crates", "wikidata", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
   const LEVEL_B = ["sogou", "naver", "bing", "bing_news", "yahoo", "archive"];
@@ -836,14 +880,26 @@ async function searchAuto(args) {
       const normalizedQuery = engine === "pypi_api" ? queryStripped : String(args.query || "");
       attempts.push({ engine: "search_" + engine, level, ms, status: status2, error_type: errorType, result_count: resultCount, normalized_query: normalizedQuery !== String(args.query || "") ? normalizedQuery : undefined });
       if (!isBadSearchResult(result)) {
-        const final = {
-          ...result,
-          source: result.source || engine,
-          _trace: { attempts, mode: "auto", auto_mode: autoMode || "default", intent, intent_signals },
-          fallback_used: attempts.length > 1
-        };
-        setCache(cacheKey, final);
-        return final;
+        // Quality gate: detect bogus/weak results even when status appears success
+        const quality = classifyResultQuality(result, args.query || "");
+        if (quality === "bogus") {
+          // Consent/challenge leak detected in results — treat as hard_failure
+          status2 = "hard_failure";
+          errorType = "bogus_results_detected";
+          attempts[attempts.length - 1].status = "hard_failure";
+          attempts[attempts.length - 1].error_type = "bogus_results_detected";
+          attempts[attempts.length - 1].quality = "bogus";
+        } else {
+          if (quality === "weak") attempts[attempts.length - 1].quality = "weak";
+          const final = {
+            ...result,
+            source: result.source || engine,
+            _trace: { attempts, mode: "auto", auto_mode: autoMode || "default", intent, intent_signals },
+            fallback_used: attempts.length > 1
+          };
+          setCache(cacheKey, final);
+          return final;
+        }
       }
     } catch (error) {
       const ms = Date.now() - t0;
