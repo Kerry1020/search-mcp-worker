@@ -64,7 +64,7 @@ var TOOLS = [
   },
   {
     name: "search_duckduckgo",
-    description: "Search the web via DuckDuckGo HTML results. Good general fallback search.",
+    description: "⚠ Experimental. Frequently blocked by upstream. Search the web via DuckDuckGo HTML results. Good general fallback search.",
     inputSchema: querySchema({ region: true })
   },
   {
@@ -79,17 +79,17 @@ var TOOLS = [
   },
   {
     name: "search_google_web",
-    description: "Search the web via Google web results. May be rate limited; use DuckDuckGo/Bing as fallback.",
+    description: "⚠ Experimental. Frequently blocked by upstream. Search the web via Google web results. May be rate limited; use DuckDuckGo/Bing as fallback.",
     inputSchema: querySchema()
   },
   {
     name: "search_baidu",
-    description: "Search Chinese web results via Baidu.",
+    description: "⚠ Experimental. Frequently blocked by upstream. Search Chinese web results via Baidu.",
     inputSchema: querySchema()
   },
   {
     name: "search_yandex",
-    description: "Search the web via Yandex HTML results. Useful as an extra fallback when other engines fail.",
+    description: "⚠ Experimental. Frequently blocked by upstream. Search the web via Yandex HTML results. Useful as an extra fallback when other engines fail.",
     inputSchema: querySchema({ language: true })
   },
   {
@@ -256,7 +256,7 @@ var TOOLS = [
   },
   {
     name: "search_pypi",
-    description: "Search Python packages on PyPI via JSON API. Returns package names and summaries.",
+    description: "⚠ Experimental. HTML search frequently blocked; JSON API path is stable. Search Python packages on PyPI via JSON API. Returns package names and summaries.",
     inputSchema: querySchema()
   },
   {
@@ -677,13 +677,98 @@ function isBadSearchResult(result) {
 __name(isBadSearchResult, "isBadSearchResult");
 __name2(isBadSearchResult, "isBadSearchResult");
 async function searchAuto(args) {
-  const requested = Array.isArray(args.engines) ? args.engines : ["parallel", "ollama", "xiaohongshu", "bing", "brave", "sogou", "ecosia", "qwant", "naver", "baidu", "wikipedia", "duckduckgo", "google", "archive", "yahoo", "yandex"];
+  const LEVEL_A = ["hackernews", "reddit", "arxiv", "stackoverflow", "wikipedia", "npm", "github", "devto", "pubmed", "crates", "wikidata", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+  const LEVEL_B = ["sogou", "naver", "bing", "bing_news", "yahoo", "archive"];
+  const LEVEL_C = ["google", "google_web", "duckduckgo", "yandex", "baidu", "pypi"];
+  const ALL_LEVEL_C = new Set(LEVEL_C);
+  const autoMode = String(args.auto_mode || "").toLowerCase();
+  const query = String(args.query || "");
+  const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(query);
+  const ACADEMIC = /\b(paper|research|study|arxiv|journal|thesis|dissertation|实验|研究|论文|期刊)\b|\b(transformer|crispr|neural|quantum|architecture|off.target)\b/i.test(query);
+  const PKG_RAW = /\b(npm|pypi|pip|cargo|crate|gem|composer|packagist|maven|gradle)\b|\.js$|\.py$|\.rs$|\.ts$/i.test(query) || /\b(numpy|pandas|tensorflow|pytorch|react|vue|angular|django|flask|fastapi|express|webpack|vite|esbuild|axios|lodash|moment|rxjs|prisma|trpc|nextjs|nuxt|svelte)\b/i.test(query);
+  const GEO = /\b(map|location|地理|地图|地址|附近|餐厅|hotel|restaurant|city|country|城市|国家|field|油田|矿山)\b/i.test(query);
+  const NEWS = /\b(news|新闻|头条|最新|202[0-9]|breaking|today)\b|NVIDIA|AI regulation/i.test(query);
+  const TECH_TOKENS = /\b(Rust|Go|Python|Java|TypeScript|JavaScript|C\+\+|API|error|install|安装|pip|npm|cargo|docker|kubernetes|linux|git|编译|调试|debug|error|exception|stack)\b/i.test(query);
+  const CHANNEL_WORDS = /\b(npm|pip|pypi|cargo|crates|brew|apt|yarn|pnpm|安装|install|包|库|package|latest|version)\b/gi;
+  const queryStripped = query.replace(CHANNEL_WORDS, "").trim().replace(/\s+/g, " ");
+  const queryTokens = queryStripped.split(/\s+/).filter((t) => t.length > 0);
+  const isSingleToken = queryTokens.length === 1 && /^[a-z0-9][a-z0-9._-]{0,50}$/i.test(queryTokens[0]);
+  const ECOSYSTEM_PYTHON = /\b(pip|pypi|python|\.py|django|flask|fastapi|numpy|pandas|pytest|conda|requests|scrapy|celery|sqlalchemy|jinja|pillow|matplotlib|scipy)\b/i.test(query);
+  const ECOSYSTEM_JS = /\b(npm|pnpm|yarn|node|js|javascript|\.js$|\.ts$|react|vue|angular|nextjs|nuxt|svelte|webpack|vite|esbuild)\b/i.test(query);
+  const ECOSYSTEM_RUST = /\b(cargo|crates|rust|\.rs$|tokio|actix|serde)\b/i.test(query);
+  const ECOSYSTEM = ECOSYSTEM_PYTHON ? "python" : ECOSYSTEM_JS ? "js" : ECOSYSTEM_RUST ? "rust" : "unknown";
+  // Ecosystem detection promotes to PKG intent: if we detect python/js/rust signals, treat as package query
+  const PKG = PKG_RAW || ECOSYSTEM !== "unknown";
+  const intent_signals = [];
+  if (hasCJK) intent_signals.push("CJK:true");
+  if (ACADEMIC) intent_signals.push("ACADEMIC:true");
+  if (PKG_RAW) intent_signals.push("PKG:true");
+  if (ECOSYSTEM !== "unknown") intent_signals.push("ECOSYSTEM:" + ECOSYSTEM);
+  if (GEO) intent_signals.push("GEO:true");
+  if (NEWS) intent_signals.push("NEWS:true");
+  if (TECH_TOKENS) intent_signals.push("TECH_TOKEN:true");
+  if (queryTokens.length !== query.split(/\s+/).filter((t) => t.length > 0).length) intent_signals.push("STRIPPED_CHANNEL_WORDS");
+  if (isSingleToken) intent_signals.push("PKG_EXACT");
+  else if (PKG && queryTokens.length > 1) intent_signals.push("PKG_COMBO");
+  const intent = ACADEMIC ? "academic" : PKG ? (isSingleToken ? "pkg_exact" : "pkg_combo") : GEO ? "geo" : NEWS ? "news" : hasCJK && !TECH_TOKENS ? "cjk_general" : "general";
+  let orderedA = [...LEVEL_A];
+  if (intent === "academic") {
+    orderedA.sort((a, b) => {
+      const academicFirst = ["arxiv", "pubmed", "paperswithcode", "crossref", "wikipedia", "wikidata"];
+      return (academicFirst.includes(b) ? 1 : 0) - (academicFirst.includes(a) ? 1 : 0);
+    });
+  } else if (intent === "pkg_exact") {
+    if (ECOSYSTEM === "python") orderedA = ["pypi_api", "github", "stackoverflow", "reddit", "npm", "crates", "hackernews", "devto", "wikipedia", "wikidata", "arxiv", "pubmed", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+    else if (ECOSYSTEM === "js") orderedA = ["npm", "github", "stackoverflow", "devto", "reddit", "crates", "hackernews", "wikipedia", "wikidata", "arxiv", "pubmed", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+    else if (ECOSYSTEM === "rust") orderedA = ["crates", "github", "stackoverflow", "reddit", "npm", "hackernews", "devto", "wikipedia", "wikidata", "arxiv", "pubmed", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+    else orderedA = ["npm", "crates", "pypi_api", "github", "stackoverflow", "reddit", "hackernews", "devto", "wikipedia", "wikidata", "arxiv", "pubmed", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+  } else if (intent === "pkg_combo") {
+    if (ECOSYSTEM === "python") orderedA = ["pypi_api", "github", "stackoverflow", "reddit", "npm", "crates", "hackernews", "devto", "wikipedia", "wikidata", "arxiv", "pubmed", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+    else if (ECOSYSTEM === "js") orderedA = ["github", "stackoverflow", "devto", "npm", "reddit", "crates", "hackernews", "wikipedia", "wikidata", "arxiv", "pubmed", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+    else if (ECOSYSTEM === "rust") orderedA = ["crates", "github", "stackoverflow", "reddit", "npm", "hackernews", "devto", "wikipedia", "wikidata", "arxiv", "pubmed", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+    else orderedA = ["github", "stackoverflow", "reddit", "npm", "crates", "pypi_api", "hackernews", "devto", "wikipedia", "wikidata", "arxiv", "pubmed", "lemmy", "mastodon", "bbc", "paperswithcode", "crossref", "osm", "sec_edgar", "peertube", "openlibrary", "wiktionary", "musicbrainz"];
+  } else if (intent === "geo") {
+    orderedA.sort((a, b) => {
+      const geoFirst = ["osm", "wikipedia", "wikidata"];
+      return (geoFirst.includes(b) ? 1 : 0) - (geoFirst.includes(a) ? 1 : 0);
+    });
+  } else if (intent === "news") {
+    orderedA.sort((a, b) => {
+      const newsFirst = ["bbc", "reddit", "hackernews", "mastodon", "lemmy"];
+      return (newsFirst.includes(b) ? 1 : 0) - (newsFirst.includes(a) ? 1 : 0);
+    });
+  } else if (intent === "cjk_general") {
+    orderedA.sort((a, b) => {
+      const cjkFirst = ["wikipedia", "reddit", "wikidata", "stackoverflow"];
+      const cjkLast = ["hackernews", "devto", "npm", "crates"];
+      if (cjkFirst.includes(a)) return -1;
+      if (cjkFirst.includes(b)) return 1;
+      if (cjkLast.includes(a)) return 1;
+      if (cjkLast.includes(b)) return -1;
+      return 0;
+    });
+  } else {
+    orderedA.sort((a, b) => {
+      const generalFirst = ["wikipedia", "reddit", "stackoverflow", "hackernews"];
+      return (generalFirst.includes(b) ? 1 : 0) - (generalFirst.includes(a) ? 1 : 0);
+    });
+  }
+  const requested = Array.isArray(args.engines) ? args.engines : autoMode === "full" ? [...orderedA, ...LEVEL_B, ...LEVEL_C] : [...orderedA, ...LEVEL_B];
   const engines = requested.map((name) => String(name).toLowerCase()).filter(Boolean);
+  const exclude = new Set((Array.isArray(args.exclude_engines) ? args.exclude_engines : []).map((e) => String(e).toLowerCase().replace(/^search_/, "")));
+  const filteredEngines = engines.filter((e) => !exclude.has(e));
+  // Intent gate: skip Level B HTML search engines for structured/tech intents
+  // These engines return low-quality HTML results for package/academic/tech queries
+  // Exception: archive (Wayback Machine) kept for academic — useful for historical/paper sources
+  const LEVEL_B_HTML_GENERIC = new Set(["bing", "sogou", "naver", "yahoo", "bing_news"]);
+  const shouldGateHtml = intent === "pkg_exact" || intent === "pkg_combo" || intent === "academic" || (TECH_TOKENS && !hasCJK);
+  const gatedEngines = shouldGateHtml ? filteredEngines.filter((e) => !LEVEL_B_HTML_GENERIC.has(e)) : filteredEngines;
   const attempts = [];
-  const cacheKey = `auto:${engines.join(",")}:${args.query}:${args.limit || 5}`;
+  const cacheKey = `auto:${gatedEngines.join(",")}:${args.query}:${args.limit || 5}`;
   const cached = getCached(cacheKey);
   if (cached) return { ...cached, _cached: true };
-  for (const engine of engines) {
+  for (const engine of gatedEngines) {
+    const t0 = Date.now();
     try {
       let result;
       if (engine === "duckduckgo") result = await searchDuckDuckGo(args);
@@ -720,31 +805,61 @@ async function searchAuto(args) {
       else if (engine === "lemmy") result = await searchLemmy(args);
       else if (engine === "wikidata") result = await searchWikidata(args);
       else if (engine === "crates") result = await searchCrates(args);
-      else if (engine === "pypi") result = await searchPypi(args);
-      else continue;
-      attempts.push({ engine, ok: !isBadSearchResult(result), result_count: Array.isArray(result.results) ? result.results.length : 0 });
+      else if (engine === "pypi" || engine === "pypi_api") {
+        // Query normalization: pypi_api needs stripped query (no channel words like "pip"/"npm")
+        // All alias engines that need query normalization MUST use this pattern
+        // pkg_combo: use first token only for exact lookup (e.g. "numpy pandas" → "numpy")
+        // pkg_exact: use full stripped query (e.g. "requests")
+        const PKG_FN_WORDS = new Set(["groupby","merge","concat","sort","filter","map","reduce","apply","transform","fit","predict","train","timeout","install","setup","config","error","example","tutorial","usage","vs","compare"]);
+        let pypiQuery = queryStripped;
+        if (intent === "pkg_combo" && queryTokens.length > 1) {
+          const firstValidToken = queryTokens.find((t) => /^[a-z0-9][a-z0-9._-]{1,50}$/i.test(t) && !PKG_FN_WORDS.has(t.toLowerCase()));
+          pypiQuery = firstValidToken || "";
+          if (!pypiQuery) { /* skip pypi_api entirely for this attempt */ result = searchResult({ source: "pypi", query: queryStripped, limit: args.limit || 5, results: [] }); }
+        }
+        if (pypiQuery) result = await searchPypi({ ...args, query: pypiQuery, pypi_mode: engine === "pypi_api" ? "api" : "search" });
+      } else continue;
+      const ms = Date.now() - t0;
+      const level = ALL_LEVEL_C.has(engine) ? "C" : LEVEL_B.includes(engine) ? "B" : "A";
+      const isBad = isBadSearchResult(result);
+      const resultCount = Array.isArray(result.results) ? result.results.length : 0;
+      let status2 = "success";
+      let errorType = null;
+      if (result.ok === false && result.error) {
+        status2 = "hard_failure";
+        const errLower = String(result.error).toLowerCase();
+        errorType = errLower.includes("captcha") ? "captcha" : errLower.includes("challenge") ? "challenge" : errLower.includes("consent") ? "consent" : errLower.includes("upstream 4") ? "http_client_error" : errLower.includes("upstream 5") ? "http_server_error" : "unknown";
+      } else if (isBad) {
+        status2 = resultCount === 0 ? "empty" : "hard_failure";
+        if (status2 === "hard_failure") errorType = result.block_reason || "bad_results";
+      }
+      const normalizedQuery = engine === "pypi_api" ? queryStripped : String(args.query || "");
+      attempts.push({ engine: "search_" + engine, level, ms, status: status2, error_type: errorType, result_count: resultCount, normalized_query: normalizedQuery !== String(args.query || "") ? normalizedQuery : undefined });
       if (!isBadSearchResult(result)) {
         const final = {
           ...result,
           source: result.source || engine,
-          attempts,
+          _trace: { attempts, mode: "auto", auto_mode: autoMode || "default", intent, intent_signals },
           fallback_used: attempts.length > 1
         };
         setCache(cacheKey, final);
         return final;
       }
     } catch (error) {
-      attempts.push({ engine, ok: false, error: error?.message || "failed" });
+      const ms = Date.now() - t0;
+      const level = ALL_LEVEL_C.has(engine) ? "C" : LEVEL_B.includes(engine) ? "B" : "A";
+      attempts.push({ engine: "search_" + engine, level, ms, status: "hard_failure", error_type: error?.message || "unknown" });
     }
   }
   return {
     ok: false,
-    source: engines[0] || null,
+    source: filteredEngines[0] || null,
     query: typeof args.query === "string" ? args.query.trim() : "",
     results: [],
     attempts,
     fallback_used: attempts.length > 1,
-    error: attempts.length ? `No search engine returned parsed results. Tried: ${attempts.map((item) => item.error ? `${item.engine}: ${item.error}` : `${item.engine}: no useful parsed results`).join("; ")}` : "No search engines requested."
+    error: attempts.length ? `No search engine returned parsed results. Tried: ${attempts.map((item) => item.error ? `${item.engine}: ${item.error}` : `${item.engine}: no useful parsed results`).join("; ")}` : "No search engines requested.",
+    _trace: { attempts, mode: "auto", auto_mode: autoMode || "default", intent, intent_signals }
   };
 }
 __name(searchAuto, "searchAuto");
@@ -1589,22 +1704,33 @@ __name2(searchCrates, "searchCrates");
 async function searchPypi(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  try {
-    const data = await fetchJson(`https://pypi.org/search/?q=${encodeURIComponent(query)}&format=json`);
-    let results = [];
-    for (const item of data.items || data.results || []) {
-      if (results.length >= limit) break;
-      results.push({ title: `${item.name || item.project}@${item.version || ""}`, url: `https://pypi.org/project/${item.name || item.project}/`, snippet: item.summary || "" });
+  const apiOnly = args.pypi_mode === "api";
+  let searchPathError = null;
+  if (!apiOnly) {
+    try {
+      const data = await fetchJson(`https://pypi.org/search/?q=${encodeURIComponent(query)}&format=json`);
+      let results = [];
+      for (const item of data.items || data.results || []) {
+        if (results.length >= limit) break;
+        results.push({ title: `${item.name || item.project}@${item.version || ""}`, url: `https://pypi.org/project/${item.name || item.project}/`, snippet: item.summary || "" });
+      }
+      if (results.length) return searchResult({ source: "pypi", query, limit, results });
+    } catch (e) {
+      const msg = e?.message || "";
+      // Distinguish: HTML challenge page → "challenge"; JSON parse error → likely challenge; HTTP error → classified
+      searchPathError = /unexpected token|is not valid json|expected/i.test(msg) ? "challenge_page_detected"
+        : /upstream 4/.test(msg) ? msg
+        : /upstream 5/.test(msg) ? msg
+        : msg || "search_path_failed";
     }
-    if (results.length) return searchResult({ source: "pypi", query, limit, results });
-  } catch {
   }
   try {
     const data = await fetchJson(`https://pypi.org/pypi/${encodeURIComponent(query)}/json`);
     const info = data?.info || {};
     return searchResult({ source: "pypi", query, limit, results: [{ title: `${info.name}@${info.version}`, url: info.project_url || `https://pypi.org/project/${query}/`, snippet: info.summary || "" }] });
   } catch (e) {
-    return searchError("pypi", query, limit, e);
+    const combinedError = [searchPathError, e?.message || "exact_path_failed"].filter(Boolean).join("; search_path: ");
+    return searchError("pypi", query, limit, combinedError);
   }
 }
 __name(searchPypi, "searchPypi");
@@ -2143,18 +2269,21 @@ __name(searchResult, "searchResult");
 __name2(searchResult, "searchResult");
 function formatSearchResponse(result) {
   if (!result.results.length) {
-    if (result.blocked && result.block_reason) {
-      return `${capitalize(result.source || "search")} search for "${result.query}" is blocked by upstream: ${result.block_reason}.`;
-    }
-    return result.error || `${capitalize(result.source || "search")} search for "${result.query}" returned no parsed results.`;
+    const base = result.blocked && result.block_reason ? `${capitalize(result.source || "search")} search for "${result.query}" is blocked by upstream: ${result.block_reason}.` : result.error || `${capitalize(result.source || "search")} search for "${result.query}" returned no parsed results.`;
+    if (result._trace) return base + "\n\n--- trace ---\n" + JSON.stringify(result._trace, null, 2);
+    return base;
   }
-  return [
+  const lines = [
     `${capitalize(result.source || "search")} search results for "${result.query}":`,
     "",
     ...result.results.map((item, index) => `${index + 1}. ${item.title}
 ${item.url}
 ${item.snippet || ""}`)
-  ].join("\n");
+  ];
+  if (result._trace) {
+    lines.push("", "--- trace ---", JSON.stringify(result._trace, null, 2));
+  }
+  return lines.join("\n");
 }
 __name(formatSearchResponse, "formatSearchResponse");
 __name2(formatSearchResponse, "formatSearchResponse");
@@ -2230,8 +2359,14 @@ ${html}`.toLowerCase();
     if (finalHost.endsWith("bing.com") && /(?:id|class)=["'][^"']*(?:b_captcha|b_cf|captcha)[^"']*["']/.test(haystack)) {
       return { blocked: true, reason: "captcha_or_verification" };
     }
-    if (/our systems have detected unusual traffic|verify you are human|please solve the challenge below/.test(haystack)) {
+    if (/our systems have detected unusual traffic|verify you are human|please solve the challenge below/i.test(haystack)) {
       return { blocked: true, reason: "captcha_or_verification" };
+    }
+    // Bing consent: require URL signal + text signal (avoid false positive on normal pages)
+    const hasConsentUrl = /bing\.com\/secure|\/consent/i.test(finalUrl);
+    const hasConsentText = /before you continue|accept all|customize preferences|ccpaNotice|ccpa-consent/i.test(haystack);
+    if (hasConsentUrl && hasConsentText) {
+      return { blocked: true, reason: "consent_page" };
     }
   }
   if (engine === "yahoo") {
