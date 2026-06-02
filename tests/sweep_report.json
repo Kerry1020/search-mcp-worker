@@ -2,7 +2,7 @@
   {
     "provider": "search_sogou",
     "level": "B",
-    "query": "天气预报",
+    "query": "天气预报 明天",
     "result_count": 3,
     "issues": [],
     "status": "PASS"
@@ -10,7 +10,7 @@
   {
     "provider": "search_naver",
     "level": "B",
-    "query": "한국 날씨",
+    "query": "날씨",
     "result_count": 3,
     "issues": [],
     "status": "PASS"
@@ -18,7 +18,7 @@
   {
     "provider": "search_bing",
     "level": "B",
-    "query": "python tutorial",
+    "query": "how to bake bread",
     "result_count": 3,
     "issues": [],
     "status": "PASS"
@@ -26,7 +26,7 @@
   {
     "provider": "search_bing_news",
     "level": "B",
-    "query": "AI news",
+    "query": "space exploration",
     "result_count": 3,
     "issues": [],
     "status": "PASS"
@@ -34,7 +34,7 @@
   {
     "provider": "search_yahoo",
     "level": "B",
-    "query": "best laptops 2026",
+    "query": "history of Rome",
     "result_count": 0,
     "issues": [],
     "status": "EMPTY_OK"
@@ -50,7 +50,7 @@
   {
     "provider": "search_google_web",
     "level": "C",
-    "query": "test query",
+    "query": "hello world",
     "result_count": 0,
     "issues": [],
     "status": "EMPTY_OK"
@@ -58,7 +58,7 @@
   {
     "provider": "search_duckduckgo",
     "level": "C",
-    "query": "test query",
+    "query": "hello world",
     "result_count": 0,
     "issues": [],
     "status": "EMPTY_OK"
@@ -66,7 +66,7 @@
   {
     "provider": "search_yandex",
     "level": "C",
-    "query": "test query",
+    "query": "hello world",
     "result_count": 0,
     "issues": [],
     "status": "EMPTY_OK"
@@ -74,15 +74,15 @@
   {
     "provider": "search_baidu",
     "level": "C",
-    "query": "测试查询",
-    "result_count": 3,
+    "query": "你好世界",
+    "result_count": 0,
     "issues": [],
-    "status": "PASS"
+    "status": "EMPTY_OK"
   },
   {
     "provider": "search_pypi",
     "level": "C",
-    "query": "requests",
+    "query": "flask",
     "result_count": 1,
     "issues": [],
     "status": "PASS"
@@ -90,8 +90,9 @@
   {
     "provider": "search_arxiv",
     "level": "A",
-    "query": "transformer attention",
+    "query": "attention is all you need",
     "status": "ERROR",
+    "result_count": 0,
     "issues": [
       "fetch failed"
     ]
@@ -99,16 +100,17 @@
   {
     "provider": "search_crossref",
     "level": "A",
-    "query": "machine learning",
+    "query": "deep learning nature",
     "status": "ERROR",
+    "result_count": 0,
     "issues": [
-      "fetch failed"
+      null
     ]
   },
   {
     "provider": "search_pubmed",
     "level": "A",
-    "query": "covid vaccine",
+    "query": "CRISPR gene editing",
     "result_count": 3,
     "issues": [],
     "status": "PASS"
@@ -116,18 +118,22 @@
   {
     "provider": "search_paperswithcode",
     "level": "A",
-    "query": "object detection",
-    "result_count": 3,
-    "issues": [],
-    "status": "PASS"
+    "query": "object detection YOLO",
+    "status": "ERROR",
+    "result_count": 0,
+    "issues": [
+      "fetch failed"
+    ]
   },
   {
     "provider": "search_wikipedia",
     "level": "A",
     "query": "quantum computing",
-    "result_count": 3,
-    "issues": [],
-    "status": "PASS"
+    "status": "ERROR",
+    "result_count": 0,
+    "issues": [
+      "fetch failed"
+    ]
   },
   {
     "provider": "search_wikidata",
@@ -141,9 +147,11 @@
     "provider": "search_wiktionary",
     "level": "A",
     "query": "serendipity",
-    "result_count": 5,
-    "issues": [],
-    "status": "PASS"
+    "status": "ERROR",
+    "result_count": 0,
+    "issues": [
+      null
+    ]
   },
   {
     "provider": "search_openlibrary",
@@ -204,7 +212,7 @@
   {
     "provider": "search_reddit",
     "level": "A",
-    "query": "machine learning",
+    "query": "r/programming rust",
     "result_count": 0,
     "issues": [],
     "status": "EMPTY_OK"
@@ -212,7 +220,7 @@
   {
     "provider": "search_lemmy",
     "level": "A",
-    "query": "linux",
+    "query": "linux desktop",
     "result_count": 3,
     "issues": [],
     "status": "PASS"
@@ -220,7 +228,7 @@
   {
     "provider": "search_mastodon",
     "level": "A",
-    "query": "open source",
+    "query": "open source software",
     "result_count": 3,
     "issues": [],
     "status": "PASS"
@@ -228,7 +236,7 @@
   {
     "provider": "search_peertube",
     "level": "A",
-    "query": "programming",
+    "query": "programming tutorial",
     "result_count": 3,
     "issues": [],
     "status": "PASS"
@@ -264,13 +272,5 @@
     "result_count": 3,
     "issues": [],
     "status": "PASS"
-  },
-  {
-    "provider": "search_instant_answer",
-    "level": "A",
-    "query": "capital of France",
-    "result_count": 0,
-    "issues": [],
-    "status": "EMPTY_OK"
   }
 ]
