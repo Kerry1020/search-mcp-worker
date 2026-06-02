@@ -760,7 +760,12 @@ async function searchAuto(args) {
   if (queryTokens.length !== query.split(/\s+/).filter((t) => t.length > 0).length) intent_signals.push("STRIPPED_CHANNEL_WORDS");
   if (isSingleToken) intent_signals.push("PKG_EXACT");
   else if (PKG && queryTokens.length > 1) intent_signals.push("PKG_COMBO");
-  const intent = ACADEMIC ? "academic" : PKG ? (isSingleToken ? "pkg_exact" : "pkg_combo") : GEO ? "geo" : NEWS ? "news" : hasCJK && !TECH_TOKENS ? "cjk_general" : "general";
+  const HOWTO = /\bhow\s+to\b|\btutorial\b|\brecipe\b|\bguide\b|\b步骤\b|\b教程\b|\b怎么做\b/i.test(query);
+  const ACADEMIC_ENGINES = new Set(["arxiv", "pubmed", "paperswithcode", "crossref"]);
+  const SHORT_AMBIGUOUS = queryTokens.length === 1 && queryTokens[0].length <= 6 && ECOSYSTEM === "unknown" && !TECH_TOKENS && !ACADEMIC && !PKG && !GEO && !NEWS;
+  const intent = ACADEMIC ? "academic" : HOWTO ? "howto" : PKG ? (isSingleToken ? "pkg_exact" : "pkg_combo") : GEO ? "geo" : NEWS ? "news" : hasCJK && !TECH_TOKENS ? "cjk_general" : SHORT_AMBIGUOUS ? "short_ambiguous" : "general";
+  if (HOWTO) intent_signals.push("HOWTO:true");
+  if (SHORT_AMBIGUOUS) intent_signals.push("SHORT_AMBIGUOUS:true");
   let orderedA = [...LEVEL_A];
   if (intent === "academic") {
     orderedA.sort((a, b) => {
@@ -797,8 +802,33 @@ async function searchAuto(args) {
       if (cjkLast.includes(b)) return -1;
       return 0;
     });
-  } else {
+  } else if (intent === "howto") {
+    // How-to queries: prefer experience/tutorial sources, demote community discussion
     orderedA.sort((a, b) => {
+      const howtoFirst = ["stackoverflow", "reddit", "wikipedia", "devto", "wikidata"];
+      const howtoLast = ["lemmy", "mastodon", "peertube"];
+      // Academic engines last for howto
+      if (ACADEMIC_ENGINES.has(a)) return 1;
+      if (ACADEMIC_ENGINES.has(b)) return -1;
+      if (howtoFirst.includes(a)) return -1;
+      if (howtoFirst.includes(b)) return 1;
+      if (howtoLast.includes(a)) return 1;
+      if (howtoLast.includes(b)) return -1;
+      return 0;
+    });
+  } else if (intent === "short_ambiguous") {
+    // Short ambiguous words (apple, rust, go): wiki first, academic last
+    orderedA.sort((a, b) => {
+      if (ACADEMIC_ENGINES.has(a)) return 1;
+      if (ACADEMIC_ENGINES.has(b)) return -1;
+      const wikiFirst = ["wikipedia", "wikidata", "reddit", "stackoverflow", "hackernews"];
+      return (wikiFirst.includes(b) ? 1 : 0) - (wikiFirst.includes(a) ? 1 : 0);
+    });
+  } else {
+    // General: wiki/community first, academic engines demoted to end
+    orderedA.sort((a, b) => {
+      if (ACADEMIC_ENGINES.has(a) && !ACADEMIC) return 1;
+      if (ACADEMIC_ENGINES.has(b) && !ACADEMIC) return -1;
       const generalFirst = ["wikipedia", "reddit", "stackoverflow", "hackernews"];
       return (generalFirst.includes(b) ? 1 : 0) - (generalFirst.includes(a) ? 1 : 0);
     });
