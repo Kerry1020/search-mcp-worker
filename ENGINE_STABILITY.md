@@ -342,3 +342,21 @@ When adding engines or changing dispatch logic, add a new test case that:
 1. Calls `search_auto` with a query that exercises the new behavior
 2. Asserts the trace output matches the expected pattern
 3. Documents the assertion purpose in this table
+
+## Appendix D: Web-First Contract (不可变)
+
+**此约束不可被任何 PR / intent / auto_mode 覆盖。**
+
+### 规则
+1. `search_auto` 默认入口必须是网页搜索引擎（bing/yahoo/sogou/naver/brave/duckduckgo/google/baidu）
+2. 结构化/垂直源（wikipedia/github/stackoverflow/npm/arxiv 等）只在以下情况出场：
+   - `auto_mode=full` 明确请求
+   - Web 引擎全部返回 red/junk/blocked
+   - 特定 intent（developer/news/Chinese）在 web 引擎后作为补充
+3. sina_news/163_news 只在 news intent 或 CJK query 中出现，不进入 general 默认链
+4. site: 查询走 web 引擎的 site-targeted 路径（已实现）
+
+### 验收
+- `defaultSearchAutoEngines("weather london")` 首发引擎必须是 web 搜索引擎
+- `defaultSearchAutoEngines("pip install")` 首发引擎可含结构化源（developer intent）
+- 任何 PR 违反此约束 = 拒绝合并
