@@ -758,11 +758,11 @@ async function searchAuto(args) {
   if (NEWS) intent_signals.push("NEWS:true");
   if (TECH_TOKENS) intent_signals.push("TECH_TOKEN:true");
   if (queryTokens.length !== query.split(/\s+/).filter((t) => t.length > 0).length) intent_signals.push("STRIPPED_CHANNEL_WORDS");
-  if (isSingleToken) intent_signals.push("PKG_EXACT");
+  if (PKG && isSingleToken) intent_signals.push("PKG_EXACT");
   else if (PKG && queryTokens.length > 1) intent_signals.push("PKG_COMBO");
   const HOWTO = /\bhow\s+to\b|\btutorial\b|\brecipe\b|\bguide\b|\b步骤\b|\b教程\b|\b怎么做\b/i.test(query);
   const ACADEMIC_ENGINES = new Set(["arxiv", "pubmed", "paperswithcode", "crossref"]);
-  const SHORT_AMBIGUOUS = queryTokens.length === 1 && queryTokens[0].length <= 6 && ECOSYSTEM === "unknown" && !TECH_TOKENS && !ACADEMIC && !PKG && !GEO && !NEWS;
+  const SHORT_AMBIGUOUS = queryTokens.length === 1 && queryTokens[0].length <= 8 && ECOSYSTEM === "unknown" && !TECH_TOKENS && !ACADEMIC && !PKG && !GEO && !NEWS;
   const intent = ACADEMIC ? "academic" : HOWTO ? "howto" : PKG ? (isSingleToken ? "pkg_exact" : "pkg_combo") : GEO ? "geo" : NEWS ? "news" : hasCJK && !TECH_TOKENS ? "cjk_general" : SHORT_AMBIGUOUS ? "short_ambiguous" : "general";
   if (HOWTO) intent_signals.push("HOWTO:true");
   if (SHORT_AMBIGUOUS) intent_signals.push("SHORT_AMBIGUOUS:true");
