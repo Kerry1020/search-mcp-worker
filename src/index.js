@@ -3184,36 +3184,54 @@ function randomGsaUA() {
 __name(randomGsaUA, "randomGsaUA");
 __name2(randomGsaUA, "randomGsaUA");
 async function fetchWithUA(url, headers, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort("timeout"), options.timeoutMs || DEFAULT_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers,
-      redirect: "follow"
-    });
-    if (!response.ok) throw new Error(`upstream ${response.status} for ${url}`);
-    const maxBytes = options.maxBytes || MAX_FETCH_BYTES;
-    const reader = response.body?.getReader();
-    if (!reader) return { text: await response.text(), response };
-    const chunks = [];
-    let size = 0;
-    while (size < maxBytes) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      size += value.byteLength;
+  const retries = options.retries ?? 1;
+  const baseDelay = options.retryDelay ?? 200;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort("timeout"), options.timeoutMs || DEFAULT_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers,
+        redirect: "follow"
+      });
+      if (!response.ok && [502, 503, 504].includes(response.status) && attempt < retries) {
+        clearTimeout(timer);
+        const sleep = baseDelay * Math.pow(2, attempt) + Math.random() * 50;
+        await new Promise((r) => setTimeout(r, sleep));
+        continue;
+      }
+      if (!response.ok) throw new Error(`upstream ${response.status} for ${url}`);
+      const maxBytes = options.maxBytes || MAX_FETCH_BYTES;
+      const reader = response.body?.getReader();
+      if (!reader) return { text: await response.text(), response };
+      const chunks = [];
+      let size = 0;
+      while (size < maxBytes) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        size += value.byteLength;
+      }
+      const merged = new Uint8Array(Math.min(size, maxBytes));
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk.slice(0, merged.length - offset), offset);
+        offset += chunk.byteLength;
+        if (offset >= merged.length) break;
+      }
+      return { text: new TextDecoder().decode(merged), response };
+    } catch (err) {
+      clearTimeout(timer);
+      if (attempt < retries && err.name !== "AbortError") {
+        const sleep = baseDelay * Math.pow(2, attempt) + Math.random() * 50;
+        await new Promise((r) => setTimeout(r, sleep));
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    const merged = new Uint8Array(Math.min(size, maxBytes));
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk.slice(0, merged.length - offset), offset);
-      offset += chunk.byteLength;
-      if (offset >= merged.length) break;
-    }
-    return { text: new TextDecoder().decode(merged), response };
-  } finally {
-    clearTimeout(timer);
   }
 }
 __name(fetchWithUA, "fetchWithUA");
