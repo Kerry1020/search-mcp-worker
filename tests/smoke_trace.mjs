@@ -7,6 +7,9 @@ const BASE = process.argv[2] || "https://search-mcp.qdp.qzz.io";
 const STRICT = process.env.CI_STRICT_NETWORKING === "true";
 
 let passed = 0, failed = 0, warned = 0;
+const parserStats = { exact: 0, skeleton_fallback: 0, unknown: 0 };
+const engineParserHistory = {};
+
 function assert(name, ok, detail = "") {
   if (ok) { passed++; console.log(`  ✅ ${name}`); }
   else { failed++; console.log(`  ❌ ${name}${detail ? " — " + detail : ""}`); }
@@ -16,7 +19,7 @@ function warn(name, ok, detail = "") {
   else { warned++; console.log(`  ⚠️  ${name} (non-blocking)${detail ? " — " + detail : ""}`); }
 }
 
-async function callTool(tool, args, timeoutMs = 15000) {
+async function callToolRaw(tool, args, timeoutMs = 15000) {
   const body = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: tool, arguments: args } };
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -24,13 +27,26 @@ async function callTool(tool, args, timeoutMs = 15000) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs)
       });
-      const json = await res.json();
-      return json.result?.content?.[0]?.text || "";
+      return await res.json();
     } catch (e) {
-      if (attempt === 1) return `FETCH_ERROR: ${e.message}`;
+      if (attempt === 1) return { error: { message: e.message } };
       await new Promise(r => setTimeout(r, 2000));
     }
   }
+}
+
+async function callTool(tool, args, timeoutMs = 15000) {
+  const json = await callToolRaw(tool, args, timeoutMs);
+  return json.result?.content?.[0]?.text || "";
+}
+
+function recordParser(engine, json) {
+  const sc = json.result?.structuredContent;
+  const parser = sc?._meta?.parser
+    || (sc?.results?.length ? "exact" : "unknown");
+  if (!engineParserHistory[engine]) engineParserHistory[engine] = [];
+  engineParserHistory[engine].push(parser);
+  parserStats[parser] = (parserStats[parser] || 0) + 1;
 }
 
 function hasResults(text) {
@@ -57,30 +73,61 @@ function hasResults(text) {
 
   // 2. sina_news returns Chinese news
   console.log("\n=== 2. sina_news — Chinese news search ===");
-  const sina = await callTool("search_sina_news", { query: "高考作文", limit: 3 });
+  const sinaRaw = await callToolRaw("search_sina_news", { query: "高考作文", limit: 3 });
+  const sina = sinaRaw.result?.content?.[0]?.text || "";
+  recordParser("sina_news", sinaRaw);
   assert("sina_news returns results", hasResults(sina), sina.slice(0, 100));
   assert("sina_news not blocked", !sina.includes("blocked") || sina.includes("0 results") === false);
 
   // 3. 163_news returns Chinese news
   console.log("\n=== 3. 163_news — Chinese news search ===");
-  const n163 = await callTool("search_163_news", { query: "上海天气", limit: 3 });
+  const n163Raw = await callToolRaw("search_163_news", { query: "上海天气", limit: 3 });
+  const n163 = n163Raw.result?.content?.[0]?.text || "";
+  recordParser("163_news", n163Raw);
   assert("163_news returns results", hasResults(n163), n163.slice(0, 100));
   assert("163_news not blocked", !n163.includes("blocked") || n163.includes("0 results") === false);
 
   // 4. search_auto returns results for general query (network-dependent in CI)
   console.log(`\n=== 4. search_auto — general query (${STRICT ? "strict" : "non-blocking"}) ===`);
-  const auto1 = await callTool("search_auto", { query: "weather london", limit: 3 }, 30000);
+  const auto1Raw = await callToolRaw("search_auto", { query: "weather london", limit: 3 }, 30000);
+  const auto1 = auto1Raw.result?.content?.[0]?.text || "";
+  recordParser("search_auto_en", auto1Raw);
   (STRICT ? assert : warn)("search_auto returns results or has trace", hasResults(auto1) || auto1.includes("trace"), auto1.slice(0, 100));
 
   // 5. search_auto returns results for Chinese query (network-dependent in CI)
   console.log(`\n=== 5. search_auto — Chinese query (${STRICT ? "strict" : "non-blocking"}) ===`);
-  const auto2 = await callTool("search_auto", { query: "高考作文", limit: 3 }, 30000);
+  const auto2Raw = await callToolRaw("search_auto", { query: "高考作文", limit: 3 }, 30000);
+  const auto2 = auto2Raw.result?.content?.[0]?.text || "";
+  recordParser("search_auto_cjk", auto2Raw);
   (STRICT ? assert : warn)("search_auto CJK returns results", hasResults(auto2) || auto2.includes("trace"), auto2.slice(0, 100));
 
   // 6. search_pypi returns package info
   console.log("\n=== 6. search_pypi — package search ===");
-  const pypi = await callTool("search_pypi", { query: "requests", limit: 3 });
+  const pypiRaw = await callToolRaw("search_pypi", { query: "requests", limit: 3 });
+  const pypi = pypiRaw.result?.content?.[0]?.text || "";
+  recordParser("pypi", pypiRaw);
   assert("search_pypi returns results", hasResults(pypi), pypi.slice(0, 100));
+
+  // === Parser observability report ===
+  console.log("\n=== 📊 Parser Observability Report ===");
+  const totalParsed = parserStats.exact + parserStats.skeleton_fallback + (parserStats.unknown || 0);
+  console.log(`  exact: ${parserStats.exact} | skeleton_fallback: ${parserStats.skeleton_fallback} | unknown: ${parserStats.unknown || 0} (total: ${totalParsed})`);
+  for (const [eng, hist] of Object.entries(engineParserHistory)) {
+    console.log(`  ${eng}: [${hist.join(", ")}]`);
+  }
+
+  // Degradation alert: core engines at 100% skeleton_fallback
+  const coreEngines = ["baidu", "bing", "google_web", "duckduckgo"];
+  let degradedEngines = [];
+  for (const [eng, hist] of Object.entries(engineParserHistory)) {
+    if (hist.length > 0 && hist.every(p => p === "skeleton_fallback") && coreEngines.some(c => eng.includes(c))) {
+      degradedEngines.push(eng);
+    }
+  }
+  if (degradedEngines.length > 0) {
+    console.error(`\n🚨 DEGRADATION ALERT: core engines at 100% skeleton_fallback: ${degradedEngines.join(", ")}`);
+    console.error("   Primary CSS selectors may be stale — parser update needed.");
+  }
 
   console.log(`\n${"=".repeat(50)}`);
   console.log(`Results: ${passed} passed, ${failed} failed, ${warned} warnings`);
