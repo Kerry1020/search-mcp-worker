@@ -860,13 +860,11 @@ function isIntentMismatchResult(item, query, engine = "") {
   }
   if (engine === "bbc") {
     const queryTokens = tokenizeSearchText(query);
-    const alphaTokens = queryTokens.filter((token) => /[a-z]/i.test(token));
-    const numericTokens = queryTokens.filter((token) => /\d/.test(token));
-    if (!alphaTokens.length || !numericTokens.length) return false;
+    const alphaTokens = queryTokens.filter((token) => /[a-z]/i.test(token) && token.length >= 3);
+    if (!alphaTokens.length) return false;
     const rawContent = ` ${contentText.replace(/[^\p{L}\p{N}]+/gu, " ")} `;
     const alphaMatches = alphaTokens.filter((token) => rawContent.includes(` ${token} `)).length;
-    const numericMatches = numericTokens.filter((token) => rawContent.includes(` ${token} `) || contentText.includes(token)).length;
-    return alphaMatches === 0 && numericMatches > 0;
+    return alphaMatches === 0;
   }
   if (engine === "pubmed" || engine === "arxiv" || engine === "paperswithcode") {
     const techSignals = /\b(?:protocol|server|framework|library|package|api|sdk|github|npm|pip|install|json|rpc|http|websocket|config|deploy|docker|kubernetes|programming|software|code|repository|module|plugin)\b/i.test(queryText);
