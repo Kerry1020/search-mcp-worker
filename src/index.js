@@ -3408,16 +3408,17 @@ function searchResult({ source, query, limit, results, blocked, block_reason, ..
 __name(searchResult, "searchResult");
 __name2(searchResult, "searchResult");
 function formatSearchResponse(result) {
+  const ts = `[${new Date().toISOString()}]`;
   if (!result.results.length) {
     if (result.blocked && result.block_reason) {
-      return `${capitalize(result.source || "search")} search for "${result.query}" is blocked by upstream: ${result.block_reason}.`;
+      return `${ts} ${capitalize(result.source || "search")} search for "${result.query}" is blocked by upstream: ${result.block_reason}.`;
     }
-    return result.error || `${capitalize(result.source || "search")} search for "${result.query}" returned no parsed results.`;
+    return `${ts} ${result.error || `${capitalize(result.source || "search")} search for "${result.query}" returned no parsed results.`}`;
   }
   const isAggregated = result.source === "auto" || Array.isArray(result.sources) && result.sources.length > 1;
   const heading = isAggregated ? `Auto aggregated search results for "${result.query}":` : `${capitalize(result.source || "search")} search results for "${result.query}":`;
   return [
-    heading,
+    `${ts} ${heading}`,
     "",
     ...result.results.map((item, index) => {
       const itemSources = Array.isArray(item.sources) ? item.sources.filter(Boolean) : [];
@@ -3431,19 +3432,19 @@ ${item.snippet || ""}`;
 __name(formatSearchResponse, "formatSearchResponse");
 __name2(formatSearchResponse, "formatSearchResponse");
 function formatGitHubFileResponse(result) {
-  return `# ${result.owner}/${result.repo}/${result.path}@${result.ref}
+  return `[${new Date().toISOString()}] ${result.owner}/${result.repo}/${result.path}@${result.ref}
 
 ${result.content}`;
 }
 __name(formatGitHubFileResponse, "formatGitHubFileResponse");
 __name2(formatGitHubFileResponse, "formatGitHubFileResponse");
 function formatMetadataResponse(result) {
-  return JSON.stringify(result, null, 2);
+  return `[${new Date().toISOString()}]\n${JSON.stringify(result, null, 2)}`;
 }
 __name(formatMetadataResponse, "formatMetadataResponse");
 __name2(formatMetadataResponse, "formatMetadataResponse");
 function formatFetchUrlResponse(result) {
-  return `# ${result.title}
+  return `[${new Date().toISOString()}] ${result.title}
 
 URL: ${result.url}
 Final URL: ${result.finalUrl}
@@ -3453,7 +3454,7 @@ ${result.text}`;
 __name(formatFetchUrlResponse, "formatFetchUrlResponse");
 __name2(formatFetchUrlResponse, "formatFetchUrlResponse");
 function formatDebugCaptureResponse(result) {
-  return JSON.stringify(result, null, 2);
+  return `[${new Date().toISOString()}]\n${JSON.stringify(result, null, 2)}`;
 }
 __name(formatDebugCaptureResponse, "formatDebugCaptureResponse");
 __name2(formatDebugCaptureResponse, "formatDebugCaptureResponse");
