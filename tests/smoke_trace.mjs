@@ -16,13 +16,13 @@ function warn(name, ok, detail = "") {
   else { warned++; console.log(`  ⚠️  ${name} (non-blocking)${detail ? " — " + detail : ""}`); }
 }
 
-async function callTool(tool, args) {
+async function callTool(tool, args, timeoutMs = 15000) {
   const body = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: tool, arguments: args } };
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch(`${BASE}/mcp`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body), signal: AbortSignal.timeout(15000)
+        body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs)
       });
       const json = await res.json();
       return json.result?.content?.[0]?.text || "";
@@ -41,7 +41,13 @@ function hasResults(text) {
   // 1. Health check: build.sha must be set (not "unknown")
   console.log("\n=== 1. Health check: SHA must be set ===");
   try {
-    const health = await (await fetch(`${BASE}/health`)).json();
+    let health;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        health = await (await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(8000) })).json();
+        break;
+      } catch (e) { if (attempt === 2) throw e; await new Promise(r => setTimeout(r, 1000)); }
+    }
     assert("health.ok is true", health.ok === true);
     assert("build.sha is not unknown", health.build?.sha && health.build.sha !== "unknown", health.build?.sha || "missing");
     assert("build.time is set", !!health.build?.time, health.build?.time || "missing");
@@ -63,12 +69,12 @@ function hasResults(text) {
 
   // 4. search_auto returns results for general query (network-dependent in CI)
   console.log(`\n=== 4. search_auto — general query (${STRICT ? "strict" : "non-blocking"}) ===`);
-  const auto1 = await callTool("search_auto", { query: "weather london", limit: 3 });
+  const auto1 = await callTool("search_auto", { query: "weather london", limit: 3 }, 30000);
   (STRICT ? assert : warn)("search_auto returns results or has trace", hasResults(auto1) || auto1.includes("trace"), auto1.slice(0, 100));
 
   // 5. search_auto returns results for Chinese query (network-dependent in CI)
   console.log(`\n=== 5. search_auto — Chinese query (${STRICT ? "strict" : "non-blocking"}) ===`);
-  const auto2 = await callTool("search_auto", { query: "高考作文", limit: 3 });
+  const auto2 = await callTool("search_auto", { query: "高考作文", limit: 3 }, 30000);
   (STRICT ? assert : warn)("search_auto CJK returns results", hasResults(auto2) || auto2.includes("trace"), auto2.slice(0, 100));
 
   // 6. search_pypi returns package info
