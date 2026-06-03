@@ -4088,7 +4088,7 @@ function decodeSogouUrl(href) {
 __name(decodeSogouUrl, "decodeSogouUrl");
 __name2(decodeSogouUrl, "decodeSogouUrl");
 function isSogouNoiseUrl(url) {
-  return /(?:^|\.)sogou\.com$/i.test(safeHostname(url)) && /\/link(?:\?|$)|\/web\?|\/sogou\?/i.test(String(url || ""));
+  return /(?:^|\.)sogou\.com$/i.test(safeHostname(url)) && /\/link(?:\?|$)|\/web\?|\/sogou\?|\/\?(?:.*&)?s_from=/i.test(String(url || ""));
 }
 __name(isSogouNoiseUrl, "isSogouNoiseUrl");
 __name2(isSogouNoiseUrl, "isSogouNoiseUrl");
