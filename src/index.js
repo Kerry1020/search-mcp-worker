@@ -941,17 +941,19 @@ function isClearCjkMismatchResult(item, query, engine = "") {
 __name(isClearCjkMismatchResult, "isClearCjkMismatchResult");
 __name2(isClearCjkMismatchResult, "isClearCjkMismatchResult");
 function isHardIntentMismatchResult(item, query, engine = "") {
-  if (!hasCjkText(query)) return false;
-  if (isClearCjkMismatchResult(item, query, engine)) return true;
-  const queryTokens = tokenizeSearchText(query).filter((t) => t.length >= 2);
-  if (!queryTokens.length) return false;
-  const contentText = `${item?.title || ""} ${item?.snippet || ""}`.toLowerCase();
-  const compactContent = contentText.replace(/\s+/g, "");
-  const compactQuery = query.toLowerCase().replace(/\s+/g, "");
-  if (compactQuery && compactContent.includes(compactQuery)) return false;
-  const matchedTokens = queryTokens.filter((token) => compactContent.includes(token));
-  if (matchedTokens.length === 0) return true;
-  return false;
+  if (hasCjkText(query)) {
+    if (isClearCjkMismatchResult(item, query, engine)) return true;
+    const queryTokens = tokenizeSearchText(query).filter((t) => t.length >= 2);
+    if (!queryTokens.length) return false;
+    const contentText = `${item?.title || ""} ${item?.snippet || ""}`.toLowerCase();
+    const compactContent = contentText.replace(/\s+/g, "");
+    const compactQuery = query.toLowerCase().replace(/\s+/g, "");
+    if (compactQuery && compactContent.includes(compactQuery)) return false;
+    const matchedTokens = queryTokens.filter((token) => compactContent.includes(token));
+    if (matchedTokens.length === 0) return true;
+    return false;
+  }
+  return isIntentMismatchResult(item, query, engine);
 }
 __name(isHardIntentMismatchResult, "isHardIntentMismatchResult");
 __name2(isHardIntentMismatchResult, "isHardIntentMismatchResult");
