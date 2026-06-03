@@ -3493,14 +3493,17 @@ __name(searchError, "searchError");
 __name2(searchError, "searchError");
 function searchResult({ source, query, limit, results, blocked, block_reason, ...extra }) {
   const hasResults = Array.isArray(results) && results.length > 0;
+  const parser = extra._meta?.parser || (hasResults && results.some((r) => r.__skeleton) ? "skeleton_fallback" : hasResults ? "exact" : void 0);
+  const clean = hasResults ? results.map(({ __skeleton, ...r }) => r) : results;
   return {
     ok: hasResults,
     source,
     query,
     limit,
-    results,
+    results: clean,
     ...hasResults ? {} : blocked !== void 0 ? { blocked: Boolean(blocked) } : {},
     ...hasResults ? {} : block_reason ? { block_reason } : {},
+    ...parser ? { _meta: { parser } } : {},
     ...extra
   };
 }
@@ -4280,9 +4283,9 @@ function extractGenericLinks(html, limit, baseUrl) {
       results.push({ title, url: href, snippet: "" });
     }
   }
+    results.forEach((r) => { r.__skeleton = true; });
   return results;
 }
-__name(extractGenericLinks, "extractGenericLinks");
 __name2(extractGenericLinks, "extractGenericLinks");
 function extractSectionAroundMarker(html, markers, maxLength) {
   const lowered = html.toLowerCase();
