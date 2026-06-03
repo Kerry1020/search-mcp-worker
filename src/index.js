@@ -773,10 +773,12 @@ function evaluateSearchQuality(result, query, engine) {
   const genericCount = results.filter((item) => isGenericWrapperResult(item, query, engine)).length;
   const mismatchCount = results.filter((item) => isIntentMismatchResult(item, query, engine)).length;
   const lowTrustCount = results.filter((item) => isLowTrustResult(item, query, engine)).length;
-  if (genericCount === results.length) {
+  if (genericCount === results.length && results.length > 2) {
     return { quality_status: "junk", quality_reason: "generic_wrapper_results", filtered_count: filteredCount, ok: false };
   }
-  if (mismatchCount === results.length) {
+  const isPureEnglishQuery = /^[A-Za-z0-9\s\-_.,!@#$%^&*()]+$/.test(query);
+  const hasChineseResults = results.some((item) => /[\u4e00-\u9fa5]/.test(item.title || item.snippet || ""));
+  if (mismatchCount === results.length && !(isPureEnglishQuery && hasChineseResults)) {
     return { quality_status: "yellow", quality_reason: "intent_mismatch", filtered_count: filteredCount, ok: false };
   }
   if (lowTrustCount === results.length) {
@@ -823,7 +825,7 @@ function isGenericWrapperResult(item, query, engine) {
   if (/search results|search again|all results|results for|related searches|more results|see more/i.test(combined)) return true;
   if (/\b(?:sponsored|advertisement|advertorial|promo|coupon|deals?)\b|赞助|广告|推广/.test(combined)) return true;
   if (/\b(?:home|homepage|index|category|sections?)\b|worklife|accessibility|help center/.test(title) && !queryText) return true;
-  if (queryText && host && isSearchEngineHost(host) && combined.includes(queryText)) return true;
+  if (queryText && host && isSearchEngineHost(host) && combined.includes(queryText) && url.toLowerCase().includes("/search")) return true;
   if (engine === "wikipedia" && host && !host.endsWith("wikipedia.org")) return true;
   if (engine === "bbc" && host && /(?:^|\.)bbc\.(?:com|co\.uk)$/i.test(host)) {
     let pathname = "";
@@ -935,7 +937,7 @@ __name2(isWeakCjkMatchResult, "isWeakCjkMatchResult");
 function isClearCjkMismatchResult(item, query, engine = "") {
   const host = safeHostname(item?.url || "");
   if (host === "mp.weixin.qq.com" && !String(item?.snippet || "").trim()) return true;
-  if (host && isSearchEngineHost(host)) return true;
+  if (host && isSearchEngineHost(host) && !/\/link\?|\/s\?wd=|\/item\//i.test(String(item?.url || ""))) return true;
   return isCommunityMismatchResult(item, query, engine);
 }
 __name(isClearCjkMismatchResult, "isClearCjkMismatchResult");
