@@ -315,4 +315,4 @@ search-mcp-worker/
 
 ## License
 
-MIT-0
+GPL-3.0

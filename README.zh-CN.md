@@ -314,4 +314,4 @@ search-mcp-worker/
 
 ## 许可证
 
-MIT-0
+GPL-3.0
