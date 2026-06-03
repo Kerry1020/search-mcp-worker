@@ -868,6 +868,14 @@ function isIntentMismatchResult(item, query, engine = "") {
     const numericMatches = numericTokens.filter((token) => rawContent.includes(` ${token} `) || contentText.includes(token)).length;
     return alphaMatches === 0 && numericMatches > 0;
   }
+  if (engine === "pubmed" || engine === "arxiv" || engine === "paperswithcode") {
+    const techSignals = /\b(?:protocol|server|framework|library|package|api|sdk|github|npm|pip|install|json|rpc|http|websocket|config|deploy|docker|kubernetes|programming|software|code|repository|module|plugin)\b/i.test(queryText);
+    const bioNoiseSignals = /\b(?:protein|expression|gene|clinical|patient|cell|mouse|rat|tumor|cancer|therapy|treatment|pathway|receptor|inhibitor|antibody|assay|knockout|mutation|phenotype|mRNA|ex vivo|in vivo|in vitro)\b/i.test(contentText);
+    if (techSignals && bioNoiseSignals) {
+      const techInContent = /\b(?:protocol|server|framework|library|api|software|code|programming|repository|package)\b/i.test(contentText);
+      if (!techInContent) return true;
+    }
+  }
   const queryTokens = tokenizeSearchText(query).filter((token) => token.length >= 3);
   if (!queryTokens.length) return false;
   const haystack = tokenizeSearchText(contentText);
