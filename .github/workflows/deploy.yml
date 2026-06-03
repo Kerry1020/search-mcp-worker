@@ -17,7 +17,7 @@ jobs:
           BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
           echo "Injecting BUILD_SHA=$SHORT_SHA BUILD_TIME=$BUILD_TIME"
           sed -i "s/var BUILD_SHA = \"unknown\"/var BUILD_SHA = \"$SHORT_SHA\"/" src/index.js
-          sed -i "s/var BUILD_TIME = new Date().toISOString()/var BUILD_TIME = \"$BUILD_TIME\"/" src/index.js
+          sed -i "s/var BUILD_TIME = \"unknown\"/var BUILD_TIME = \"$BUILD_TIME\"/" src/index.js
           grep "BUILD_SHA\|BUILD_TIME" src/index.js
 
       - name: Deploy to Cloudflare

@@ -1,0 +1,19 @@
+name: Smoke
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check
+        run: node --check src/index.js
+      - name: Run smoke test against production
+        run: node tests/smoke_trace.mjs https://search-mcp.qdp.qzz.io
