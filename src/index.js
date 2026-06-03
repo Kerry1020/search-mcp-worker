@@ -1224,6 +1224,10 @@ async function searchAuto(args) {
   if (cached) return { ...cached, _cached: true };
   const siteTarget = parseSiteTargetQuery(args.query);
   for (const engine of engines) {
+    if (isEngineCircuitBroken(engine)) {
+      attempts.push({ engine, ok: false, error: "circuit_breaker", quality_status: "red", quality_reason: "circuit_breaker_frozen", filtered_count: 0, result_count: 0 });
+      continue;
+    }
     try {
       const result = await runSearchEngine(engine, args);
       if (!result) continue;
@@ -1233,7 +1237,9 @@ async function searchAuto(args) {
       const quality = evaluateSearchQuality(normalizedResult, args.query, engine);
       const enrichedResult = { ...normalizedResult, ...quality };
       attempts.push(buildSearchAutoAttempt(engine, enrichedResult, quality));
-      if (quality.quality_status === "green" || quality.quality_status === "yellow") {
+      if (quality.quality_status === "blocked") { recordEngineBlocked(engine); }
+      else if (quality.quality_status === "green" || quality.quality_status === "yellow") {
+        recordEngineSuccess(engine);
         const usableResults = Array.isArray(enrichedResult?.results) ? enrichedResult.results : [];
         usableResults.forEach((item, index) => {
           acceptedResults.push({
@@ -3212,6 +3218,33 @@ __name(fetchText, "fetchText");
 __name2(fetchText, "fetchText");
 var searchCache = /* @__PURE__ */ new Map();
 var CACHE_TTL_MS = 5 * 60 * 1e3;
+var CIRCUIT_BREAKER = /* @__PURE__ */ new Map();
+var CIRCUIT_THRESHOLD = 3;
+var CIRCUIT_FREEZE_MS = 5 * 60 * 1e3;
+function isEngineCircuitBroken(engine) {
+  const record = CIRCUIT_BREAKER.get(engine);
+  if (!record) return false;
+  if (Date.now() > record.frozenUntil) { CIRCUIT_BREAKER.delete(engine); return false; }
+  return true;
+}
+__name(isEngineCircuitBroken, "isEngineCircuitBroken");
+__name2(isEngineCircuitBroken, "isEngineCircuitBroken");
+function recordEngineBlocked(engine) {
+  const record = CIRCUIT_BREAKER.get(engine) || { failures: 0, frozenUntil: 0 };
+  record.failures++;
+  if (record.failures >= CIRCUIT_THRESHOLD) {
+    record.frozenUntil = Date.now() + CIRCUIT_FREEZE_MS;
+    record.failures = 0;
+  }
+  CIRCUIT_BREAKER.set(engine, record);
+}
+__name(recordEngineBlocked, "recordEngineBlocked");
+__name2(recordEngineBlocked, "recordEngineBlocked");
+function recordEngineSuccess(engine) {
+  CIRCUIT_BREAKER.delete(engine);
+}
+__name(recordEngineSuccess, "recordEngineSuccess");
+__name2(recordEngineSuccess, "recordEngineSuccess");
 function getCached(key) {
   const entry = searchCache.get(key);
   if (entry && Date.now() - entry.ts < CACHE_TTL_MS) return entry.data;
