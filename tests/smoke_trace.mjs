@@ -4,6 +4,7 @@
 // Exit 0 = all pass, exit 1 = failures
 
 const BASE = process.argv[2] || "https://search-mcp.qdp.qzz.io";
+const STRICT = process.env.CI_STRICT_NETWORKING === "true";
 
 let passed = 0, failed = 0, warned = 0;
 function assert(name, ok, detail = "") {
@@ -60,15 +61,15 @@ function hasResults(text) {
   assert("163_news returns results", hasResults(n163), n163.slice(0, 100));
   assert("163_news not blocked", !n163.includes("blocked") || n163.includes("0 results") === false);
 
-  // 4. search_auto returns results for general query (may timeout — network-dependent)
-  console.log("\n=== 4. search_auto — general query (non-blocking) ===");
+  // 4. search_auto returns results for general query (network-dependent in CI)
+  console.log(`\n=== 4. search_auto — general query (${STRICT ? "strict" : "non-blocking"}) ===`);
   const auto1 = await callTool("search_auto", { query: "weather london", limit: 3 });
-  warn("search_auto returns results or has trace", hasResults(auto1) || auto1.includes("trace"), auto1.slice(0, 100));
+  (STRICT ? assert : warn)("search_auto returns results or has trace", hasResults(auto1) || auto1.includes("trace"), auto1.slice(0, 100));
 
-  // 5. search_auto returns results for Chinese query (may timeout from CI)
-  console.log("\n=== 5. search_auto — Chinese query (non-blocking) ===");
+  // 5. search_auto returns results for Chinese query (network-dependent in CI)
+  console.log(`\n=== 5. search_auto — Chinese query (${STRICT ? "strict" : "non-blocking"}) ===`);
   const auto2 = await callTool("search_auto", { query: "高考作文", limit: 3 });
-  warn("search_auto CJK returns results", hasResults(auto2) || auto2.includes("trace"), auto2.slice(0, 100));
+  (STRICT ? assert : warn)("search_auto CJK returns results", hasResults(auto2) || auto2.includes("trace"), auto2.slice(0, 100));
 
   // 6. search_pypi returns package info
   console.log("\n=== 6. search_pypi — package search ===");
