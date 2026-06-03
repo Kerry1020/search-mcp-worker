@@ -1892,7 +1892,8 @@ async function searchArchive(args) {
   }
   let results = [];
   try {
-    const data = await fetchJson(`https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl[]=identifier,title,description&rows=${limit}&output=json`);
+    const searchQ = /^[a-z0-9][-a-z0-9]*(\.[a-z]{2,})+/.test(query) ? `host:${query}` : query;
+    const data = await fetchJson(`https://archive.org/advancedsearch.php?q=${encodeURIComponent(searchQ)}&fl[]=identifier,title,description&rows=${limit}&output=json`);
     const docs = data?.response?.docs || [];
     for (const doc of docs) {
       if (results.length >= limit) break;
@@ -2670,24 +2671,20 @@ __name2(searchOsm, "searchOsm");
 async function searchLemmy(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
-  const instance = /^[a-z0-9.-]+$/.test(args.instance || "") ? args.instance : "lemmy.world";
-  try {
-    const data = await fetchJson(`https://${instance}/api/v3/search?q=${encodeURIComponent(query)}&limit=${limit}&type_=Posts`);
-    let results = [];
-    for (const post of data.posts || []) {
-      if (results.length >= limit) break;
+  const instances = /^[a-z0-9.-]+$/.test(args.instance || "") ? [args.instance] : ["lemmy.world", "lemmy.ml", "programming.dev"];
+  let allResults = [];
+  const settled = await Promise.allSettled(instances.map(async (inst) => {
+    const data = await fetchJson(`https://${inst}/api/v3/search?q=${encodeURIComponent(query)}&limit=${limit}&type_=Posts`);
+    return (data.posts || []).map((post) => {
       const p = post.post || {};
-      const name = p.name || "";
-      const url = p.ap_id || p.url || "";
-      const community = post.community?.name || "";
-      const score = post.counts?.score || 0;
-      const comments = post.counts?.comments || 0;
-      results.push({ title: name, url, snippet: `!${community}@${instance} | ${score} pts | ${comments} comments` });
-    }
-    return finalizeVerticalSearchResults({ source: "lemmy", query, limit, results });
-  } catch (e) {
-    return searchResult({ source: "lemmy", query, limit, results: [], error: e?.message || "failed" });
+      return { title: p.name || "", url: p.ap_id || p.url || "", snippet: `!${post.community?.name || ""}@${inst} | ${post.counts?.score || 0} pts | ${post.counts?.comments || 0} comments` };
+    });
+  }));
+  for (const r of settled) {
+    if (r.status === "fulfilled") allResults.push(...r.value);
   }
+  allResults = allResults.slice(0, limit * 2);
+  return finalizeVerticalSearchResults({ source: "lemmy", query, limit, results: allResults });
 }
 __name(searchLemmy, "searchLemmy");
 __name2(searchLemmy, "searchLemmy");
