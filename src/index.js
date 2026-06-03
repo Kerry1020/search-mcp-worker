@@ -2674,7 +2674,7 @@ async function searchLemmy(args) {
   const instances = /^[a-z0-9.-]+$/.test(args.instance || "") ? [args.instance] : ["lemmy.world", "lemmy.ml", "programming.dev"];
   let allResults = [];
   const settled = await Promise.allSettled(instances.map(async (inst) => {
-    const data = await fetchJson(`https://${inst}/api/v3/search?q=${encodeURIComponent(query)}&limit=${limit}&type_=Posts`);
+    const data = await fetchJson(`https://${inst}/api/v3/search?q=${encodeURIComponent(query)}&limit=${limit}&type_=Posts&sort=New`);
     return (data.posts || []).map((post) => {
       const p = post.post || {};
       return { title: p.name || "", url: p.ap_id || p.url || "", snippet: `!${post.community?.name || ""}@${inst} | ${post.counts?.score || 0} pts | ${post.counts?.comments || 0} comments` };
