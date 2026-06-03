@@ -3112,6 +3112,7 @@ function parseLenientJsonObject(text) {
     return JSON.parse(source);
   } catch {
   }
+  if (source.length > 8192) return null;
   let normalized = "";
   let inString = false;
   let escaped = false;
@@ -4236,21 +4237,48 @@ __name2(extractBaiduResultUrl, "extractBaiduResultUrl");
 function extractGenericLinks(html, limit, baseUrl) {
   const results = [];
   const seen = /* @__PURE__ */ new Set();
-  const re = /<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-  for (const match of html.matchAll(re)) {
+  const stripTags = (s) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const blockRe = /<(li|div|section|article)[^>]*>([\s\S]*?)<\/\1>/gi;
+  let bm;
+  while ((bm = blockRe.exec(html)) !== null) {
     if (results.length >= limit) break;
-    const title = cleanText(match[2]);
-    if (!title || title.length < 3) continue;
-    let href = decodeHtml(match[1]);
-    if (href.startsWith("#") || href.startsWith("javascript:")) continue;
+    const block = bm[2];
+    if (!block.includes("<a") || block.length > 2000) continue;
+    const aMatch = block.match(/<a[^>]+href=["'](https?:\/\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!aMatch) continue;
+    const rawUrl = aMatch[1];
+    const rawTitle = stripTags(aMatch[2]);
+    if (!rawTitle || rawTitle.length < 6 || seen.has(rawUrl)) continue;
+    let href;
     try {
-      href = new URL(href, baseUrl).toString();
+      href = new URL(rawUrl, baseUrl).toString();
     } catch {
       continue;
     }
-    if (seen.has(href) || isNoiseUrl(href)) continue;
+    if (isNoiseUrl(href)) continue;
     seen.add(href);
-    results.push({ title, url: href, snippet: "" });
+    const remaining = block.replace(aMatch[0], "");
+    let snippet = stripTags(remaining);
+    if (snippet.length > 180) snippet = snippet.substring(0, 170) + "...";
+    results.push({ title: rawTitle.substring(0, 80), url: href, snippet });
+  }
+  if (results.length < limit) {
+    const re = /<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    for (const match of html.matchAll(re)) {
+      if (results.length >= limit) break;
+      const title = cleanText(match[2]);
+      if (!title || title.length < 3) continue;
+      let href = decodeHtml(match[1]);
+      if (href.startsWith("#") || href.startsWith("javascript:")) continue;
+      try {
+        href = new URL(href, baseUrl).toString();
+      } catch {
+        continue;
+      }
+      if (seen.has(href) || isNoiseUrl(href)) continue;
+      seen.add(href);
+      results.push({ title, url: href, snippet: "" });
+    }
   }
   return results;
 }
