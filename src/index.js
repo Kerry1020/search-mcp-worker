@@ -2672,7 +2672,19 @@ async function searchLemmy(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   const instances = /^[a-z0-9.-]+$/.test(args.instance || "") ? [args.instance] : ["lemmy.world", "lemmy.ml", "programming.dev"];
+  const q = query.toLowerCase();
+  const communityHints = ["linux_gaming", "linux", "docker", "programming", "rust", "selfhosted", "technology", "opensource"];
+  const matchedCommunity = communityHints.find((c) => q.includes(c.replace(/_/g, " ")) || q.includes(c));
   let allResults = [];
+  if (matchedCommunity) {
+    try {
+      const data = await fetchJson(`https://lemmy.world/api/v3/post/list?community_name=${encodeURIComponent(matchedCommunity)}&limit=${limit}`);
+      allResults.push(...(data.posts || []).map((post) => {
+        const p = post.post || {};
+        return { title: p.name || "", url: p.ap_id || p.url || "", snippet: `!${post.community?.name || matchedCommunity}@lemmy.world | ${post.counts?.score || 0} pts | ${post.counts?.comments || 0} comments` };
+      }));
+    } catch (e) {}
+  }
   const settled = await Promise.allSettled(instances.map(async (inst) => {
     const data = await fetchJson(`https://${inst}/api/v3/search?q=${encodeURIComponent(query)}&limit=${limit}&type_=Posts&sort=New`);
     return (data.posts || []).map((post) => {
