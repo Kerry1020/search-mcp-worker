@@ -876,6 +876,14 @@ function isIntentMismatchResult(item, query, engine = "") {
   }
   const queryTokens = tokenizeSearchText(query).filter((token) => token.length >= 3);
   if (!queryTokens.length) return false;
+  if (!/[\u4e00-\u9fa5]/.test(queryText) && queryTokens.length >= 3) {
+    const alphaTokens = queryTokens.filter((t) => /[a-z]/i.test(t));
+    if (alphaTokens.length >= 3) {
+      const rawContent = ` ${contentText.replace(/[^\p{L}\p{N}]+/gu, " ")} `;
+      const matched = alphaTokens.filter((t) => rawContent.includes(` ${t} `)).length;
+      if (matched / alphaTokens.length < 0.5) return true;
+    }
+  }
   const haystack = tokenizeSearchText(contentText);
   const matches = queryTokens.filter((token) => haystack.includes(token)).length;
   return matches === 0;
