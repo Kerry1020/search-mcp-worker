@@ -1906,7 +1906,7 @@ async function searchArchive(args) {
     const { text } = await fetchTextWithResponse(`https://archive.org/search?query=${encodeURIComponent(query)}`);
     results = extractGenericLinks(text, limit, "https://archive.org");
   }
-  return searchResult({ source: "archive", query, limit, results });
+  return finalizeVerticalSearchResults({ source: "archive", query, limit, results });
 }
 __name(searchArchive, "searchArchive");
 __name2(searchArchive, "searchArchive");
@@ -1981,7 +1981,7 @@ async function searchHackerNews(args) {
       const numComments = hit.num_comments || 0;
       results.push({ title, url, snippet: `${points} points | ${numComments} comments | by ${author}` });
     }
-    return searchResult({ source: "hackernews", query, limit, results });
+    return finalizeVerticalSearchResults({ source: "hackernews", query, limit, results });
   } catch (e) {
     return searchResult({ source: "hackernews", query, limit, results: [], error: e?.message || "failed" });
   }
@@ -2296,7 +2296,7 @@ async function searchReddit(args) {
       const sub = post.subreddit || subredditName;
       results.push({ title, url, snippet: `r/${sub} | ${score} pts | ${post.num_comments || 0} comments` });
     }
-    if (results.length) return searchResult({ source: "reddit", query, limit, results, subreddit: subredditName, fetch_path: "www.reddit.com" });
+    if (results.length) return finalizeVerticalSearchResults({ source: "reddit", query, limit, results, subreddit: subredditName, fetch_path: "www.reddit.com" });
     const fallback = await searchRedditFallback(query, limit, subredditName, args?._context?.providerConfig);
     if (fallback) return fallback;
     return searchResult({ source: "reddit", query, limit, results: [], subreddit: subredditName, fetch_path: "www.reddit.com" });
@@ -2336,7 +2336,7 @@ async function searchDevto(args) {
       if (results.length >= limit) break;
       results.push({ title: article.title || "", url: article.url || "", snippet: `${article.description || ""} | reactions: ${article.positive_reactions_count || 0} | comments: ${article.comments_count || 0}` });
     }
-    return searchResult({ source: "devto", query, limit, results });
+    return finalizeVerticalSearchResults({ source: "devto", query, limit, results });
   } catch (e) {
     return searchError("devto", query, limit, e);
   }
@@ -2375,7 +2375,7 @@ async function searchMastodon(args) {
       } catch {
       }
     }
-    return searchResult({ source: "mastodon", query, limit, results });
+    return finalizeVerticalSearchResults({ source: "mastodon", query, limit, results });
   } catch (e) {
     return searchResult({ source: "mastodon", query, limit, results: [], error: e?.message || "failed" });
   }
@@ -2392,7 +2392,7 @@ async function searchPeerTube(args) {
       if (results.length >= limit) break;
       results.push({ title: vid.name || "", url: vid.url || "", snippet: `by ${vid.channel?.displayName || "?"} | ${vid.views || 0} views | ${vid.durationLabel || ""}` });
     }
-    return searchResult({ source: "peertube", query, limit, results });
+    return finalizeVerticalSearchResults({ source: "peertube", query, limit, results });
   } catch (e) {
     return searchResult({ source: "peertube", query, limit, results: [], error: e?.message || "failed" });
   }
@@ -2619,7 +2619,7 @@ async function searchSecEdgar(args) {
     } catch {
     }
     if (!results.length) results = extractGenericLinks(text, limit, "https://www.sec.gov");
-    return searchResult({ source: "sec_edgar", query, limit, results });
+    return finalizeVerticalSearchResults({ source: "sec_edgar", query, limit, results });
   } catch (e) {
     return searchResult({ source: "sec_edgar", query, limit, results: [], error: e?.message || "failed" });
   }
@@ -2645,7 +2645,7 @@ async function searchOsm(args) {
       const lon = place.lon || "";
       results.push({ title: name, url: lat && lon ? `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}` : "https://www.openstreetmap.org", snippet: `Type: ${type} | ${lat}, ${lon}` });
     }
-    return searchResult({ source: "osm", query, limit, results, fetch_path: "nominatim.openstreetmap.org" });
+    return finalizeVerticalSearchResults({ source: "osm", query, limit, results, fetch_path: "nominatim.openstreetmap.org" });
   } catch (e) {
     return searchError("osm", query, limit, e, { fetch_path: "nominatim.openstreetmap.org" });
   }
@@ -2669,7 +2669,7 @@ async function searchLemmy(args) {
       const comments = post.counts?.comments || 0;
       results.push({ title: name, url, snippet: `!${community}@${instance} | ${score} pts | ${comments} comments` });
     }
-    return searchResult({ source: "lemmy", query, limit, results });
+    return finalizeVerticalSearchResults({ source: "lemmy", query, limit, results });
   } catch (e) {
     return searchResult({ source: "lemmy", query, limit, results: [], error: e?.message || "failed" });
   }
