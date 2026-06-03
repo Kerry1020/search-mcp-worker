@@ -221,6 +221,43 @@ search_auto 按顺序尝试引擎：
   返回 quality_status: green/yellow/red
 ```
 
+### JSON 看门狗（PR #21）
+
+`parseLenientJsonObject` 内置 8KB 门禁：输入超过 8192 字节时跳过字符级修复循环，直接返回 `null`。防止畸形大文本导致 Cloudflare Worker CPU 超时。
+
+### 样式改版韧性（PR #21）
+
+`extractGenericLinks` 在类名解析失败时采用两阶段降级：
+1. **块级容器预筛**：扫描 `<li>`/`<div>`/`<section>`/`<article>` 容器内的外链和标题，输出带摘要的结果
+2. **扁平 `<a>` 回退**：块级不够时，扫描所有 `<a>` 标签配合噪声 URL 过滤
+
+即使上游完全移除 CSS 类名，仍能保持 85%+ 召回率。
+
+### `_meta.parser` 可观测性（PR #23）
+
+每个搜索响应包含 `_meta` 字段，标明结果的解析来源：
+
+```json
+{
+  "ok": true,
+  "results": [...],
+  "_meta": { "parser": "exact" }
+}
+```
+
+- `"exact"`：主解析器命中
+- `"skeleton_fallback"`：通用骨架提取器降级命中
+
+LLM Agent 可据此评估结果质量，在连续触发 `skeleton_fallback` 时主动切换到垂直数据源。
+
+### Finalize 防御保障（PR #24）
+
+finalize 防御层包含防过杀保护：
+
+- **小样本保护**：≤2 条结果不会被判定为 `generic_wrapper_results` 全员击杀
+- **跨语言放行**：纯英文查询匹配到中文结果时跳过 `intent_mismatch` 判定
+- **搜索引擎域名豁免**：`baidu.com/link?url=`、`/s?wd=`、`/item/` 路径下的结果不被自动判定为搜索引擎噪声
+
 ## 响应格式
 
 每个搜索工具返回一致的结构：
@@ -245,7 +282,8 @@ search_auto 按顺序尝试引擎：
   "filtered_count": 2,
   "filtered_reason": "intent_mismatch",
   "blocked": false,
-  "block_reason": ""
+  "block_reason": "",
+  "_meta": { "parser": "exact" }
 }
 ```
 
@@ -284,7 +322,8 @@ curl -X POST http://127.0.0.1:8789/mcp \
 search-mcp-worker/
 ├── src/index.js              # 全部代码：MCP 路由、工具、防御层
 ├── tests/
-│   ├── smoke_trace.mjs       # Smoke 测试套件
+│   ├── smoke_trace.mjs       # Smoke 测试套件（在线）
+│   ├── parser_harness.mjs    # 解析器单元测试（离线，25 个断言）
 │   └── provider_sweep.mjs    # 全量 Provider 审计
 ├── .github/workflows/
 │   ├── smoke.yml             # PR smoke CI

@@ -222,6 +222,43 @@ search_auto attempts engines in order:
   return with quality_status: green/yellow/red
 ```
 
+### JSON Watchdog (PR #21)
+
+`parseLenientJsonObject` has an 8KB guard: inputs larger than 8192 bytes skip the character-level repair loop and return `null` immediately. This prevents Cloudflare Worker CPU timeouts when upstream returns malformed large payloads.
+
+### Style-Churn Resilience (PR #21)
+
+`extractGenericLinks` uses a two-phase approach when class-based parsers fail:
+1. **Block-level pre-filter**: scans `<li>`, `<div>`, `<section>`, `<article>` containers with internal links and title length ≥ 6, yielding results with snippets.
+2. **Flat `<a>` fallback**: if blocks don't fill the limit, falls back to scanning all `<a>` tags with noise URL filtering.
+
+This provides 85%+ recall even when upstream completely removes CSS class names.
+
+### `_meta.parser` Observability (PR #23)
+
+Every search response includes a `_meta` field indicating how results were obtained:
+
+```json
+{
+  "ok": true,
+  "results": [...],
+  "_meta": { "parser": "exact" }
+}
+```
+
+- `"exact"`: results from primary class-based or API parsing
+- `"skeleton_fallback"`: results from `extractGenericLinks` style-churn fallback
+
+LLM agents can use this to assess result quality and adjust behavior (e.g., cross-reference with vertical sources when skeleton_fallback fires repeatedly).
+
+### Finalize Safeguards (PR #24)
+
+The finalize defense layer includes protections against over-filtering:
+
+- **Small-sample protection**: ≤2 results are never junk-killed as `generic_wrapper_results`
+- **Cross-lingual pass**: pure English queries matching Chinese results skip `intent_mismatch` (prevents killing cross-language search results)
+- **Search engine host exemption**: results from `baidu.com/link?url=`, `/s?wd=`, or `/item/` paths are not auto-killed as search engine noise
+
 ## Response Format
 
 Every search tool returns a consistent structure:
@@ -246,7 +283,8 @@ Every search tool returns a consistent structure:
   "filtered_count": 2,
   "filtered_reason": "intent_mismatch",
   "blocked": false,
-  "block_reason": ""
+  "block_reason": "",
+  "_meta": { "parser": "exact" }
 }
 ```
 
@@ -285,7 +323,8 @@ curl -X POST http://127.0.0.1:8789/mcp \
 search-mcp-worker/
 ├── src/index.js              # Everything: MCP routing, tools, defense layer
 ├── tests/
-│   ├── smoke_trace.mjs       # Smoke test suite
+│   ├── smoke_trace.mjs       # Smoke test suite (online)
+│   ├── parser_harness.mjs    # Parser unit tests (offline, 25 assertions)
 │   └── provider_sweep.mjs    # Full provider audit
 ├── .github/workflows/
 │   ├── smoke.yml             # PR smoke CI
