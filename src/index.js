@@ -2333,13 +2333,18 @@ async function searchDevto(args) {
   const limit = clampLimit(args.limit);
   try {
     const words = query.trim().split(/[\s+]+/).filter((w) => w.length > 1);
-    const tag = words.length === 1 ? words[0] : words[words.length - 1].replace(/[^a-z0-9]/gi, "");
-    const tagUrl = `https://dev.to/api/articles?per_page=${limit}&tag=${encodeURIComponent(tag)}`;
-    const queryUrl = `https://dev.to/api/articles?per_page=${limit}&q=${encodeURIComponent(query)}`;
+    const alphaWords = words.filter((w) => /^[a-z0-9]+$/i.test(w));
+    const compoundTag = alphaWords.join("").toLowerCase();
+    const singleTag = alphaWords.length > 0 ? alphaWords[0].toLowerCase() : "";
     let data = [];
-    try { data = await fetchJson(tagUrl); } catch (e) { data = []; }
+    if (compoundTag) {
+      try { data = await fetchJson(`https://dev.to/api/articles?per_page=${limit}&tag=${encodeURIComponent(compoundTag)}`); } catch (e) { data = []; }
+    }
+    if ((!Array.isArray(data) || data.length === 0) && singleTag && singleTag !== compoundTag) {
+      try { data = await fetchJson(`https://dev.to/api/articles?per_page=${limit}&tag=${encodeURIComponent(singleTag)}`); } catch (e) { data = []; }
+    }
     if (!Array.isArray(data) || data.length === 0) {
-      data = await fetchJson(queryUrl);
+      data = await fetchJson(`https://dev.to/api/articles?per_page=${limit}&q=${encodeURIComponent(query)}`);
     }
     let results = [];
     for (const article of Array.isArray(data) ? data : []) {
