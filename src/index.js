@@ -2332,7 +2332,15 @@ async function searchDevto(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
   try {
-    const data = await fetchJson(`https://dev.to/api/articles?per_page=${limit}&q=${encodeURIComponent(query)}`);
+    const words = query.trim().split(/[\s+]+/).filter((w) => w.length > 1);
+    const tag = words.length === 1 ? words[0] : words[words.length - 1].replace(/[^a-z0-9]/gi, "");
+    const tagUrl = `https://dev.to/api/articles?per_page=${limit}&tag=${encodeURIComponent(tag)}`;
+    const queryUrl = `https://dev.to/api/articles?per_page=${limit}&q=${encodeURIComponent(query)}`;
+    let data = [];
+    try { data = await fetchJson(tagUrl); } catch (e) { data = []; }
+    if (!Array.isArray(data) || data.length === 0) {
+      data = await fetchJson(queryUrl);
+    }
     let results = [];
     for (const article of Array.isArray(data) ? data : []) {
       if (results.length >= limit) break;
