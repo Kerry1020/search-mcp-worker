@@ -2684,7 +2684,7 @@ async function searchLemmy(args) {
     if (r.status === "fulfilled") allResults.push(...r.value);
   }
   allResults = allResults.slice(0, limit * 2);
-  return finalizeVerticalSearchResults({ source: "lemmy", query, limit, results: allResults });
+  return searchResult({ source: "lemmy", query, limit, results: allResults });
 }
 __name(searchLemmy, "searchLemmy");
 __name2(searchLemmy, "searchLemmy");
