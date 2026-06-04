@@ -3198,18 +3198,75 @@ async function fetchUrl(args) {
     const { text, response } = await fetchTextWithResponse(url.toString(), { maxBytes: MAX_FETCH_BYTES });
     const fallbackFinalUrl = response.url || url.toString();
     const title = cleanText((text.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || url.toString());
+    const challengeSignals = /probe\.js|g_captcha|cf-challenge|challenge-form|__cf_bm|challenge-platform/i.test(text);
+    const extractedText = htmlToText(text).slice(0, maxChars);
+    if (challengeSignals || (response.status === 202 && extractedText.trim().length < 50)) {
+      return {
+        ok: true,
+        url: url.toString(),
+        finalUrl: fallbackFinalUrl,
+        title,
+        text: extractedText || text.slice(0, maxChars),
+        maxChars,
+        contentType: response.headers.get("content-type") || "",
+        status: response.status,
+        content_type: "challenge_page",
+        reason: challengeSignals ? "JS challenge / anti-bot probe detected" : "HTTP 202 with empty content — likely anti-bot"
+      };
+    }
     return {
       ok: true,
       url: url.toString(),
       finalUrl: fallbackFinalUrl,
       title,
-      text: htmlToText(text).slice(0, maxChars),
+      text: extractedText,
       maxChars,
       contentType: response.headers.get("content-type") || ""
     };
   } catch (error) {
     const message = String(error?.message || error || "failed");
     const statusMatch = message.match(/upstream\s+(\d{3})/i);
+    const statusCode = statusMatch ? Number(statusMatch[1]) : 0;
+    if (statusCode === 403 || statusCode === 202) {
+      try {
+        const rawRes = await fetch(url.toString(), {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+            "Accept": "text/html,*/*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
+          },
+          redirect: "follow",
+          signal: AbortSignal.timeout(10000)
+        });
+        const rawHtml = await rawRes.text();
+        const challengeSignals = /probe\.js|g_captcha|cf-challenge|challenge-form|__cf_bm|challenge-platform/i.test(rawHtml);
+        return {
+          ok: true,
+          url: url.toString(),
+          finalUrl: rawRes.url || url.toString(),
+          title: cleanText((rawHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || url.toString()),
+          text: htmlToText(rawHtml).slice(0, maxChars),
+          maxChars,
+          contentType: rawRes.headers.get("content-type") || "",
+          status: statusCode,
+          content_type: "challenge_page",
+          reason: challengeSignals ? "JS challenge / anti-bot probe detected" : `upstream ${statusCode} — data center IP may be blocked`
+        };
+      } catch {
+        return {
+          ok: false,
+          url: url.toString(),
+          finalUrl: url.toString(),
+          title: url.toString(),
+          text: "",
+          maxChars,
+          contentType: "",
+          status: statusCode,
+          content_type: "challenge_page",
+          error: `upstream ${statusCode} — raw fetch also failed`
+        };
+      }
+    }
     return {
       ok: false,
       url: url.toString(),
@@ -3218,7 +3275,7 @@ async function fetchUrl(args) {
       text: "",
       maxChars,
       contentType: "",
-      status: statusMatch ? Number(statusMatch[1]) : 0,
+      status: statusCode,
       error: message
     };
   }
@@ -3229,7 +3286,23 @@ var GSA_USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/124.0.6367.111 Mobile/15E148 Safari/604.1",
-  "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.113 Mobile Safari/537.36"
+  "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.113 Mobile Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.113 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.113 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:126.0) Gecko/20100101 Firefox/126.0",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.113 Safari/537.36 Edg/125.0.2535.92",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.113 Safari/537.36",
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/125.0.6422.80 Mobile/15E148 Safari/604.1",
+  "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.113 Mobile Safari/537.36",
+  "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+  "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36",
+  "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.101 Mobile Safari/537.36",
+  "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.64 Mobile Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+  "Mozilla/5.0 (Linux; Android 14; SM-A556E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.113 Mobile Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0",
+  "Mozilla/5.0 (Linux; Android 13; CPH2449) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.179 Mobile Safari/537.36"
 ];
 function randomGsaUA() {
   return GSA_USER_AGENTS[Math.floor(Math.random() * GSA_USER_AGENTS.length)];
