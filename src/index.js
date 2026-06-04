@@ -543,7 +543,9 @@ var worker_default = {
         build: { sha: BUILD_SHA, time: BUILD_TIME },
         mcp_endpoint: `${url.origin}/mcp`,
         endpoints: ["/mcp", "/health", "/healthz"],
-        tools: PUBLIC_TOOLS.map((tool) => tool.name)
+        tools: PUBLIC_TOOLS.map((tool) => tool.name),
+        engine_health: getEngineHealthStats(),
+        circuit_breakers: Object.fromEntries([...CIRCUIT_BREAKER.entries()].map(([k, v]) => [k, { failures: v.failures, frozen_until: new Date(v.frozenUntil).toISOString() }]))
       });
     }
     if (url.pathname !== "/mcp") return jsonRpcError(null, -32004, "not found", 404);
@@ -947,13 +949,27 @@ function cjkSubTokenCoverage(content, query) {
 }
 __name(cjkSubTokenCoverage, "cjkSubTokenCoverage");
 __name2(cjkSubTokenCoverage, "cjkSubTokenCoverage");
+var SYNONYM_DICT = /* @__PURE__ */ (() => {
+  try {
+    return /* dict_synonyms.json */ { "intent_groups": [{ "query_patterns": ["初学", "初学者", "入门", "教程", "课程", "学习", "自学"], "content_patterns": ["新手", "小白", "零基础", "入门", "教程", "教学", "指南", "自学", "课程", "学习", "基础"] }, { "query_patterns": ["推荐", "排行", "榜单", "哪款", "性价比", "选购"], "content_patterns": ["推荐", "排行", "榜", "哪款", "性价比", "选购", "评测", "攻略", "盘点", "值得买", "闭眼入"] }, { "query_patterns": ["对比", "比较", "横评", "替代方案"], "content_patterns": ["对比", "比较", "横评", "替代", "vs", "优缺点", "区别"] }], "intent_action_keywords": ["推荐", "对比", "教程", "攻略", "食谱", "注意事项", "排行", "评测", "最佳实践", "安全加固", "替代方案", "入门", "课程", "减肥", "办公", "软件", "app"], "concept_page_title_patterns": ["百度百科", "wikipedia", "维基百科"], "concept_page_host_patterns": ["baike.baidu.com", "wikipedia.org", "linux.org"], "concept_page_title_exact": ["download linux", "linux.org"], "cjk_stop_words": ["的", "了", "是", "在", "和", "与", "或", "不", "有", "个", "这", "那", "一", "大", "小", "中", "上", "下", "前", "后", "最", "很", "都", "也", "就", "要", "能", "会", "年", "月", "日", "最新", "情况", "世界", "中国"] };
+  } catch { return null; }
+})();
 function hasCjkIntentSynonymMatch(content, query) {
   const q = String(query || "").toLowerCase().replace(/\s+/g, "");
   const c = String(content || "").toLowerCase().replace(/\s+/g, "");
   if (!/[\u4e00-\u9fa5]/.test(q)) return false;
-  if (/(?:初学|初学者|入门|教程|课程|学习|自学)/.test(q) && /(?:新手|小白|零基础|入门|教程|教学|指南|自学|课程|学习|基础)/.test(c)) return true;
-  if (/(?:推荐|排行|榜单|哪款|性价比|选购)/.test(q) && /(?:推荐|排行|榜|哪款|性价比|选购|评测|攻略|盘点|值得买|闭眼入)/.test(c)) return true;
-  if (/(?:对比|比较|横评|替代方案)/.test(q) && /(?:对比|比较|横评|替代|vs|优缺点|区别)/i.test(c)) return true;
+  if (!SYNONYM_DICT) {
+    if (/(?:初学|初学者|入门|教程|课程|学习|自学)/.test(q) && /(?:新手|小白|零基础|入门|教程|教学|指南|自学|课程|学习|基础)/.test(c)) return true;
+    if (/(?:推荐|排行|榜单|哪款|性价比|选购)/.test(q) && /(?:推荐|排行|榜|哪款|性价比|选购|评测|攻略|盘点|值得买|闭眼入)/.test(c)) return true;
+    if (/(?:对比|比较|横评|替代方案)/.test(q) && /(?:对比|比较|横评|替代|vs|优缺点|区别)/i.test(c)) return true;
+    return false;
+  }
+  for (const group of SYNONYM_DICT.intent_groups) {
+    const qMatch = group.query_patterns.some((p) => q.includes(p));
+    if (!qMatch) continue;
+    const cMatch = group.content_patterns.some((p) => c.includes(p));
+    if (cMatch) return true;
+  }
   return false;
 }
 __name(hasCjkIntentSynonymMatch, "hasCjkIntentSynonymMatch");
@@ -1236,8 +1252,12 @@ function scoreSearchAutoResult(item, query = "") {
   const cjkCoverage = cjkSubTokenCoverage(content, query);
   const cjkCoverageWeight = Math.min(80, Math.round(cjkCoverage * 120));
   const cjkSynonymWeight = hasCjkIntentSynonymMatch(content, query) ? 45 : 0;
-  const intentNeedsSpecificPage = /推荐|对比|教程|攻略|食谱|注意事项|排行|评测|最佳实践|安全加固|替代方案|入门|课程|减肥|办公|软件|app/i.test(String(query || ""));
-  const conceptPage = /(?:百度百科|wikipedia|维基百科|^download linux$|^linux\.org$)/i.test(title) || /(?:^|\.)(?:baike\.baidu\.com|wikipedia\.org|linux\.org)$/i.test(officialHost);
+  const intentKeywords = SYNONYM_DICT ? SYNONYM_DICT.intent_action_keywords : ["推荐", "对比", "教程", "攻略", "食谱", "注意事项", "排行", "评测", "最佳实践", "安全加固", "替代方案", "入门", "课程", "减肥", "办公", "软件", "app"];
+  const intentNeedsSpecificPage = intentKeywords.some((k) => String(query || "").toLowerCase().includes(k));
+  const conceptTitlePatterns = SYNONYM_DICT ? SYNONYM_DICT.concept_page_title_patterns : ["百度百科", "wikipedia", "维基百科"];
+  const conceptHostPatterns = SYNONYM_DICT ? SYNONYM_DICT.concept_page_host_patterns : ["baike.baidu.com", "wikipedia.org", "linux.org"];
+  const conceptTitleExact = SYNONYM_DICT ? SYNONYM_DICT.concept_page_title_exact : ["download linux", "linux.org"];
+  const conceptPage = conceptTitlePatterns.some((p) => title.toLowerCase().includes(p.toLowerCase())) || conceptTitleExact.some((p) => title.toLowerCase() === p) || conceptHostPatterns.some((p) => officialHost.endsWith(p));
   const conceptPenalty = intentNeedsSpecificPage && conceptPage && cjkCoverage < 0.35 ? 120 : 0;
   return qualityWeight + rankWeight + multiSourceWeight + tokenWeight + cjkCoverageWeight + cjkSynonymWeight + officialWeight - genericPenalty - mismatchPenalty - lowTrustPenalty - conceptPenalty;
 }
@@ -1349,6 +1369,7 @@ async function searchAuto(args) {
     if (settled.status !== "fulfilled" || !settled.value || settled.value === null) continue;
     const entry = settled.value;
     if (!entry?.result) {
+      if (entry.engine) recordEngineHealthEvent(entry.engine, "empty");
       attempts.push({ engine: entry.engine, ok: false, error: entry.error || "failed", quality_status: "red", quality_reason: entry.error || "failed", filtered_count: 0, result_count: 0 });
       continue;
     }
@@ -3489,6 +3510,32 @@ var CACHE_TTL_MS = 5 * 60 * 1e3;
 var CIRCUIT_BREAKER = /* @__PURE__ */ new Map();
 var CIRCUIT_THRESHOLD = 3;
 var CIRCUIT_FREEZE_MS = 5 * 60 * 1e3;
+var ENGINE_HEALTH = /* @__PURE__ */ new Map();
+var ENGINE_HEALTH_WINDOW_MS = 60 * 60 * 1e3;
+function recordEngineHealthEvent(engine, event) {
+  const now = Date.now();
+  let health = ENGINE_HEALTH.get(engine);
+  if (!health) { health = { events: [] }; ENGINE_HEALTH.set(engine, health); }
+  health.events.push({ event, ts: now });
+  health.events = health.events.filter((e) => now - e.ts < ENGINE_HEALTH_WINDOW_MS);
+}
+__name(recordEngineHealthEvent, "recordEngineHealthEvent");
+__name2(recordEngineHealthEvent, "recordEngineHealthEvent");
+function getEngineHealthStats() {
+  const now = Date.now();
+  const stats = {};
+  for (const [engine, health] of ENGINE_HEALTH.entries()) {
+    const recent = health.events.filter((e) => now - e.ts < ENGINE_HEALTH_WINDOW_MS);
+    const total = recent.length;
+    const blocked = recent.filter((e) => e.event === "blocked").length;
+    const success = recent.filter((e) => e.event === "success").length;
+    const empty = recent.filter((e) => e.event === "empty").length;
+    stats[engine] = { total, blocked, success, empty, block_rate: total > 0 ? Math.round(blocked / total * 100) : 0 };
+  }
+  return stats;
+}
+__name(getEngineHealthStats, "getEngineHealthStats");
+__name2(getEngineHealthStats, "getEngineHealthStats");
 function isEngineCircuitBroken(engine) {
   const record = CIRCUIT_BREAKER.get(engine);
   if (!record) return false;
@@ -3505,11 +3552,13 @@ function recordEngineBlocked(engine) {
     record.failures = 0;
   }
   CIRCUIT_BREAKER.set(engine, record);
+  recordEngineHealthEvent(engine, "blocked");
 }
 __name(recordEngineBlocked, "recordEngineBlocked");
 __name2(recordEngineBlocked, "recordEngineBlocked");
 function recordEngineSuccess(engine) {
   CIRCUIT_BREAKER.delete(engine);
+  recordEngineHealthEvent(engine, "success");
 }
 __name(recordEngineSuccess, "recordEngineSuccess");
 __name2(recordEngineSuccess, "recordEngineSuccess");
