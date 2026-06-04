@@ -1271,7 +1271,67 @@ async function searchAuto(args) {
   const cached = cacheDisabled ? null : getCached(cacheKey);
   if (cached) return { ...cached, _cached: true };
   const siteTarget = parseSiteTargetQuery(args.query);
-  for (const engine of engines) {
+  const CONCURRENT_LIMIT = 4;
+  const RACE_TIMEOUT_MS = 12000;
+  let raceWon = false;
+  let raceResults = [];
+  const circuitBroken = engines.filter((e) => !isEngineCircuitBroken(e));
+  const firstBatch = circuitBroken.slice(0, CONCURRENT_LIMIT);
+  const remaining = circuitBroken.slice(CONCURRENT_LIMIT);
+  const racePromises = firstBatch.map(async (engine) => {
+    try {
+      const result = await runSearchEngine(engine, args);
+      if (!result) return { engine, ok: false, error: "no_result" };
+      const originalResults = Array.isArray(result?.results) ? result.results : [];
+      const filteredResults = filterSiteTargetedResults(originalResults, siteTarget, Number(args.limit) || 5);
+      const normalizedResult = siteTarget && Array.isArray(result?.results) ? { ...result, results: filteredResults, filtered_count: Math.max(0, originalResults.length - filteredResults.length) } : result;
+      const quality = evaluateSearchQuality(normalizedResult, args.query, engine);
+      const enrichedResult = { ...normalizedResult, ...quality };
+      return { engine, result: enrichedResult, quality };
+    } catch (error) {
+      return { engine, ok: false, error: error?.message || "failed" };
+    }
+  });
+  const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), RACE_TIMEOUT_MS));
+  const raceSettled = await Promise.allSettled([...racePromises.map((p) => p.then((r) => {
+    if (r?.quality && (r.quality.quality_status === "green" || r.quality.quality_status === "yellow") && !raceWon) {
+      raceWon = true;
+    }
+    return r;
+  })), timeoutPromise]);
+  for (const settled of raceSettled) {
+    if (settled.status !== "fulfilled" || !settled.value || settled.value === null) continue;
+    const entry = settled.value;
+    if (!entry?.result) {
+      attempts.push({ engine: entry.engine, ok: false, error: entry.error || "failed", quality_status: "red", quality_reason: entry.error || "failed", filtered_count: 0, result_count: 0 });
+      continue;
+    }
+    const engine = entry.engine;
+    const enrichedResult = entry.result;
+    const quality = entry.quality;
+    attempts.push(buildSearchAutoAttempt(engine, enrichedResult, quality));
+    if (quality.quality_status === "blocked") { recordEngineBlocked(engine); }
+    else if (quality.quality_status === "green" || quality.quality_status === "yellow") {
+      recordEngineSuccess(engine);
+      const usableResults = Array.isArray(enrichedResult?.results) ? enrichedResult.results : [];
+      usableResults.forEach((item, index) => {
+        acceptedResults.push({
+          ...item,
+          source: enrichedResult.source || engine,
+          engine,
+          quality_status: quality.quality_status,
+          quality_reason: quality.quality_reason,
+          rank_within_engine: index + 1
+        });
+      });
+    }
+  }
+  if (raceWon && acceptedResults.length > 0) {
+    const final = buildSearchAutoResponse({ args, engines, attempts, acceptedResults, siteTarget });
+    if (!cacheDisabled && final.ok) setCache(cacheKey, final);
+    return final;
+  }
+  for (const engine of remaining) {
     if (isEngineCircuitBroken(engine)) {
       attempts.push({ engine, ok: false, error: "circuit_breaker", quality_status: "red", quality_reason: "circuit_breaker_frozen", filtered_count: 0, result_count: 0 });
       continue;
@@ -1299,6 +1359,7 @@ async function searchAuto(args) {
             rank_within_engine: index + 1
           });
         });
+        break;
       }
     } catch (error) {
       attempts.push({ engine, ok: false, error: error?.message || "failed", quality_status: "red", quality_reason: error?.message || "failed", filtered_count: 0, result_count: 0 });
