@@ -345,6 +345,36 @@ search-mcp-worker/
 | Arxiv occasional timeout | Network path from CF edge to `export.arxiv.org` | Transient |
 | Lemmy community search coverage | Only matches against a hardcoded hint list (linux/docker/rust/etc) | Expand as needed |
 
+## Agent Behavior Guide
+
+When using these tools from an LLM agent (Claude, Cursor, etc.), observe these signals:
+
+### `_meta.parser` (search tools)
+
+Every search response includes `_meta.parser`:
+
+| Value | Meaning | Agent action |
+|---|---|---|
+| `"exact"` | Primary parser matched site structure | High confidence — use results directly |
+| `"skeleton_fallback"` | Generic fallback due to site layout changes | Lower precision — cross-reference with vertical tools (e.g., `search_github_repos`, `search_pubmed`) |
+
+### `content_type: "challenge_page"` (fetch_url)
+
+When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
+
+| Signal | Meaning | Agent action |
+|---|---|---|
+| `content_type: "challenge_page"` + `status: 202` | JS probe required — page needs browser execution | Do NOT treat text as article content. Use `search_auto` or alternative sources instead |
+| `content_type: "challenge_page"` + `status: 403` | Data center IP blocked | Same — switch to search tools for the information |
+
+### Recommended fallback chain
+
+```
+1. Try fetch_url for direct page content
+2. If challenge_page → use search_auto to find same content from other sources
+3. If search results are skeleton_fallback → cross-reference with vertical tools
+```
+
 ## What This Is Not
 
 - Not a commercial SERP API replacement

@@ -62,17 +62,17 @@ function getProviderBaseUrl(name, fallback, requestOrConfig) {
 var TOOLS = [
   {
     name: "search_auto",
-    description: "Search multiple engines, merge usable results, and rerank the best matches automatically.",
+    description: "Search multiple engines, merge usable results, and rerank the best matches automatically. Response includes _meta.parser: 'exact' (primary parser hit) or 'skeleton_fallback' (generic fallback due to site layout changes — results may have lower precision). If skeleton_fallback, consider cross-referencing with vertical tools like search_github_repos or search_pubmed for higher confidence.",
     inputSchema: querySchema({ engines: true, autoMode: true })
   },
   {
     name: "search_duckduckgo",
-    description: "Search the web via DuckDuckGo HTML results. Good general fallback search.",
+    description: "Search the web via DuckDuckGo HTML results. Good general fallback search. Response includes _meta.parser: 'exact' or 'skeleton_fallback'.",
     inputSchema: querySchema({ region: true })
   },
   {
     name: "search_bing",
-    description: "Search the web via Bing HTML results.",
+    description: "Search the web via Bing HTML results. Response includes _meta.parser: 'exact' or 'skeleton_fallback'. For Chinese queries, prefer search_bing_cn.",
     inputSchema: querySchema()
   },
   {
@@ -393,7 +393,7 @@ var TOOLS = [
   },
   {
     name: "fetch_url",
-    description: "Fetch a public URL and return readable text/metadata. Not for authenticated/private pages.",
+    description: "Fetch a public URL and return readable text/metadata. Not for authenticated/private pages. If the target site blocks the request (anti-bot/WAF), returns content_type: 'challenge_page' with status 202 or 403 — the text will contain the raw challenge HTML or error message, not the actual page content. When you see challenge_page, do NOT treat the text as article content; instead try search_auto or an alternative source for the same information.",
     inputSchema: {
       type: "object",
       properties: {
