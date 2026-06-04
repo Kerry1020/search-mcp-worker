@@ -61,10 +61,7 @@ function auditSemanticIntegrity(engine, query, json) {
     const yearbookNoise = /(?:wikipedia\.org|cnn\.com|apnews\.com|associatedpress\.com)/i.test(url)
       && /\b2025\b/.test(title)
       && !/(路由器|wifi|wi-fi|pppoe|校园网|router|gigabit)/i.test(haystack);
-    const queryTruncatedToYear = /\b2025\b/.test(compactQuery)
-      && /\b2025\b/.test(title)
-      && !/(路由器|wifi|wi-fi|pppoe|校园网|router|gigabit)/i.test(haystack);
-    return yearbookNoise || queryTruncatedToYear;
+    return yearbookNoise;
   });
   if (corrupted) {
     console.error(`\n❌ CRITICAL SEMANTIC FAILURE: ${engine} likely truncated query`);

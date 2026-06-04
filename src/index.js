@@ -879,7 +879,27 @@ function isIntentMismatchResult(item, query, engine = "") {
     const compactContent = contentText.replace(/\s+/g, "");
     const matchedTokens = queryTokens.filter((token) => compactContent.includes(token));
     if (isClearCjkMismatchResult(item, query, engine)) return true;
-    return compactQuery ? !compactContent.includes(compactQuery) && matchedTokens.length === 0 : false;
+    if (compactQuery && compactContent.includes(compactQuery)) return false;
+    if (matchedTokens.length > 0) return false;
+    const cjkRuns = compactQuery.match(/[\u4e00-\u9fa5]+/g) || [];
+    const cjkStopWords = /^(?:的|了|是|在|和|与|或|不|有|个|这|那|一|大|小|中|上|下|前|后|最|很|都|也|就|要|能|会|年|月|日|最新|情况|世界|中国)$/u;
+    const subTokens = [];
+    for (const run of cjkRuns) {
+      if (run.length <= 2 && !cjkStopWords.test(run)) { subTokens.push(run); continue; }
+      for (let len = Math.min(4, run.length); len >= 2; len--) {
+        for (let i = 0; i + len <= run.length; i++) {
+          const gram = run.substring(i, i + len);
+          if (!cjkStopWords.test(gram)) subTokens.push(gram);
+        }
+      }
+    }
+    if (subTokens.length > 0) {
+      const uniqueTokens = [...new Set(subTokens)];
+      const hits = uniqueTokens.filter((t) => compactContent.includes(t));
+      if (hits.length / uniqueTokens.length >= 0.15) return false;
+    }
+    if (hasCjkIntentSynonymMatch(contentText, query)) return false;
+    return true;
   }
   if (engine === "bbc") {
     const queryTokens = tokenizeSearchText(query);
@@ -920,6 +940,40 @@ function tokenizeSearchText(value) {
 }
 __name(tokenizeSearchText, "tokenizeSearchText");
 __name2(tokenizeSearchText, "tokenizeSearchText");
+function cjkSubTokenCoverage(content, query) {
+  const compactQuery = String(query || "").toLowerCase().replace(/\s+/g, "");
+  const compactContent = String(content || "").toLowerCase().replace(/\s+/g, "");
+  if (!/[\u4e00-\u9fa5]/.test(compactQuery) || !compactContent) return 0;
+  const cjkRuns = compactQuery.match(/[\u4e00-\u9fa5]+/g) || [];
+  const cjkStopWords = /^(?:的|了|是|在|和|与|或|不|有|个|这|那|一|大|小|中|上|下|前|后|最|很|都|也|就|要|能|会|年|月|日|最新|情况|世界|中国)$/u;
+  const subTokens = [];
+  for (const run of cjkRuns) {
+    if (run.length <= 2 && !cjkStopWords.test(run)) { subTokens.push(run); continue; }
+    for (let len = Math.min(4, run.length); len >= 2; len--) {
+      for (let i = 0; i + len <= run.length; i++) {
+        const gram = run.substring(i, i + len);
+        if (!cjkStopWords.test(gram)) subTokens.push(gram);
+      }
+    }
+  }
+  const uniqueTokens = [...new Set(subTokens)];
+  if (!uniqueTokens.length) return 0;
+  const hits = uniqueTokens.filter((t) => compactContent.includes(t)).length;
+  return hits / uniqueTokens.length;
+}
+__name(cjkSubTokenCoverage, "cjkSubTokenCoverage");
+__name2(cjkSubTokenCoverage, "cjkSubTokenCoverage");
+function hasCjkIntentSynonymMatch(content, query) {
+  const q = String(query || "").toLowerCase().replace(/\s+/g, "");
+  const c = String(content || "").toLowerCase().replace(/\s+/g, "");
+  if (!/[\u4e00-\u9fa5]/.test(q)) return false;
+  if (/(?:初学|初学者|入门|教程|课程|学习|自学)/.test(q) && /(?:新手|小白|零基础|入门|教程|教学|指南|自学|课程|学习|基础)/.test(c)) return true;
+  if (/(?:推荐|排行|榜单|哪款|性价比|选购)/.test(q) && /(?:推荐|排行|榜|哪款|性价比|选购|评测|攻略|盘点|值得买|闭眼入)/.test(c)) return true;
+  if (/(?:对比|比较|横评|替代方案)/.test(q) && /(?:对比|比较|横评|替代|vs|优缺点|区别)/i.test(c)) return true;
+  return false;
+}
+__name(hasCjkIntentSynonymMatch, "hasCjkIntentSynonymMatch");
+__name2(hasCjkIntentSynonymMatch, "hasCjkIntentSynonymMatch");
 function hasMeaningfulCjkTokenMatch(item, query) {
   const normalizedQuery = normalizeCjkQuery(query);
   const normalizedContent = normalizeCjkQuery(`${item?.title || ""} ${item?.snippet || ""}`);
@@ -973,8 +1027,26 @@ function isHardIntentMismatchResult(item, query, engine = "") {
     const compactQuery = query.toLowerCase().replace(/\s+/g, "");
     if (compactQuery && compactContent.includes(compactQuery)) return false;
     const matchedTokens = queryTokens.filter((token) => compactContent.includes(token));
-    if (matchedTokens.length === 0) return true;
-    return false;
+    if (matchedTokens.length > 0) return false;
+    const cjkRuns = compactQuery.match(/[\u4e00-\u9fa5]+/g) || [];
+    const cjkStopWords = /^(?:的|了|是|在|和|与|或|不|有|个|这|那|一|大|小|中|上|下|前|后|最|很|都|也|就|要|能|会|年|月|日|最新|情况|世界|中国)$/u;
+    const subTokens = [];
+    for (const run of cjkRuns) {
+      if (run.length <= 2 && !cjkStopWords.test(run)) { subTokens.push(run); continue; }
+      for (let len = Math.min(4, run.length); len >= 2; len--) {
+        for (let i = 0; i + len <= run.length; i++) {
+          const gram = run.substring(i, i + len);
+          if (!cjkStopWords.test(gram)) subTokens.push(gram);
+        }
+      }
+    }
+    if (subTokens.length > 0) {
+      const uniqueTokens = [...new Set(subTokens)];
+      const hits = uniqueTokens.filter((t) => compactContent.includes(t));
+      if (hits.length / uniqueTokens.length >= 0.15) return false;
+    }
+    if (hasCjkIntentSynonymMatch(contentText, query)) return false;
+    return true;
   }
   return isIntentMismatchResult(item, query, engine);
 }
@@ -1193,7 +1265,13 @@ function scoreSearchAutoResult(item, query = "") {
   const genericPenalty = isGenericWrapperResult(item, query, item.engine || item.source || "") ? 60 : 0;
   const mismatchPenalty = isIntentMismatchResult(item, query, item.engine || item.source || "") ? 80 : 0;
   const lowTrustPenalty = isLowTrustResult(item, query, item.engine || item.source || "") ? 120 : 0;
-  return qualityWeight + rankWeight + multiSourceWeight + tokenWeight + officialWeight - genericPenalty - mismatchPenalty - lowTrustPenalty;
+  const cjkCoverage = cjkSubTokenCoverage(content, query);
+  const cjkCoverageWeight = Math.min(80, Math.round(cjkCoverage * 120));
+  const cjkSynonymWeight = hasCjkIntentSynonymMatch(content, query) ? 45 : 0;
+  const intentNeedsSpecificPage = /推荐|对比|教程|攻略|食谱|注意事项|排行|评测|最佳实践|安全加固|替代方案|入门|课程|减肥|办公|软件|app/i.test(String(query || ""));
+  const conceptPage = /(?:百度百科|wikipedia|维基百科|^download linux$|^linux\.org$)/i.test(title) || /(?:^|\.)(?:baike\.baidu\.com|wikipedia\.org|linux\.org)$/i.test(officialHost);
+  const conceptPenalty = intentNeedsSpecificPage && conceptPage && cjkCoverage < 0.35 ? 120 : 0;
+  return qualityWeight + rankWeight + multiSourceWeight + tokenWeight + cjkCoverageWeight + cjkSynonymWeight + officialWeight - genericPenalty - mismatchPenalty - lowTrustPenalty - conceptPenalty;
 }
 __name(scoreSearchAutoResult, "scoreSearchAutoResult");
 __name2(scoreSearchAutoResult, "scoreSearchAutoResult");
