@@ -1,0 +1,1499 @@
+========================================================================================================================
+search-mcp-worker 50-Domain Full Audit Report
+Generated: 2026-06-04T06:40:19.711Z
+Endpoint: https://search-mcp.qdp.qzz.io/mcp
+Build: HEAD 9261c81 / deployed PR #36
+========================================================================================================================
+SUMMARY
+Total: 50
+Green: 48
+Yellow: 2
+Red: 0
+Error: 0
+Pass rate (green+yellow): 100.0%
+Green rate: 96.0%
+Average wall time: 12.5s
+
+CATEGORY BREAKDOWN
+CJK-科技: 10/10 green, 0 yellow, 0 red/error
+CJK-生活: 10/10 green, 0 yellow, 0 red/error
+CJK-长尾: 3/5 green, 2 yellow, 0 red/error
+EN-Tech: 10/10 green, 0 yellow, 0 red/error
+EN-General: 10/10 green, 0 yellow, 0 red/error
+EN-长尾: 5/5 green, 0 yellow, 0 red/error
+
+YELLOW / NON-GREEN INDEX
+[23] CJK-长尾 猫咪呕吐精神不好怎么办 -> yellow (usable_with_minor_noise)
+[25] CJK-长尾 信用卡积分兑换哪个最划算 -> yellow (usable_with_minor_noise)
+
+========================================================================================================================
+PER-QUERY FULL RESULTS
+========================================================================================================================
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[ 1/50] CJK-科技 | 最新手机推荐 2025
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 15.4s
+Results: 3 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=1 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: 2025年新款手机推荐:这三款堪称科技与设计的巅峰之作_用户_...
+    url: https://www.sogou.com/link?url=hedJjaC291Ok-E9WTygIKqZt6DizBOEjUTfGBirHrJVZf4XO6nCu5l08tLVUddi7
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #2
+    title: 2025 年（3月） 手机 挑选 推荐 超全攻略 || 高性价比 手机推荐 || 2025 年拍...
+    url: https://www.sogou.com/link?url=hedJjaC291OfPyaFZYFLI4KQWvqt63NBaXz7pdttYUOiZrdxzSFg2w..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+  #3
+    title: 2026年618高性价比手机推荐排行榜前10名(1500元、2000元、3000元等价...
+    url: https://zhuanlan.zhihu.com/p/448499175
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 华为、小米、苹果、OPPO 、vivo、荣耀等高性价比手机推荐(618更新)1.5 万赞同 · 8288 评论文章 作为数码行业从业者,同时作为一名普通的消费者,个人认为现在动不动就近万元的旗舰机(比笔记本电脑都贵)是并不值得买的,土豪除外。“性价比”这个词,所对应的手机价格应该在1500~3000之间,要么是某方面性能比较突出,
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[ 2/50] CJK-科技 | MacBook Pro M4 评测
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 15.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  4. engine=baidu status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+Returned Results:
+  #1
+    title: M4 MacBook Pro 评测:刀法全没了?入门就给16GB内存+全接口|凰家...
+    url: https://www.sogou.com/link?url=hedJjaC291ObqPUCEo1zMuraEuczo-4WCU_PNz9JM0uE569iUau5L611-OYgdxL-8x2NB-PRwZT6xKUHvPurlBhfbabas_3rX2dPn12l6yrxFwqCf8aSNg..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+  #2
+    title: M4 MacBook Air评测：这是一款适合更多人的“小Pro”
+    url: https://finance.sina.com.cn/tech/roll/2025-03-11/doc-inepicef2379031.shtml
+    source: bing_news | engine: bing_news | quality: green | rank_within_engine: 1
+    snippet: 
+  #3
+    title: MacBook Pro 14 2024深度 评测: M4 芯片性能与能效比全面解析_测试...
+    url: https://www.sogou.com/link?url=hedJjaC291Ok-E9WTygIKqZt6DizBOEj-BQ_TCx5expOJXLxe4QooSc0zLK6htAJ
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[ 3/50] CJK-科技 | Docker 部署最佳实践
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 15.3s
+Results: 3 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=2 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: Docker 多主机部署:构建容器集群的最佳实践,助力高可用性与负载...
+    url: https://developer.aliyun.com/article/1348056
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: Docker Swarm Documentation.https://docs.docker.com/engine/swarm/ Apache Mesos Documentation.https://mesos.apache.org/documentation/ 今日学习总结 本文重点阐述和分析了 Docker 多主机部署的最佳实践,涵盖了集群管理工具选择、网络解决方案、高可用性与负
+  #2
+    title: Docker 容器化 部署,这些 最佳实践 你不可不知-腾讯云开发者社区-腾讯云
+    url: https://www.sogou.com/link?url=hedJjaC291NNlyaAPdJIG4sgUN9i2J4jcwMJ03YIpCJDieT8IsagZzHh-HPevM6v_ZuxEMqgRi0.
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #3
+    title: Docker 使用本地镜像构建和 部署的最佳实践 - 我将一人成团 - 博客园
+    url: https://www.sogou.com/link?url=hedJjaC291P3yGwc7N55kLSc2ls_Ks2x64NI3pTCg1xZbEzwgWLtVwcy1NrhknRF
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[ 4/50] CJK-科技 | Linux 服务器安全加固
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 15.4s
+Results: 3 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+Returned Results:
+  #1
+    title: Linux服务器安全加固全 攻略:防黑、防崩、必看防作死指南 - 今日头条
+    url: https://www.sogou.com/link?url=hedJjaC291PD0T3DYzJqFDoBhFbePHvernilvTOuwmnzNqccdfLc7SX03YkrbBRMnP384wUPjkw.
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #2
+    title: Linux服务器安全加固 策略,防范网络威胁-linux运维-PHP中文网
+    url: https://www.sogou.com/link?url=hedJjaC291MGJe3I57gt91KGxPdvzDELp-NqJIKZ1AW2wKelUak-kA..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+  #3
+    title: 安全强化你的 Linux 服务器的七个步骤-腾讯云开发者社区-腾讯云 腾讯云
+    url: https://www.cloud.tencent.com/developer/article/1876068
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[ 5/50] CJK-科技 | ChatGPT 替代方案
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 15.4s
+Results: 3 | Filtered: 14 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=1 filtered_count=2 reason=usable_results
+Returned Results:
+  #1
+    title: 介绍10款ChatGPT替代产品-腾讯云开发者社区-腾讯云
+    url: https://cloud.tencent.com/developer/article/2313021
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: chatgpt替代方案刚刚进入对话式 人工智能 市场.它提供类似于 chatgpt的功能,例如语言响应和内容创建.perplexity ai于 2022年 8月由来自 openai,meta,quora和 databrick的 ai科学家团队推出. 大型语言模型(openai api )是 perplexity ai的主要力量来源. 由于它是来自 openai的开源人工智能答案引擎, 它的工作原理与...
+  #2
+    title: ChatGPT 替代方案 的更多内容_CSDN技术社区
+    url: https://www.sogou.com/link?url=hedJjaC291OHSfRZxx--pdfZ45aIPvhNrynoH4S1IZp3dsjpqTIyDXk3F0LMH1xzcemK9CvNOY-J1qs_3bq_NehNisPxj-IJThONE1USmgHj5djVrYXnJxylw_CUpqK58A_DiIfW9xdyxeJV7DOWog..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #3
+    title: Linux上12个最佳开源 ChatGPT替代方案 - 神算ID - 博客园
+    url: https://www.sogou.com/link?url=hedJjaC291P3yGwc7N55kLSc2ls_Ks2xSRcX0I3XS20RExVveuBudJbcNF3erbK1
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[ 6/50] CJK-科技 | AI 绘画工具对比
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 13 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=1 filtered_count=1 reason=usable_results
+Returned Results:
+  #1
+    title: AI 绘画工具对比 的更多内容_CSDN技术社区
+    url: https://www.sogou.com/link?url=hedJjaC291OHSfRZxx--pdfZ45aIPvhNrynoH4S1IZp3dsjpqTIyDQrsww3APRO5QdyVTt1sUEnQphTpulGch4nxt7MElTzAwyDuH31XyZhN4OfdYKSvxB2yIRl0tM5BQcgpAIfdqA0c2QKe9zNjHBiHqAnQRghl
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+  #2
+    title: 三款国产AI绘画工具深度横评:谁才是你的“真命天选”?_绘画创作...
+    url: https://post.smzdm.com/p/ak858mo4/
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 01生成质量对比 生成质量是AI绘画工具的核心价值。我们以“人物细节还原”“风格准确性”“复杂场景处理”为三大子维度进行实测。海艺AI依托80万+模型库,在写实人像、古风插画、赛博朋克等多风格下均表现出高稳定性,人物手部稳定率达90%以上,发丝、布纹等微观细节清晰可辨。即梦AI在艺术感和画面氛围营造上表现突出,...
+  #3
+    title: 主流 AI绘图工具对比,强烈建议新手用第一个_哔哩哔哩_bilibili
+    url: https://www.sogou.com/link?url=hedJjaC291ObqPUCEo1zMuraEuczo-4WCU_PNz9JM0vumHo_kpDz-pXWh1mgec3U8x2NB-PRwZT6xKUHvPurlBhfbabas_3rX2dPn12l6yrcAEp4wAFkZK3mlRzfPLR2
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[ 7/50] CJK-科技 | Python 异步编程教程
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: Python asyncio异步编程教程-我要自学网
+    url: https://www.51zxw.net/Details.aspx?cid=1054
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: Python asyncio异步编程教程 在校学生、python开发工程师 1.理解python asyncio原理 2.熟练使用python协程 3.掌握异步web框架运行原理 1.由浅入深,通俗的语言介绍pthon asyncio原理和使用。 2.从协程出发、理解并发的好处。 3.通过看源码的方式,知其然知其所以然。
+  #2
+    title: Python 异步编程 完全 指南 - 编写人生 - 博客园
+    url: https://www.sogou.com/link?url=hedJjaC291P3yGwc7N55kLSc2ls_Ks2xMvvj0UiVhSb5OOXGlt3qRq3mlRzfPLR2
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #3
+    title: Python 异步编程完全指南 - 编写人生 - 博客园
+    url: https://www.cnblogs.com/tansm/p/19840584
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 3
+    snippet: Python 的异步编程模型基于事件循环(Event Loop),通过asyncio标准库实现。与多线程相比,异步编程在 I/O 密集型任务中有显著优势,因为它避免了线程切换的开销,并且不需要处理锁和竞态条件等并发问题。 1.1 同步 vs 异步 同步代码按顺序执行,每个操作必须等待前一个操作完成: importtimedeffetch_data(url): time.slee...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[ 8/50] CJK-科技 | 机器学习入门课程
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=2 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: tr.coursera.org/learn/machine-learning?completeMode=noEmail...
+    url: https://tr.coursera.org/learn/machine-learning?completeMode=noEmailAvailable
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 2
+    snippet: 该课程共有3个模块 在机器学习专业的第一门课程中,您将: -使用流行的机器学习库 numpy和 scikit-learn在 python中构建机器学习模型 -为预测和二元分类任务构建和训练有监督的机器学习模型,包括线性回归和逻辑回归机器学习专业是 deeplearning.ai和斯坦福在线合作创建的基础在线课程.在这个适合初学者的课程中,您将学习...
+  #2
+    title: 机器学习入门 - 课程 详情 - 阿里云全球培训中心
+    url: https://www.sogou.com/link?url=hedJjaC291Ov3kN1EFBlYJ0ffW6YXlAVqz6XLyJRcKddo1Ipo6CkWQ..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #3
+    title: 机器学习入门 -概念原理及常用算法 - 机器学习学习 资源 - 认证中心 - 阿...
+    url: https://www.sogou.com/link?url=hedJjaC291Ov3kN1EFBlYPFlhZ6vB1xy_PxqAgi1ZZyt5pUc3zy0dg..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[ 9/50] CJK-科技 | React vs Vue 性能对比
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 13 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=2 filtered_count=1 reason=usable_results
+Returned Results:
+  #1
+    title: ReactvsVue性能对比 -剖析洞察 - 豆丁网
+    url: https://www.sogou.com/link?url=hedJjaC291PpP0LsqQrO3lKaA-qsHOrpAuEJ-yDYcxm3dic6Ox500g..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #2
+    title: React和Vue的性能对比 如何?-阿里云开发者社区
+    url: https://www.sogou.com/link?url=hedJjaC291MPMOVjiLQ4BE0qCwCRu66q-tgrT0fSEue1-skIeydBRDJnKgYPN45H
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+  #3
+    title: ReactJS vs VueJS: 前端框架的对比与选择_前端-CSDN专栏
+    url: https://download.csdn.net/blog/column/12456254/133613220
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 一、性能比较: ReactJS和VueJS都在性能方面表现出色,但在某些方面有所不同。ReactJS使用虚拟DOM(Virtual DOM)来管理页面更新,而VueJS则采用了响应式的数据绑定机制。 ReactJS的虚拟DOM机制可以帮助开发者高效地处理大型应用程序的状态更新,但在某些情况下可能会导致性能下降。VueJS的响应式数据绑定机制能够更精确地追...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[10/50] CJK-科技 | 新能源汽车销量排行
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  2. engine=bing_cn status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+Returned Results:
+  #1
+    title: 2026年4月 新能源汽车销量排行榜 -盖世汽车
+    url: https://www.sogou.com/link?url=hedJjaC291NBAwulFDGgOAfPh-J69Yr_Sn25iYjFE4Wt5pUc3zy0dg..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #2
+    title: 2024年电动汽车销量排行榜_中国 电动汽车销量排行榜 _车主手册
+    url: https://www.sogou.com/link?url=hedJjaC291MzOJlbxDILsCRH4-fnzP-YYjS5dqFg78bFpq-Y9P0LXtM7Xe6uZ5eq
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+  #3
+    title: 汽车销量排名 - 搜狗百科
+    url: https://baike.sogou.com/v76118541.htm?ch=frombaikevr&fromTitle=%E6%B1%BD%E8%BD%A6%E9%94%80%E9%87%8F%E6%8E%92%E5%90%8D
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[11/50] CJK-生活 | 健康饮食减肥食谱
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 2 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=2 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: 可以减肥的食谱有什么-专家文章-博禾医生
+    url: https://www.bohe.cn/article/view/zn2tsro85k093b4.html
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 减肥期间可以适量食用燕麦片、鸡胸肉、西蓝花、苹果、魔芋等低热量高营养食物,同时需配合科学饮食结构和运动计划。 一、食物 1、燕麦片 燕麦片富含可溶性膳食纤维,能延缓胃排空速度并增强饱腹感,其β-葡聚糖成分有助于调节血脂。建议选择无添加的原味燕麦,搭配无糖酸奶或新鲜莓果作为早餐,避免即食燕麦中含有的糖分和添...
+  #2
+    title: 减肥瘦身食谱有哪些-专家文章-博禾医生
+    url: https://www.bohe.cn/article/view/ze9esk5htk7brqu.html
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 2
+    snippet: 减肥瘦身食谱主要包括控制总热量、均衡营养、调整饮食结构的原则,常见的食谱搭配有低脂高蛋白餐、高膳食纤维餐、地中海饮食模式、轻断食模式以及低碳水化合物餐等。 一、低脂高蛋白餐 低脂高蛋白餐的核心是选择脂肪含量低但蛋白质丰富的食物,如鸡胸肉、鱼虾、豆腐、蛋清等。这类食物能提供长时间的饱腹感,有助于减少...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[12/50] CJK-生活 | 租房注意事项
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 14 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=yellow ok=false result_count=2 filtered_count=1 reason=intent_mismatch
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=1 filtered_count=1 reason=usable_results
+Returned Results:
+  #1
+    title: 火速收藏,超全的租房攻略来了!
+    url: https://fy.yangzhou.gov.cn/gzdt/art/2025/art_3536d329182b4868b3a2a4e890d04616.html
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 需提前与房东确认房屋是否能装修、是否能更换物品以及退租时是否可以带走,相关事项要在合同中进行约定。 如对于未形成附合的装饰、装饰物,如沙发、餐桌等,可以约定租赁期届满时由承租人带走或由出租人处置,拆除过程中不可给房屋造成损毁;对于已形成附合的装饰、装饰物,如地板、墙纸等,则需特别明确其处理方式,建议在...
+  #2
+    title: 返回首页>>
+    url: https://www.sogou.com/
+    source: sogou | engine: sogou | quality: yellow | rank_within_engine: 1
+    snippet: 
+  #3
+    title: 关于搜狗
+    url: http://corp.sogou.com/
+    source: sogou | engine: sogou | quality: yellow | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[13/50] CJK-生活 | 吉他初学者教程
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.4s
+Results: 3 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+Returned Results:
+  #1
+    title: (免费)全新保姆级 吉他 零基础 入门 弹唱 教程 【 吉他入门 \吉他自学\吉...
+    url: https://www.sogou.com/link?url=hedJjaC291ObqPUCEo1zMuraEuczo-4WCU_PNz9JM0vzzsa9VGsONiGUbiHTYd5w8x2NB-PRwZT6xKUHvPurlBhfbabas_3rX2dPn12l6ypPvDx2nyOqVq3mlRzfPLR2
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #2
+    title: 吉他 小白必看| 新手入门 的指法图解_知乎
+    url: https://www.sogou.com/link?url=hedJjaC291OfPyaFZYFLI4KQWvqt63NBJcxatGVp014hXqDkvf6U6jhBy0Ks2U0lCUi0eZeuNrI.
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+  #3
+    title: 新手 自学 吉他 的八步!也是 新手 自学 吉他 的完整过程~收藏起来_哔哩哔...
+    url: https://www.sogou.com/link?url=hedJjaC291ObqPUCEo1zMuraEuczo-4WCU_PNz9JM0tLX-IzrxYvGAal89OiICY9
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[14/50] CJK-生活 | 日本旅游攻略 2025
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+Returned Results:
+  #1
+    title: 【官方】 日本 国家旅游局 (JNTO)｜ 日本 旅游
+    url: https://www.japan-travel.cn/
+    source: bing_cn | engine: bing_cn | quality: green | rank_within_engine: 2
+    snippet: 2026年1月19日&ensp;·&ensp;JNTO的官方网站是您的终极日本指南，其中包含东京，京都，大阪，广岛，北海道和其他日本顶级度假胜地的旅游信息。 做什么，去哪里，在哪里住宿，餐馆，酒店，免费WiFi和地图，在这里计划 …
+  #2
+    title: 日本自由行新时代：2025年多项新规来袭，旅行攻略全新升级!_游客_涩谷_政策 搜狐
+    url: https://www.sohu.com/a/854042971_121924581
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+  #3
+    title: 2025年日本 最新 攻略!第一次去做好这些准备_哔哩哔哩_bilibili
+    url: https://www.sogou.com/link?url=hedJjaC291ObqPUCEo1zMuraEuczo-4WCU_PNz9JM0vV5PWbbPP06LwJHxGT9dRU8x2NB-PRwZT6xKUHvPurlBhfbabas_3rX2dPn12l6ypPvDx2nyOqVq3mlRzfPLR2
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[15/50] CJK-生活 | 考研英语备考策略
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=false quality=error reason=Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+Wall time: 1.9s
+Results: 0 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  (none)
+Returned Results:
+  (no returned results)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[16/50] CJK-生活 | 远程办公软件推荐
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.8s
+Results: 3 | Filtered: 13 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=2 filtered_count=1 reason=usable_results
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=1 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: 全球 远程办公软件 排名 APP推荐 _全球远程办公软件排名下载_豌豆荚
+    url: https://www.sogou.com/link?url=hedJjaC291NFcXWtuNcqnFS_ZqPW9NS9b90EVPCfPQHWgbRjTQVLgG4YafSeot-j
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+  #2
+    title: 有哪些适合 远程办公 的 软件 值得 推荐?_知乎
+    url: https://www.sogou.com/link?url=hedJjaC291MBtMZVirtXo7CqjI0tE6P9Irl9kkee06BGnZ5PdfDUrrJHoyzodE74aFHC5Rbo-2nhwD7af50BbQ..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+  #3
+    title: 远程办公效率神器!16款远程软件大盘点-腾讯云开发者社区-腾讯云
+    url: https://cloud.tencent.com/developer/article/2328799
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: Teamviewer是一款专业的远程控制和文件传输的软件,可用来远程控制公司的电脑或传输存放在电脑上的文件,能很灵活地实现在两台计算机上同时运行远程控制,非常适用于居家办公人群。 主要功能点和亮点: 远程访问:通过互联网远程访问和控制其他计算机,方便远程工作和支持。 屏幕共享:共享屏幕内容,适用于远程演示、培训和协助。
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[17/50] CJK-生活 | 上海天气
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 13 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=2 filtered_count=1 reason=usable_results
+Returned Results:
+  #1
+    title: 上海天气 预报_一周天气预报
+    url: https://weatherol.cn/index.html?cityid1=310000
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+  #2
+    title: 【上海天气预报15天_上海天气预报15天查询】-中国天气网
+    url: http://uc.weather.com.cn/mweather15d/101020100.shtml
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 上海2026/06/04 ~ 2026/06/18 今天 06/04 阴转多云 31/22℃ 周五 06/05 阴 29/21℃ 周六 06/06 阴转晴 29/20℃ 周日 06/07 多云转阴 29/22℃ 周一 06/08 小雨转多云 27/21℃ 周二 06/09 多云转晴 28/21℃ 周三 06/10 多云 29/20℃ 周四 06/11 阴 31/22℃ 周五 06/12 阴 30/23℃ 周六 06
+  #3
+    title: 上海天气 预报,上海7天天气预报,上海15天天气预报, 上海天气 查询 官网
+    url: https://www.sogou.com/link?url=DSOYnZeCC_oXK0n85IKhX8ZmoRA401mj_LgC6MGzGc2GvQthy2l63Av7evPpzbZQri2jTBr9OJ8.
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[18/50] CJK-生活 | 比特币价格走势
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 13 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=yellow ok=false result_count=2 filtered_count=1 reason=intent_mismatch
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: 比特币价格 - 比特币实时行情,比特币今日最新价格走势图
+    url: https://usd.btc126.com/
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 为广大数字货币爱好者提供比特币价格,比特币今日最新价格走势图,比特币实时行情,比特币价格今日行情图以及BTC比特币兑美元、人民币汇率、K线图.
+  #2
+    title: BTC USD — 比特币价格和图表 — TradingView
+    url: https://cn.tradingview.com/symbols/BTCUSD/
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 2
+    snippet: 【rta加密货币行情分析-btc】rsi指标临界抉择,比特币后市走势迎来拐点 上周末比特币价格下探74000关口后,下跌节奏有所放缓.此前盘面分析提及,日线周期rsi(28)指标现已运行至多空分界中轴线附近,即将迎来方向抉择,当前币价也恰好回踩至该中轴线对应价位.日线rsi(28)是判断市场多空格局的关键依据:指标站稳中轴上方,盘面...
+  #3
+    title: Bitcoin - 比特币价格行情,今日最新币价,实时走势图_英为财情官网
+    url: https://m.cn.investing.com/crypto/bitcoin
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 3
+    snippet: 今日Bitcoin - 比特币价格行情,实时市场币价,走势图表,技术分析,官网介绍,历史数据,最新消息和未来预测。把握投资机会。
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[19/50] CJK-生活 | 中国GDP 2025
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 1 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=yellow ok=false result_count=2 filtered_count=1 reason=intent_mismatch
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  4. engine=baidu status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: 2025年中国GDP20强城市出现大调整：成都仅第8，宁波12，无锡15
+    url: https://www.sohu.com/a/1028481865_122657303
+    source: bing_news | engine: bing_news | quality: green | rank_within_engine: 1
+    snippet: 
+  #2
+    title: 滚动更新|2025年中国GDP规模预计在140万亿元左右|中国gdp|城镇化...
+    url: https://m.163.com/dy/article/K4163T3D05199NPP.html
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 2025年中国GDP规模预计在140万亿元左右 郑栅洁表示,“十四五”期间我国GDP规模持续突破110、120、130万亿元,今年经济体量有望达到140万亿元左右。 我国民营企业数量较“十三五”末增长超40% 郑栅洁表示,我们“刀刃向内”破除体制机制障碍,全国统一大市场“四梁八柱”基本建立,民营经济促进法颁布施行,制造业外资准入限制“清零”,全
+  #3
+    title: 2025年中国GDP同比增长5% 首次跃上140万亿元新台阶
+    url: https://finance.sina.com.cn/jjxw/2026-01-19/doc-inhhwavp1039034.shtml
+    source: bing_news | engine: bing_news | quality: green | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[20/50] CJK-生活 | 儿童教育 app 推荐
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 15s
+Results: 3 | Filtered: 12 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=1 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=2 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: 儿童教育App排行榜前十名-十大好用的儿童教育软件推荐下载 - 3322...
+    url: https://www.32r.com/zt/etjy/
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 悟空识字app是一款针对学龄前小朋友学习认字的儿童教育类app,能够帮助家长解放自己,让孩子通过app自主学习识字,其中不仅有多种识字课程更有大量的识字游戏,让小孩子能够拥有足够的兴趣学习识字,软件中拥有1200个左右的常见汉字和5000多个常用词语,通过我们的手机软件小朋 下载 top5 儿歌多多最新版本 幼儿教育 7.8 / 78.67m / v7.0
+  #2
+    title: 儿童教育排行榜APP推荐_儿童教育排行榜下载_豌豆荚
+    url: https://www.wandoujia.com/bangdan/875834/
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 2
+    snippet: 2025热门免费儿童教育游戏推荐:好玩又益智的手游排行榜 11-10 超有趣的小学游戏推荐2025 儿童教育娱乐手游排行榜TOP精选 10-31 2026年好玩又益智的儿童教育游戏推荐清单 儿童教育类手机游戏在当下备受家长关注,其萌趣可爱的视觉设计与轻松活泼的听觉体验,能有效吸引学龄前及小学低年级儿童的注意力,提升学习兴趣。那么...
+  #3
+    title: 2026年小学生学习APP推荐：十大优质平台助力高效趣味学习 — 新京报 新京报
+    url: https://www.bjnews.com.cn/detail/1770017582129001.html
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[21/50] CJK-长尾 | 2025 性价比 千兆 WiFi6 路由器推荐
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 13 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=bing_cn status=green ok=true result_count=2 filtered_count=1 reason=usable_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+Returned Results:
+  #1
+    title: 【闭眼可入】 2025年 4月超 高性价比路由器推荐, Wi-Fi6 、Wi-Fi7路由...
+    url: https://www.sogou.com/link?url=hedJjaC291ObqPUCEo1zMuraEuczo-4WCU_PNz9JM0vKYGXp_2wX69SBYvyHXYc_8x2NB-PRwZT6xKUHvPurlBhfbabas_3rX2dPn12l6yoSqx3gsc1m9A..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 1
+    snippet: 
+  #2
+    title: 2025wifi6路由器推荐 -今日头条
+    url: https://www.sogou.com/link?url=hedJjaC291PD0T3DYzJqFDoBhFbePHve3pbAgkwwypkAGf4bwapb1Le-SsgUWdl85_mLcUpWMRc.
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 3
+    snippet: 
+  #3
+    title: 2025年 最值得买的5款 WiFi6路由器,闭眼入不踩雷!_路由器_什么值...
+    url: https://www.sogou.com/link?url=hedJjaC291PXEsTKkTP2hxAhF80nJlU2frekkQR2I88SNjfidgN2JQ..
+    source: sogou | engine: sogou | quality: green | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[22/50] CJK-长尾 | 痛风患者能吃什么水果
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 15 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=yellow ok=false result_count=2 filtered_count=1 reason=intent_mismatch
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=1 filtered_count=2 reason=usable_results
+Returned Results:
+  #1
+    title: 痛风吃什么水果_快速问医生_有问必答
+    url: https://m.120ask.com/zhishi/art/mip_1113322.html
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 痛风可吃的水果有苹果、香蕉、梨、樱桃、葡萄柚等。 1. 苹果:富含果胶、维生素等营养成分,能促进肠道蠕动,利于尿酸排出体外,且其嘌呤含量低,适合痛风患者食用,可补充身体所需营养,维持身体正常代谢。 2. 香蕉:含有丰富的钾元素,钾有助于促进尿酸排泄,减轻体内尿酸堆积,从而缓解痛风症状,同时能为患者提供能量,增强身体活力。 3
+  #2
+    title: 返回首页>>
+    url: https://www.sogou.com/
+    source: sogou | engine: sogou | quality: yellow | rank_within_engine: 1
+    snippet: 
+  #3
+    title: 关于搜狗
+    url: http://corp.sogou.com/
+    source: sogou | engine: sogou | quality: yellow | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[23/50] CJK-长尾 | 猫咪呕吐精神不好怎么办
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=yellow reason=usable_with_minor_noise
+Wall time: 12.3s
+Results: 2 | Filtered: 13 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=yellow ok=false result_count=2 filtered_count=1 reason=intent_mismatch
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+Returned Results:
+  #1
+    title: 返回首页>>
+    url: https://www.sogou.com/
+    source: sogou | engine: sogou | quality: yellow | rank_within_engine: 1
+    snippet: 
+  #2
+    title: 关于搜狗
+    url: http://corp.sogou.com/
+    source: sogou | engine: sogou | quality: yellow | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[24/50] CJK-长尾 | 青岛值得去的海边景点
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 13 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=yellow ok=false result_count=2 filtered_count=1 reason=intent_mismatch
+  2. engine=bing_cn status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: 青岛最值得去的八个地方,送给第一次去青岛的你|栈桥|大海|崂山|沙滩|...
+    url: https://www.163.com/dy/article/HUMVQ6DA0524S8UR.html
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 2
+    snippet: 小鱼山公园靠近海洋大学,是青岛市第一座古典风格的山头园林公园,海拔仅有60米,却是瞭望青岛城市风光的绝佳位置。这里的特色不是亲临海滩,而是登高遥望。山顶览潮阁上的观景台,可以欣赏整个海岸线和老城区的风光,还能遥望中山路老商业街及栈桥构成的青岛海岸线最经典最有历史的景观。 进入小鱼山公园,沿着盘山步道,五分...
+  #2
+    title: 青岛看海到底哪些景点值得去。。一篇说清楚。终于有人把青岛景点...
+    url: https://www.douyin.com/note/7644901692887246953
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 1
+    snippet: 青岛看海到底哪些景点值得去。。一篇说清楚。终于有人把青岛景点说清楚了,怎么玩全写明白,附上了我对各个景点的分数评价🗞️直接抄作业! #青岛旅行计划 #青岛旅游路线 #青岛出游计划 #6月青岛 #青岛路线
+  #3
+    title: 青岛最值得旅游的景点,不去一定会后悔,不是栈桥也不是崂山|八大关|回...
+    url: https://dy.163.com/article/H26C3O1F055258BW.html
+    source: baidu | engine: baidu | quality: green | rank_within_engine: 3
+    snippet: 崂山风景区主要是由巨峰、流清、太清、棋盘石、仰口、北九水、华楼、7大风景游览区组成,巨峰旭照、太清水月、海峤仙墩、华楼叠石、九水明漪等共同组成崂山十二景。 但是根据旅友们的评价,青岛最值得旅游的景点,不去一定会后悔,不是栈桥也不是崂山,而是八大关。八大关景区位于青岛市最南部,南部是美丽的海滩,北面正...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[25/50] CJK-长尾 | 信用卡积分兑换哪个最划算
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=yellow reason=usable_with_minor_noise
+Wall time: 12.2s
+Results: 3 | Filtered: 13 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=sogou status=yellow ok=false result_count=2 filtered_count=1 reason=intent_mismatch
+  2. engine=bing_cn status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  3. engine=bing_news status=yellow ok=false result_count=0 filtered_count=12 reason=intent_mismatch
+  4. engine=baidu status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+Returned Results:
+  #1
+    title: 信用 中国
+    url: https://www.creditchina.gov.cn/
+    source: bing_cn | engine: bing_cn | quality: yellow | rank_within_engine: 1
+    snippet: 6 天之前&ensp;·&ensp;2026年4月，中国企业信用指数较3月提升0.15点，经营性分指标、财务性分指标、关联性分指标和监管性分指标环比增加，信用风险低企业占比有所提升，企业信用水平进一步巩固。 查看详情 >>
+  #2
+    title: 国家企业 信用 信息公示系统
+    url: https://www.gsxt.gov.cn/index.html
+    source: bing_cn | engine: bing_cn | quality: yellow | rank_within_engine: 2
+    snippet: 国家企业信用信息公示系统提供企业信用信息查询及相关服务，支持通过名称或统一社会信用代码查询。
+  #3
+    title: 返回首页>>
+    url: https://www.sogou.com/
+    source: sogou | engine: sogou | quality: yellow | rank_within_engine: 1
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[26/50] EN-Tech | rust async framework comparison
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 3 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=github_repos status=green ok=true result_count=1 filtered_count=0 reason=usable_results
+  2. engine=stackoverflow status=empty ok=false result_count=0 filtered_count=0 reason=no_results
+  3. engine=npm status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  4. engine=devto status=yellow ok=false result_count=0 filtered_count=3 reason=intent_mismatch
+Returned Results:
+  #1
+    title: inv2004/rust-async-kv-benchmarks ★7
+    url: https://github.com/inv2004/rust-async-kv-benchmarks
+    source: github | engine: github_repos | quality: green | rank_within_engine: 1
+    snippet: Comparison performance of different async frameworks for key-value
+  #2
+    title: pngjs@7.0.0
+    url: https://www.npmjs.com/package/pngjs
+    source: npm | engine: npm | quality: yellow | rank_within_engine: 1
+    snippet: PNG encoder/decoder in pure JS, supporting any bit size & interlace, async & sync with full test suite.
+  #3
+    title: source-map-js@1.2.1
+    url: https://www.npmjs.com/package/source-map-js
+    source: npm | engine: npm | quality: yellow | rank_within_engine: 2
+    snippet: Generates and consumes source maps
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[27/50] EN-Tech | best VS Code extensions 2025
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: 21 Best VS Code Extensions I Use Every Day 2025 - Prettier, ESLint...
+    url: https://www.mergesociety.com/code-report/vscode-extension
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 1
+    snippet: 
+  #2
+    title: Top 10 Best VScode Extensions for 2025 - Medium
+    url: https://medium.com/@jatingargiitk/top-10-best-vscode-extensions-for-2025-e189117792bd
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 2
+    snippet: 
+  #3
+    title: Best VS Code Extensions and Settings for 2025 - Geeky Gadgets
+    url: https://www.geeky-gadgets.com/vs-code-setup-2025-productivity-tips/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 3
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[28/50] EN-Tech | kubernetes pod crashloopbackoff fix
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: markaicode.com https://markaicode.com › errors › kubernetes - pod -crash- fix Ku
+    url: https://markaicode.com/errors/kubernetes-pod-crash-fix/
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 1
+    snippet: May 5, 2026 · Kubernetes Pod CrashLoopBackOff symptom diagnosed and fixed in under 5 minutes. Step-by-step commands, root cause analysis, and production prevention for developers.
+  #2
+    title: agirlamonggeeks.com https://agirlamonggeeks.com › how-to- fix - crashloopbackoff
+    url: https://agirlamonggeeks.com/how-to-fix-crashloopbackoff-kubernetes-pod/
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 2
+    snippet: Learn how to fix CrashLoopBackOff errors in Kubernetes pods with step-by-step troubleshooting tips and best practices. Discover common causes and effective solutions to...
+  #3
+    title: fixdevs.com https://fixdevs.com › blog › kubernetes - crashloopbackoff Fix: Kube
+    url: https://fixdevs.com/blog/kubernetes-crashloopbackoff/
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 3
+    snippet: Jan 6, 2026 · How to fix the Kubernetes CrashLoopBackOff error when a pod repeatedly crashes and Kubernetes keeps restarting it with increasing back-off delays.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[29/50] EN-Tech | typescript generics tutorial
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 4 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=github_repos status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=stackoverflow status=green ok=true result_count=2 filtered_count=1 reason=usable_results
+  3. engine=npm status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  4. engine=devto status=yellow ok=false result_count=0 filtered_count=3 reason=intent_mismatch
+Returned Results:
+  #1
+    title: FaztWeb/typescript-generics-tutorial ★1
+    url: https://github.com/FaztWeb/typescript-generics-tutorial
+    source: github | engine: github_repos | quality: green | rank_within_engine: 1
+    snippet: A example of Typescript generics
+  #2
+    title: total-typescript/typescript-generics-workshop ★1588
+    url: https://github.com/total-typescript/typescript-generics-workshop
+    source: github | engine: github_repos | quality: green | rank_within_engine: 2
+    snippet: Interactive tutorial on using generics in TypeScript
+  #3
+    title: henryzarza/typescript-generics-workshop ★0
+    url: https://github.com/henryzarza/typescript-generics-workshop
+    source: github | engine: github_repos | quality: green | rank_within_engine: 3
+    snippet: Interactive tutorial on using generics in TypeScript
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[30/50] EN-Tech | postgresql vs mysql performance 2025
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.9s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=yellow ok=false result_count=1 filtered_count=0 reason=intent_mismatch
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: PostgreSQL vs MySQL in 2025: The Complete Practitioner's Guide to...
+    url: https://hemaks.org/posts/postgresql-vs-mysql-in-2025-the-complete-practitioners-guide-to-choosing-your-database-weapon/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 3
+    snippet: Oct 24, 2025 &nbsp;· You’d likely need to create temporary tables and do manual calculations. MySQL’s Performance Advantage MySQL’s InnoDB engine uses row-level locking, allowing concurrent reads …
+  #2
+    title: PostgreSQL vs MySQL in 2025: Performance, Scalability & Use Case …
+    url: https://learnomate.org/postgresql-vs-mysql-2025-comparison/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: Oct 13, 2025 &nbsp;· Confused between PostgreSQL and MySQL in 2025? Discover which database is best for you by comparing performance, scalability, and real-world use cases.
+  #3
+    title: PostgreSQL vs MySQL in 2025: What 10 Years Managing Both at
+    url: https://medium.com/@jholt1055/postgresql-vs-mysql-in-2025-what-10-years-managing-both-at-fortune-500-scale-taught-me-adc002c10453
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 1
+    snippet: Oct 27, 2025 &nbsp;· PostgreSQL vs MySQL in 2025: What 10 Years Managing Both at Fortune 500 Scale Taught Me I’ve administered both databases processing billions of transactions. Here’s when to use …
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[31/50] EN-Tech | how to set up wireguard vpn
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.5s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: How to Set Up WireGuard VPN
+    url: https://hostman.com/tutorials/how-to-set-up-wireguard-vpn/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: Sep 25, 2024 &nbsp;· A detailed guide on setting up and configuring WireGuard, a fast and secure VPN, for personal or business use on your server.
+  #2
+    title: Setting Up a WireGuard VPN: A Step-by-Step Guide - Netmaker
+    url: https://www.netmaker.io/resources/wireguard-vpn
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 3
+    snippet: This guide will walk you through setting up a WireGuard VPN from scratch and automating it using Netmaker.
+  #3
+    title: MeshWorld https://meshworld.in › blog › privacy How to Set Up Your Own WireGuard
+    url: https://meshworld.in/blog/privacy/wireguard-vpn-setup/
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 2
+    snippet: 5 days ago · Step-by-step guide to setting up a self-hosted WireGuard VPN server. WireGuard tools v1.0.20260223, Linux server setup, client config for macOS, Windows, iOS, and...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[32/50] EN-Tech | nginx reverse proxy configuration
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.4s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: nginx
+    url: https://nginx.org/en/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 1
+    snippet: nginx (" engine x ") is an HTTP web server, reverse proxy, content cache, load balancer, TCP/UDP proxy server, and mail proxy …
+  #2
+    title: Setup Nginx Reverse Proxy: Step-by-Step Guide - LinuxConfig.org
+    url: https://linuxconfig.org/how-to-setup-nginx-reverse-proxy
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 2
+    snippet: 
+  #3
+    title: NGINX Reverse Proxy
+    url: https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 1
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[33/50] EN-Tech | best open source monitoring tools
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.4s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: oneuptime.com https://oneuptime.com › blog › post Best Open Source Monitoring To
+    url: https://oneuptime.com/blog/post/2026-02-06-best-open-source-monitoring-tools-2026/view
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 1
+    snippet: Feb 6, 2026 · A comprehensive guide to the best open source monitoring and observability tools in 2026, covering infrastructure, APM, logs, and incident management.
+  #2
+    title: Top 15 Open-Source Monitoring Tools - Geekflare
+    url: https://geekflare.com/devops/best-open-source-monitoring-software/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 1
+    snippet: 
+  #3
+    title: Top 15 open source monitoring tools for IT professionals
+    url: https://www.fosslinux.com/110286/best-open-source-and-free-monitoring-tools.htm
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[34/50] EN-Tech | github actions reusable workflows
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.4s
+Results: 3 | Filtered: 3 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=github_repos status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=stackoverflow status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=npm status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  4. engine=devto status=yellow ok=false result_count=0 filtered_count=3 reason=intent_mismatch
+Returned Results:
+  #1
+    title: wenqiglantz/reusable-workflows-modules ★57
+    url: https://github.com/wenqiglantz/reusable-workflows-modules
+    source: github | engine: github_repos | quality: green | rank_within_engine: 1
+    snippet: Sample GitHub Actions reusable workflows and Terraform reusable modules
+  #2
+    title: Github Actions Reusable Workflows Secrets Not working
+    url: https://stackoverflow.com/questions/74977229/github-actions-reusable-workflows-secrets-not-working
+    source: stackoverflow | engine: stackoverflow | quality: green | rank_within_engine: 1
+    snippet: Score: 1 | Answers: 1 | github, microservices, github-actions, cicd
+  #3
+    title: cloudposse-archives/github-actions-workflows ★41
+    url: https://github.com/cloudposse-archives/github-actions-workflows
+    source: github | engine: github_repos | quality: green | rank_within_engine: 2
+    snippet: General purpose reusable Github Action workflows
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[35/50] EN-Tech | webassembly vs javascript performance
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 5 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=github_repos status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=stackoverflow status=green ok=true result_count=1 filtered_count=2 reason=usable_results
+  3. engine=npm status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  4. engine=devto status=yellow ok=false result_count=0 filtered_count=3 reason=intent_mismatch
+Returned Results:
+  #1
+    title: lemire/WebAssemblyVSJavaScript ★7
+    url: https://github.com/lemire/WebAssemblyVSJavaScript
+    source: github | engine: github_repos | quality: green | rank_within_engine: 1
+    snippet: Project to compare the performance of WebAssembly with JavaScript
+  #2
+    title: tasosstot/Thesis-Javascript-vs-WASM ★0
+    url: https://github.com/tasosstot/Thesis-Javascript-vs-WASM
+    source: github | engine: github_repos | quality: green | rank_within_engine: 2
+    snippet: This repository contains benchmark implementations used in the thesis "Comparative Study of JavaScript and WebAssembly". The benchmarks evaluate the performance of JavaScript and WebAssembly in Image Processing, Numerical Computations, and Sorting Algorithms. Execution done in different browsers and devices (mobile, laptop, desktop)
+  #3
+    title: IP-Benchmarks/AssemblyScript-WebAssemblyVsJS-SeqventialVsParallelProcessing ★0
+    url: https://github.com/IP-Benchmarks/AssemblyScript-WebAssemblyVsJS-SeqventialVsParallelProcessing
+    source: github | engine: github_repos | quality: green | rank_within_engine: 3
+    snippet: Performance comparation of WebAssembly and Javascript in sequential and parallel workloads in different available runtimes like Web, Node and Deno.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[36/50] EN-General | best budget laptops 2025
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: The Best Budget Laptops of 2025 - How-To Geek
+    url: https://www.howtogeek.com/best-budget-laptops/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 1
+    snippet: Jan 23, 2025 &nbsp;· When you don't need to run the latest games at max settings or just need a competent workhorse, budget laptops can offer the best price-to-performance by cutting away some unnecessary …
+  #2
+    title: Best Budget Laptops 2025: Top Affordable Power Picks
+    url: https://www.analyticsinsight.net/gadgets/best-budget-laptops-in-2025-that-dont-compromise-on-performance
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 3
+    snippet: Oct 7, 2025 &nbsp;· Discover the best budget laptops in 2025 with high performance, sleek design, and unbeatable value for students, pros, and creators.
+  #3
+    title: The Best Cheap Laptops We've Tested for 2026 | PCMag
+    url: https://www.pcmag.com/picks/the-best-budget-laptops
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: 3 days ago &nbsp;· The Best Cheap Laptops for 2026 From Windows laptops to Chromebooks to MacBooks, our experts have tested and identified the top low-cost machines that make short work of everyday …
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[37/50] EN-General | how to start investing in stocks
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: How to Invest in Stocks: 7 Steps to Get Started - The Motley Fool
+    url: https://www.fool.com/investing/how-to-invest/stocks/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 3
+    snippet: 
+  #2
+    title: START Definition & Meaning - Merriam-Webster
+    url: https://www.merriam-webster.com/dictionary/start
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: 1 day ago &nbsp;· The meaning of START is to come into being, activity, or operation. How to use start in a sentence. Synonym Discussion of Start.
+  #3
+    title: How to invest in stocks | Fidelity
+    url: https://www.fidelity.com/learning-center/smart-money/how-to-invest-in-stocks
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38/50] EN-General | healthy meal prep ideas for beginners
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+Returned Results:
+  #1
+    title: Beginner ’s Meal Prep Made Easy: 30 Effortless & Nutritious Recipes for...
+    url: https://mealprepmap.com/beginners-meal-prep-made-easy-30-effortless-nutritious-recipes-for-a-healthier-week/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 1
+    snippet: Jul 6, 2025 &nbsp;· This list of 30 easy healthy meal prep ideas for beginners covers a range of breakfast, lunch, dinner, and snack options—all …
+  #2
+    title: 50 Easy Meal Prep Recipes For Beginners - The Savvy Mama
+    url: https://thesavvymama.com/meal-prep-recipes/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: Mar 6, 2025 &nbsp;· Discover 50 simple and delicious meal prep recipes to save time, eat healthier, and enjoy stress-free meals all week long!
+  #3
+    title: 60 Healthy Meal Prep Ideas - Recipes by Love and Lemons
+    url: https://www.loveandlemons.com/healthy-meal-prep-ideas/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 3
+    snippet: Jan 2, 2026 &nbsp;· Busy week? These healthy meal prep ideas can help! Find breakfast, lunch and dinner recipes that are easy, delicious and …
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39/50] EN-General | top travel destinations 2025
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: 2025 Travel Destinations: 52 Places to Go This Year - The New York Times
+    url: https://www.nytimes.com/interactive/2025/travel/places-to-travel-destinations-2025.html
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 1
+    snippet: 
+  #2
+    title: BBC https://www.bbc.com › travel › article The 25 best places to travel in 2025
+    url: https://www.bbc.com/travel/article/20250115-the-25-best-places-to-travel-in-2025
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 3
+    snippet: Jan 16, 2025 · In the BBC's inaugural guide to the best places to travel this year, we wanted to highlight the destinations experiencing the opposite phenomenon.
+  #3
+    title: The 50 Best Places to Travel in 2025 - Leisure
+    url: https://www.travelandleisure.com/best-places-to-go-2025-8739580
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[40/50] EN-General | how to learn guitar for beginners
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=yellow ok=false result_count=1 filtered_count=0 reason=intent_mismatch
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: Learn how to play guitar with JustinGuitar.com
+    url: https://www.justinguitar.com/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 3
+    snippet: The best online guitar lessons are free! Learn to play guitar with fast, fun, and effective courses and song lessons for beginners and up! …
+  #2
+    title: How to Learn Guitar in 11 Steps - National Guitar Academy
+    url: https://nationalguitaracademy.com/guides/beginners/how-to-learn-guitar/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 1
+    snippet: In this free guitar lesson you’ll learn everything you need to get off to a perfect start. Quick-start gear guide: Guitars, tuners, picks etc. The …
+  #3
+    title: Guitar Lesson 1 - Absolute Beginner? Start Here! [Free 10 Day Starter...
+    url: https://www.youtube.com/watch?v=BBz-Jyr23M4
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: Sep 2, 2016 &nbsp;· Learn essential skills like tuning, re-stringing, and choosing the right guitar. Master the basics of chord diagrams, TAB, …
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[41/50] EN-General | best productivity apps for students
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.5s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+Returned Results:
+  #1
+    title: 10+ Best Productivity Apps for Students in 2025 | Rev
+    url: https://www.rev.com/blog/best-productivity-apps-for-students
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: Nov 20, 2024 &nbsp;· Boost your study efficiency with the right apps. Check out 12 top productivity apps for students—from note-taking and scheduling tools to study aids.
+  #2
+    title: 15 Best Productivity Apps for Students | ClickUp
+    url: https://clickup.com/blog/productivity-apps-for-students/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 3
+    snippet: Discover the 15 best productivity apps for students to help you stay organized, minimize distractions, and achieve academic success.
+  #3
+    title: Best Apps for Student Productivity - Immerse Education
+    url: https://www.immerse.education/personal-development/productivity-and-adaptability/best-apps-for-students/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 1
+    snippet: Nov 10, 2025 &nbsp;· Looking for the best apps for student productivity? Find note-taking and organisation tools and many other student productivity apps.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[42/50] EN-General | home workout routine without equipment
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+Returned Results:
+  #1
+    title: Home Workouts Without Equipment: Beginner's 4-Week Plan
+    url: https://bodymusclematters.com/home-workouts-without-equipment/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 3
+    snippet: 
+  #2
+    title: The 10 Best at Home Workouts (No-Equipment!) | Nerd Fitness
+    url: https://www.nerdfitness.com/blog/the-7-best-at-home-workout-routines-the-ultimate-guide-for-training-without-a-gym/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 1
+    snippet: 
+  #3
+    title: 15 Best No-Equipment Full-Body Exercises You Can Do at Home
+    url: https://fitnessprogramer.com/no-equipment-full-body-exercises/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 2
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[43/50] EN-General | how to negotiate salary offer
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 2 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=yellow ok=false result_count=1 filtered_count=2 reason=intent_mismatch
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+Returned Results:
+  #1
+    title: How to Negotiate a Job Offer & Salary: 7 Tips
+    url: https://online.hbs.edu/blog/post/salary-negotiation-tips
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 2
+    snippet: 
+  #2
+    title: How to Negotiate a Higher Salary after a Job Offer
+    url: https://www.pon.harvard.edu/daily/salary-negotiations/how-to-negotiate-a-higher-salary-after-a-job-offer/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 3
+    snippet: 
+  #3
+    title: How To Negotiate Salary After a Job Offer (With 13 Tips)
+    url: https://www.indeed.com/career-advice/pay-salary/how-to-negotiate-salary
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 1
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[44/50] EN-General | best free online courses 2025
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.3s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: Best Free Online Courses with Certificates in 2025 — Top Picks for...
+    url: https://learnersview.com/best-free-courses-with-certificates-2025/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 1
+    snippet: 
+  #2
+    title: learnskillpath.com https://www.learnskillpath.com › 2025 › 09 Best Free Online C
+    url: https://www.learnskillpath.com/2025/09/free-online-courses-2025.html
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 1
+    snippet: Sep 20, 2025 · Discover the top free online courses in 2025 to build skills like SEO, coding, project management, and design&mdash;no cost needed.
+  #3
+    title: Education Is Around https://educationisaround.com › free - online - courses Free
+    url: https://educationisaround.com/free-online-courses-certifications-2025/
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 2
+    snippet: This comprehensive guide covers the best free online courses and certifications available in 2025 , tips to choose the right program, and why digital transformation is...
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[45/50] EN-General | sustainable living tips for apartments
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.2s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=yellow ok=false result_count=1 filtered_count=0 reason=intent_mismatch
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: 27 Tips & Tricks for Sustainable Apartment Living - Impactful Ninja
+    url: https://impactful.ninja/tips-tricks-for-sustainable-apartment-living/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 1
+    snippet: To live more sustainably in your apartment means to live both more resourceful and healthier. And luckily, it is possible to use a few tricks and hacks to make both happen for you in just a few simple …
+  #2
+    title: Sustainable Apartment Ideas: 18 Eco-Friendly Lifestyle Tips
+    url: https://www.unsustainablemagazine.com/sustainable-apartment-ideas/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: Mar 19, 2026 &nbsp;· Make your home more eco-friendly with these sustainable apartment ideas. By Brett Stadelmann Apartment living can be more sustainable than many people realize. Smaller homes …
+  #3
+    title: conzit.com https://conzit.com › post › 10-easy-ways-to-live-sustainably Sustaina
+    url: https://conzit.com/post/10-easy-ways-to-live-sustainably-in-your-apartment
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 1
+    snippet: Oct 8, 2025 · Ready to reduce your carbon footprint? Check out these 10 simple sustainable living tips perfect for apartment dwellers. Start your eco-friendly journey today!
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[46/50] EN-长尾 | how to fix leaky kitchen faucet step by step
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 13s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: How To Fix a Leaky Faucet - This Old House
+    url: https://www.thisoldhouse.com/kitchens/how-to-stop-kitchen-faucet-leaks
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 1
+    snippet: May 26, 2026 &nbsp;· Read our guide to learn how to fix a leaky faucet step by step, including instructions for different kinds of faucets.
+  #2
+    title: How To Repair A Leaking Kitchen Sink Faucet: Step - by-Step Guide
+    url: https://sliceitright.com/how-to-repair-a-leaking-kitchen-sink-faucet/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 3
+    snippet: Jan 26, 2026 &nbsp;· Thinking about fixing that leaky kitchen faucet yourself? Good news: with the right tools and a little help, most homeowners can easily handle a dripping tap.
+  #3
+    title: 6 Steps to Fix a Leaky Faucet - The Home Depot
+    url: https://www.homedepot.com/c/ah/how-to-fix-a-leaky-faucet/9ba683603be9fa5395fab90ee6659fb
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: Jul 23, 2025 &nbsp;· Learn how to fix a leaky faucet in your kitchen or bathroom by following these steps. You’ll be able to take the faucet apart, find the problem and make the repair.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[47/50] EN-长尾 | what is the difference between APR and APY
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.4s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: calculatecompoundinterest.org https://www.calculatecompoundinterest.org › blog ›
+    url: https://www.calculatecompoundinterest.org/blog/apy-vs-apr-explained/
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 3
+    snippet: Understand the difference between APY and APR . Learn the formulas, see comparison tables across compounding frequencies, and know when each rate matters for saving and borrowing.
+  #2
+    title: Fidelity Investments https://www.fidelity.com › smart-money › apr-vs-apy APR vs.
+    url: https://www.fidelity.com/learning-center/smart-money/apr-vs-apy
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 2
+    snippet: Sep 15, 2025 · While it&rsquo;s a common misconception, the main difference between APR and APY isn&rsquo;t about compounding interest&mdash;it&rsquo;s about fees. Both A...
+  #3
+    title: Understanding APR vs. APY: Key Differences Explained
+    url: https://www.investopedia.com/personal-finance/apr-apy-bank-hopes-cant-tell-difference/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 1
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[48/50] EN-长尾 | cheapest way to send money internationally 2025
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.6s
+Results: 3 | Filtered: 2 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=yellow ok=false result_count=1 filtered_count=2 reason=intent_mismatch
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+Returned Results:
+  #1
+    title: 7 Cheapest Ways To Send Money Internationally (With Data) - Monito
+    url: https://www.monito.com/en/wiki/what-is-the-cheapest-way-to-send-money-abroad
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 1
+    snippet: 
+  #2
+    title: Top 5 Cheapest Ways to Send Money Internationally in 2025
+    url: https://techbullion.com/top-5-cheapest-ways-to-send-money-internationally-in-2025/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 2
+    snippet: 
+  #3
+    title: www.techbloat.com › top-5-cheapest-ways-to-send Top 5 Cheapest Ways to Send Money Internationally in 2025
+    url: https://www.techbloat.com/top-5-cheapest-ways-to-send-money-internationally-in-2025.html
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 1
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[49/50] EN-长尾 | how to remove wallpaper without damaging wall
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.4s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=blocked ok=false result_count=0 filtered_count=0 reason=captcha_or_verification
+  4. engine=yahoo status=green ok=true result_count=2 filtered_count=0 reason=usable_with_minor_noise
+Returned Results:
+  #1
+    title: Martha Stewart https://www.marthastewart.com › how-to-remove-wallpaper How to Re
+    url: https://www.marthastewart.com/how-to-remove-wallpaper-7546635
+    source: yahoo | engine: yahoo | quality: green | rank_within_engine: 2
+    snippet: Nov 26, 2024 · 3 Easy Ways to Remove Wallpaper &mdash; Without Damaging Your Walls Tired of your home's wallpaper ? You can safely remove it using a liquid stripper, stea...
+  #2
+    title: How to remove wallpaper without damaging your walls
+    url: https://www.tomsguide.com/how-to/how-to-remove-wallpaper
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 2
+    snippet: 
+  #3
+    title: The Best Way to Remove Wallpaper of All Kinds - Bob Vila
+    url: https://www.bobvila.com/articles/best-way-to-remove-wallpaper/
+    source: duckduckgo | engine: duckduckgo | quality: green | rank_within_engine: 3
+    snippet: 
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[50/50] EN-长尾 | best dog breeds for small apartments with kids
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Status: ok=true quality=green reason=usable_results
+Wall time: 12.2s
+Results: 3 | Filtered: 0 | Filter reason: none
+WIKI_LEAK=false | YEARBOOK_LEAK=false
+Engine Attempts:
+  1. engine=bing_global status=green ok=true result_count=3 filtered_count=0 reason=usable_results
+  2. engine=duckduckgo status=green ok=true result_count=3 filtered_count=0 reason=usable_with_minor_noise
+  3. engine=google status=yellow ok=false result_count=1 filtered_count=0 reason=intent_mismatch
+  4. engine=yahoo status=yellow ok=false result_count=3 filtered_count=0 reason=intent_mismatch
+Returned Results:
+  #1
+    title: 30 Best Dog Breeds for Apartments, Condos & Small Spaces - Canine Bib…
+    url: https://www.caninebible.com/best-dog-breeds-for-apartments/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 1
+    snippet: May 6, 2025 &nbsp;· Looking for the best dog breeds for apartment living? Discover quiet, low-maintenance, and space-friendly dogs perfect …
+  #2
+    title: 25 Best Dog Breeds for Small Apartments (And Urban City Living)
+    url: https://topdogtips.com/best-dog-breeds-for-small-apartments/
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 3
+    snippet: Jun 25, 2025 &nbsp;· Live in a tiny place and want to adopt a dog? Here are the best dog breeds for small apartments that are ideal if you don't …
+  #3
+    title: 26 Best Dogs for Apartments - Daily Paws
+    url: https://www.dailypaws.com/living-with-pets/pet-compatibility/best-apartment-dogs
+    source: bing_global | engine: bing_global | quality: green | rank_within_engine: 2
+    snippet: Apr 12, 2026 &nbsp;· If you’re looking for the best dogs for apartments, there are plenty of breeds to consider. Find out how to find the right dog for …
+
+========================================================================================================================
+ENGINE CONTRIBUTION
+========================================================================================================================
+duckduckgo: green=21/21, yellow=0, blocked=0, results=63
+sogou: green=16/24, yellow=7, blocked=0, results=59
+baidu: green=16/24, yellow=0, blocked=8, results=30
+yahoo: green=16/21, yellow=5, blocked=0, results=62
+bing_global: green=12/21, yellow=9, blocked=0, results=59
+bing_cn: green=4/24, yellow=4, blocked=0, results=23
+github_repos: green=4/4, yellow=0, blocked=0, results=10
+stackoverflow: green=3/4, yellow=0, blocked=0, results=6
+bing_news: green=2/24, yellow=22, blocked=0, results=6
+npm: green=0/4, yellow=4, blocked=0, results=12
+devto: green=0/4, yellow=4, blocked=0, results=0
+google: green=0/21, yellow=4, blocked=17, results=4
+
+
+========================================================================================================================
+RETRY CORRECTION FOR [15/50] 考研英语备考策略
+========================================================================================================================
+The first run received transient non-JSON HTML from the endpoint. A single-query retry completed successfully.
+Status: ok=true quality=green reason=usable_results
+Wall time: 13.6s
+Results: 3
+Engine Attempts: sogou:green(3) | bing_cn:empty(0) | bing_news:yellow(0) | baidu:green(2)
+Returned Results:
+  #1
+    title: 考研英语的备考策略_新东方在线
+    url: https://news.koolearn.com/kaopei/kyzx/62720/
+    source: baidu
+    snippet: 对于这个题型练习往年真题就够了。 4.翻译与作文:这两个题型都需要大家有很扎实的英语基础知识,而且都需要相应的做题技巧。翻译相对简单,英译汉五个长难句就可以了,只要基础知识过关就没问题。作文的话就需要大家多背几篇范文,然后对于热点话题进行练习就可以了。 2参加考研数学竞赛的建议 高中基础好,可以先试试张天德的那本书,比
+  #2
+    title: 考研英语 三题型 备考策略 阅读理解有限时间快读
+    url: https://www.sogou.com/link?url=hedJjaC291P8xAnT2KSPxmUF94YTse6gUNPE_T1rS8hlzu7Lv5UKJ7rcBnMYAWi0MPUTPovK8z84d2X6F0SQYA..
+    source: sogou
+    snippet:
+  #3
+    title: 考研英语的备考方法 新东方在线
+    url: https://news.koolearn.com/kaopei/kyzx/207616/
+    source: sogou
+    snippet:
+
+FINAL ADJUSTED SUMMARY AFTER RETRY:
+Total: 50 | Green: 48 | Yellow: 2 | Red: 0 | Error: 0 | Pass rate: 100.0% | Green rate: 96.0%
