@@ -881,23 +881,7 @@ function isIntentMismatchResult(item, query, engine = "") {
     if (isClearCjkMismatchResult(item, query, engine)) return true;
     if (compactQuery && compactContent.includes(compactQuery)) return false;
     if (matchedTokens.length > 0) return false;
-    const cjkRuns = compactQuery.match(/[\u4e00-\u9fa5]+/g) || [];
-    const cjkStopWords = /^(?:的|了|是|在|和|与|或|不|有|个|这|那|一|大|小|中|上|下|前|后|最|很|都|也|就|要|能|会|年|月|日|最新|情况|世界|中国)$/u;
-    const subTokens = [];
-    for (const run of cjkRuns) {
-      if (run.length <= 2 && !cjkStopWords.test(run)) { subTokens.push(run); continue; }
-      for (let len = Math.min(4, run.length); len >= 2; len--) {
-        for (let i = 0; i + len <= run.length; i++) {
-          const gram = run.substring(i, i + len);
-          if (!cjkStopWords.test(gram)) subTokens.push(gram);
-        }
-      }
-    }
-    if (subTokens.length > 0) {
-      const uniqueTokens = [...new Set(subTokens)];
-      const hits = uniqueTokens.filter((t) => compactContent.includes(t));
-      if (hits.length / uniqueTokens.length >= 0.15) return false;
-    }
+    if (cjkSubTokenCoverage(contentText, query) >= 0.15) return false;
     if (hasCjkIntentSynonymMatch(contentText, query)) return false;
     return true;
   }
@@ -1028,23 +1012,7 @@ function isHardIntentMismatchResult(item, query, engine = "") {
     if (compactQuery && compactContent.includes(compactQuery)) return false;
     const matchedTokens = queryTokens.filter((token) => compactContent.includes(token));
     if (matchedTokens.length > 0) return false;
-    const cjkRuns = compactQuery.match(/[\u4e00-\u9fa5]+/g) || [];
-    const cjkStopWords = /^(?:的|了|是|在|和|与|或|不|有|个|这|那|一|大|小|中|上|下|前|后|最|很|都|也|就|要|能|会|年|月|日|最新|情况|世界|中国)$/u;
-    const subTokens = [];
-    for (const run of cjkRuns) {
-      if (run.length <= 2 && !cjkStopWords.test(run)) { subTokens.push(run); continue; }
-      for (let len = Math.min(4, run.length); len >= 2; len--) {
-        for (let i = 0; i + len <= run.length; i++) {
-          const gram = run.substring(i, i + len);
-          if (!cjkStopWords.test(gram)) subTokens.push(gram);
-        }
-      }
-    }
-    if (subTokens.length > 0) {
-      const uniqueTokens = [...new Set(subTokens)];
-      const hits = uniqueTokens.filter((t) => compactContent.includes(t));
-      if (hits.length / uniqueTokens.length >= 0.15) return false;
-    }
+    if (cjkSubTokenCoverage(contentText, query) >= 0.15) return false;
     if (hasCjkIntentSynonymMatch(contentText, query)) return false;
     return true;
   }
