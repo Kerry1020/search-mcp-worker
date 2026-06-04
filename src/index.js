@@ -794,20 +794,41 @@ __name2(evaluateSearchQuality, "evaluateSearchQuality");
 function filterSearchResultsForQuery(results, query, engine = "") {
   const filteredResults = [];
   let genericCount = 0;
+  let semanticTruncationCount = 0;
   for (const item of Array.isArray(results) ? results : []) {
     const generic = isGenericWrapperResult(item, query, engine);
-    if (generic) {
-      genericCount++;
+    const semanticTruncation = isSemanticTruncationResult(item, query, engine);
+    if (generic || semanticTruncation) {
+      if (generic) genericCount++;
+      if (semanticTruncation) semanticTruncationCount++;
       continue;
     }
     filteredResults.push(item);
   }
   const filteredCount = Math.max(0, (Array.isArray(results) ? results.length : 0) - filteredResults.length);
-  const filteredReason = filteredCount > 0 && genericCount === filteredCount ? "generic_wrapper_results" : "";
+  let filteredReason = "";
+  if (filteredCount > 0 && semanticTruncationCount === filteredCount) filteredReason = "semantic_truncation";
+  else if (filteredCount > 0 && genericCount === filteredCount) filteredReason = "generic_wrapper_results";
+  else if (filteredCount > 0 && semanticTruncationCount > 0) filteredReason = "semantic_truncation";
   return { filteredResults, filteredCount, filteredReason };
 }
 __name(filterSearchResultsForQuery, "filterSearchResultsForQuery");
 __name2(filterSearchResultsForQuery, "filterSearchResultsForQuery");
+function isSemanticTruncationResult(item, query, engine = "") {
+  const queryText = String(query || "");
+  if (!/(?:路由器|wifi|wi-fi|pppoe|校园网|千兆|router|gigabit)/i.test(queryText)) return false;
+  if (!/\b20\d{2}\b/.test(queryText)) return false;
+  const title = String(item?.title || "").toLowerCase();
+  const snippet = String(item?.snippet || "").toLowerCase();
+  const url = String(item?.url || "").toLowerCase();
+  const combined = `${title} ${snippet}`;
+  const hasRouterIntent = /(?:路由器|wifi|wi-fi|pppoe|校园网|千兆|router|gigabit)/i.test(combined);
+  if (hasRouterIntent) return false;
+  const yearOnlyNoise = /\b20\d{2}\b/.test(title) && /(?:wikipedia\.org|britannica\.com|history\.com|cnn\.com|apnews\.com|associatedpress\.com|timeanddate\.com|onthisday\.com)/i.test(url);
+  return yearOnlyNoise;
+}
+__name(isSemanticTruncationResult, "isSemanticTruncationResult");
+__name2(isSemanticTruncationResult, "isSemanticTruncationResult");
 function isBadSearchResult(result, query, engine) {
   return !evaluateSearchQuality(result, query, engine).ok;
 }
