@@ -4248,7 +4248,7 @@ function decodeSogouUrl(href) {
 __name(decodeSogouUrl, "decodeSogouUrl");
 __name2(decodeSogouUrl, "decodeSogouUrl");
 function isSogouNoiseUrl(url) {
-  return /(?:^|\.)sogou\.com$/i.test(safeHostname(url)) && /\/link(?:\?|$)|\/web\?|\/sogou\?|\/\?(?:.*&)?s_from=/i.test(String(url || ""));
+  return /(?:^|\.)sogou\.com$/i.test(safeHostname(url)) && /\/web\?|\/sogou\?|\/\?(?:.*&)?s_from=/i.test(String(url || ""));
 }
 __name(isSogouNoiseUrl, "isSogouNoiseUrl");
 __name2(isSogouNoiseUrl, "isSogouNoiseUrl");
@@ -4472,7 +4472,7 @@ function isBaiduNoiseUrl(url) {
 __name(isBaiduNoiseUrl, "isBaiduNoiseUrl");
 __name2(isBaiduNoiseUrl, "isBaiduNoiseUrl");
 function isNoiseUrl(url) {
-  return /\/preferences|\/settings|\/login|\/account|setlang=|\/search\?|\/images\/|\/maps\?|\/html\/?$|\/more\/?$|\/support\/?|\/legal\/?|duckduckgo\.com\/?$|baidu\.com\/?$|yandex\.com\/?$|yandex\.com\/search|yabs\.yandex|yandex\.ru\/images|hao123\.com|voice\.baidu\.com|policies\.google|support\.google|go\.microsoft\.com|account\.microsoft|bing\.com\/ck\/a|consent\.yahoo\.com|search\.yahoo\.com\/v2\/partners|guce\.yahoo\.com/i.test(String(url || ""));
+  return /\/preferences|\/settings|\/login|\/account|setlang=|\/search\?|\/images\/|\/maps\?|\/html\/?$|\/more\/?$|\/support\/?|\/legal\/?|duckduckgo\.com\/?$|baidu\.com\/?$|yandex\.com\/?$|yandex\.com\/search|yabs\.yandex|yandex\.ru\/images|hao123\.com|voice\.baidu\.com|policies\.google|support\.google|go\.microsoft\.com|account\.microsoft|bing\.com\/ck\/a|consent\.yahoo\.com|search\.yahoo\.com\/v2\/partners|guce\.yahoo\.com|beian\.miit\.gov\.cn|beian\.mps\.gov\.cn|dxzhgl\.miit\.gov\.cn/i.test(String(url || ""));
 }
 __name(isNoiseUrl, "isNoiseUrl");
 __name2(isNoiseUrl, "isNoiseUrl");
