@@ -344,6 +344,36 @@ search-mcp-worker/
 | Arxiv 偶尔超时 | CF 边缘到 `export.arxiv.org` 的网络路径 | 临时性 |
 | Lemmy 社区搜索覆盖范围 | 仅匹配硬编码的社区列表（linux/docker/rust 等） | 按需扩展 |
 
+## Agent 行为指南
+
+LLM Agent（Claude、Cursor 等）调用这些工具时，应注意以下信号：
+
+### `_meta.parser`（搜索工具）
+
+每个搜索响应包含 `_meta.parser`：
+
+| 值 | 含义 | Agent 行为 |
+|---|---|---|
+| `"exact"` | 主解析器匹配站点结构 | 高置信度 — 直接使用结果 |
+| `"skeleton_fallback"` | 通用降级（站点布局变更） | 精度较低 — 用垂直工具（如 `search_github_repos`、`search_pubmed`）交叉验证 |
+
+### `content_type: "challenge_page"`（fetch_url）
+
+`fetch_url` 遇到反爬保护（WAF/JS 探测/IP 封锁）时：
+
+| 信号 | 含义 | Agent 行为 |
+|---|---|---|
+| `content_type: "challenge_page"` + `status: 202` | 需要执行 JS — 纯 API 无法获取 | **不要**将文本当作正文内容，改用 `search_auto` 或其他来源 |
+| `content_type: "challenge_page"` + `status: 403` | 数据中心 IP 被封锁 | 同上 — 切换搜索工具获取信息 |
+
+### 推荐 fallback 链路
+
+```
+1. 用 fetch_url 获取页面正文
+2. 遇到 challenge_page → 用 search_auto 从其他来源找同一内容
+3. 搜索结果为 skeleton_fallback → 用垂直工具交叉验证
+```
+
 ## 本项目不是
 
 - 不是商业 SERP API 替代品
