@@ -49,6 +49,34 @@ function recordParser(engine, json) {
   parserStats[parser] = (parserStats[parser] || 0) + 1;
 }
 
+function auditSemanticIntegrity(engine, query, json) {
+  const items = json.result?.structuredContent?.results || [];
+  const compactQuery = String(query || "").toLowerCase().replace(/[\s\p{P}]+/gu, "");
+  const queryHasRouterIntent = /路由器|wifi|pppoe|校园网|千兆/i.test(query);
+  if (!queryHasRouterIntent) return;
+  const corrupted = items.some((item) => {
+    const title = String(item?.title || "").toLowerCase();
+    const url = String(item?.url || "").toLowerCase();
+    const haystack = `${title} ${String(item?.snippet || "").toLowerCase()}`;
+    const yearbookNoise = /(?:wikipedia\.org|cnn\.com|apnews\.com|associatedpress\.com)/i.test(url)
+      && /\b2025\b/.test(title)
+      && !/(路由器|wifi|wi-fi|pppoe|校园网|router|gigabit)/i.test(haystack);
+    const queryTruncatedToYear = /\b2025\b/.test(compactQuery)
+      && /\b2025\b/.test(title)
+      && !/(路由器|wifi|wi-fi|pppoe|校园网|router|gigabit)/i.test(haystack);
+    return yearbookNoise || queryTruncatedToYear;
+  });
+  if (corrupted) {
+    console.error(`\n❌ CRITICAL SEMANTIC FAILURE: ${engine} likely truncated query`);
+    console.error(`   Query: ${query}`);
+    console.error("   Got generic 2025 yearbook/wiki/news results instead of router/WiFi intent.");
+    failed++;
+  } else {
+    passed++;
+    console.log(`  ✅ ${engine} semantic integrity`);
+  }
+}
+
 function hasResults(text) {
   return text.includes("1.") || text.includes("search results") || text.includes("Results");
 }
@@ -107,6 +135,15 @@ function hasResults(text) {
   const pypi = pypiRaw.result?.content?.[0]?.text || "";
   recordParser("pypi", pypiRaw);
   assert("search_pypi returns results", hasResults(pypi), pypi.slice(0, 100));
+
+  // 7. search_bing semantic guard: catch query truncation to bare "2025"
+  console.log("\n=== 7. search_bing — semantic truncation guard ===");
+  const routerQuery = "2025 性价比 千兆 WiFi6 PPPoE 校园网 路由器";
+  const bingRouterRaw = await callToolRaw("search_bing", { query: routerQuery, limit: 3 }, 30000);
+  const bingRouter = bingRouterRaw.result?.content?.[0]?.text || "";
+  recordParser("bing_router_guard", bingRouterRaw);
+  (STRICT ? assert : warn)("search_bing router query returns results", hasResults(bingRouter), bingRouter.slice(0, 100));
+  auditSemanticIntegrity("bing", routerQuery, bingRouterRaw);
 
   // === Parser observability report ===
   console.log("\n=== 📊 Parser Observability Report ===");
