@@ -382,6 +382,7 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 - Not a private/authenticated connector for closed platforms
 - Not a full readability engine
 
+
 ## License
 
-GPL-3.0
+This project is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International — see the [LICENSE](LICENSE) file for details.
