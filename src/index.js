@@ -1043,11 +1043,11 @@ async function callTool(params, requestProviderConfig) {
     case "fetch_sitemap":
       return toolResult(await fetchSitemap(args), formatMetadataResponse);
     case "fetch_html_to_markdown":
-      return toolResult(await fetchHtmlToMarkdown(args), formatFetchUrlResponse);
+      return toolResult(await fetchHtmlToMarkdown(args), formatFetchHtmlToMarkdownResponse);
     case "fetch_html_extract":
       return toolResult(await fetchHtmlExtract(args), formatMetadataResponse);
     case "crawl_scrape":
-      return toolResult(await crawlScrape(args), formatFetchUrlResponse);
+      return toolResult(await crawlScrape(args), formatCrawlScrapeResponse);
     case "crawl_screenshot":
       return toolResult(await crawlScreenshot(args), formatMetadataResponse);
     case "crawl_pdf":
@@ -1055,7 +1055,7 @@ async function callTool(params, requestProviderConfig) {
     case "crawl_extract":
       return toolResult(await crawlExtract(args), formatMetadataResponse);
     case "search_and_scrape":
-      return toolResult(await searchAndScrape(args), formatFetchUrlResponse);
+      return toolResult(await searchAndScrape(args), formatSearchAndScrapeResponse);
     case "search_mojeek":
       return toolResult(await searchMojeek(args), formatSearchResponse);
     case "search_startpage":
@@ -4827,7 +4827,7 @@ async function fetchHtmlExtract(args) {
 
   if (!aiResp) {
     return {
-      ok: true,
+      ok: false,
       url: url.toString(),
       extracted: null,
       raw_text_length: fetched.text_length,
@@ -6402,6 +6402,94 @@ ${result.text}`;
 }
 __name(formatFetchUrlResponse, "formatFetchUrlResponse");
 __name2(formatFetchUrlResponse, "formatFetchUrlResponse");
+function formatFetchHtmlToMarkdownResponse(result) {
+  if (!result.ok) {
+    return `[${new Date().toISOString()}] fetch_html_to_markdown failed: ${result.error || "unknown error"}
+
+URL: ${result.url}
+Status: ${result.status || "?"}
+Content-Type: ${result.contentType || "?"}`;
+  }
+  const body = result.markdown || "";
+  const head = `[${new Date().toISOString()}] ${result.title}
+
+URL: ${result.url}
+Final URL: ${result.finalUrl}
+Content-Type: ${result.contentType}
+Length: ${result.text_length}${result.truncated ? ` (truncated from ${result.full_length})` : ""}`;
+  if (!body) return head + `
+
+(no body content extracted)`;
+  return head + `
+
+` + body;
+}
+__name(formatFetchHtmlToMarkdownResponse, "formatFetchHtmlToMarkdownResponse");
+__name2(formatFetchHtmlToMarkdownResponse, "formatFetchHtmlToMarkdownResponse");
+function formatCrawlScrapeResponse(result) {
+  if (!result.ok) {
+    return `[${new Date().toISOString()}] crawl_scrape failed: ${result.error || "unknown error"}
+
+URL: ${result.url}
+Status: ${result.status || "?"}`;
+  }
+  const body = result.markdown || "";
+  const head = `[${new Date().toISOString()}] ${result.title || result.url}
+
+URL: ${result.url}
+Final URL: ${result.finalUrl}
+Framework: ${result.framework || "unknown"} | Strategy: ${result.strategy || "?"}
+Markdown length: ${result.markdown_length || 0}${result.truncated ? " (truncated)" : ""}
+JSON-LD blocks: ${result.jsonLdCount || 0}${result.wayback_note ? `\nNote: ${result.wayback_note}` : ""}`;
+  if (!body) return head + `
+
+(no body content extracted${result.note ? `: ${result.note}` : ""})`;
+  return head + `
+
+` + body;
+}
+__name(formatCrawlScrapeResponse, "formatCrawlScrapeResponse");
+__name2(formatCrawlScrapeResponse, "formatCrawlScrapeResponse");
+function formatSearchAndScrapeResponse(result) {
+  if (!result.ok) {
+    return `[${new Date().toISOString()}] search_and_scrape failed: ${result.error || "unknown error"}
+
+Query: ${result.query || "?"}`;
+  }
+  const ts = new Date().toISOString();
+  const results = Array.isArray(result.results) ? result.results : [];
+  const stats = result.stats || {};
+  let out = `${ts} search_and_scrape "${result.query || ""}"
+Query: ${result.query}
+Stats: searched=${stats.search_total || 0} fetched=${stats.fetched_total || 0} succeeded=${stats.succeeded || 0} failed=${stats.failed || 0} elapsed=${stats.elapsed_ms || 0}ms
+`;
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const idx = `[${i + 1}/${results.length}]`;
+    if (r.ok) {
+      const text = r.text || "";
+      const preview = text.length > 1500 ? text.slice(0, 1500) + "\n...[truncated]" : text;
+      out += `
+${idx} ${r.title}
+URL: ${r.url}
+Final URL: ${r.finalUrl || r.url}
+Type: ${r.content_type || "?"} | length=${r.text_length || 0}${r.truncated ? " (truncated)" : ""}
+Snippet: ${r.snippet || "(none)"}
+${preview ? "---\n" + preview : ""}
+`;
+    } else {
+      out += `
+${idx} ${r.title || r.url} [FAILED]
+URL: ${r.url}
+Error: ${r.error || "?"}${r.status ? ` (status ${r.status})` : ""}
+`;
+    }
+  }
+  if (result.note) out += `\nNote: ${result.note}`;
+  return out;
+}
+__name(formatSearchAndScrapeResponse, "formatSearchAndScrapeResponse");
+__name2(formatSearchAndScrapeResponse, "formatSearchAndScrapeResponse");
 function formatDebugCaptureResponse(result) {
   return `[${new Date().toISOString()}]\n${JSON.stringify(result, null, 2)}`;
 }
