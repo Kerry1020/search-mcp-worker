@@ -4896,19 +4896,41 @@ function extractPdfText(buf) {
     let m;
     while ((m = tjRe.exec(block)) !== null) {
       const decoded = decodePdfString(m[1]);
-      if (decoded.trim()) out.push(decoded);
+      if (decoded.trim()) {
+        out.push(decoded);
+        out.push(" "); // word-boundary marker between distinct Tj/TJ runs
+      }
     }
     // [array of strings and numbers] TJ
+    // Same logic as async version: insert space when preceding kerning |x| >= 100.
+    // We also push a trailing space after every Tj/TJ output so out.join(" ") yields
+    // word boundaries between distinct text runs.
     const tjArrRe = /\[([\s\S]*?)\]\s*TJ/g;
     while ((m = tjArrRe.exec(block)) !== null) {
       const inner = m[1];
-      const strRe = /\(((?:\\.|[^\\()])*)\)/g;
-      let sm;
-      const line = [];
-      while ((sm = strRe.exec(inner)) !== null) {
-        line.push(decodePdfString(sm[1]));
+      const tokenRe = /\(((?:\\.|[^\\()])*)\)|(-?\d+(?:\.\d+)?)/g;
+      const parts = [];
+      let tm;
+      while ((tm = tokenRe.exec(inner)) !== null) {
+        if (tm[1] !== undefined) parts.push({ kind: "str", value: decodePdfString(tm[1]) });
+        else if (tm[2] !== undefined) parts.push({ kind: "num", value: parseFloat(tm[2]) });
       }
-      if (line.length) out.push(line.join(""));
+      if (!parts.length) continue;
+      const line = [];
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        if (p.kind === "str") {
+          if (line.length && i > 0 && parts[i - 1].kind === "num" && Math.abs(parts[i - 1].value) >= 100) {
+            line.push(" ");
+          }
+          line.push(p.value);
+        }
+      }
+      const joined = line.join("");
+      if (joined.trim()) {
+        out.push(joined);
+        out.push(" "); // word-boundary marker
+      }
     }
   }
 
@@ -4958,17 +4980,64 @@ async function extractPdfTextAsync(buf) {
     let m;
     while ((m = tjRe.exec(block)) !== null) {
       const decoded = decodePdfString(m[1]);
-      if (decoded.trim()) out.push(decoded);
+      if (decoded.trim()) {
+        out.push(decoded);
+        out.push(" "); // word-boundary marker between distinct Tj/TJ runs
+      }
     }
+    // TJ array: [(str) kerning (str) kerning (str)]
+    // Kerning semantics (PDF spec 1.7 §9.4.4):
+    //   - |kerning| < 100/1000 em: character-pair kerning (small visual adjustment)
+    //   - |kerning| >= 100/1000 em: word boundary (LaTeX pdfTeX uses -250 ~ -300 for
+    //     word space, and characters in the same word use small kerning ±5~±50)
+    // Empirical analysis of arXiv LaTeX papers shows kerning distribution clusters:
+    //   - 0 ~ ±50: character kerning (e.g., T-r, w-o glyph pairs)
+    //   - -200 ~ -310: word boundary (LaTeX pdfTeX default behavior)
+    //   - -1000: paragraph/section start marker (insert space regardless)
+    // Strategy: insert a space BEFORE a string when the preceding kerning
+    // is >= 100 in absolute value. This recovers the visual word boundaries
+    // that LaTeX/pdflatex encodes as TJ kerning. We also push a trailing space
+    // after every Tj/TJ output so the downstream `out.join(" ")` yields
+    // word boundaries between distinct text runs.
     const tjArrRe = /\[([\s\S]*?)\]\s*TJ/g;
     while ((m = tjArrRe.exec(block)) !== null) {
-      const strRe = /\(((?:\\.|[^\\()])*)\)/g;
-      let sm;
+      const inner = m[1];
+      const tokenRe = /\(((?:\\.|[^\\()])*)\)|(-?\d+(?:\.\d+)?)/g;
+      const parts = [];
+      let tm;
+      while ((tm = tokenRe.exec(inner)) !== null) {
+        if (tm[1] !== undefined) {
+          parts.push({ kind: "str", value: decodePdfString(tm[1]) });
+        } else if (tm[2] !== undefined) {
+          parts.push({ kind: "num", value: parseFloat(tm[2]) });
+        }
+      }
+      if (!parts.length) continue;
       const line = [];
-      while ((sm = strRe.exec(m[1])) !== null) line.push(decodePdfString(sm[1]));
-      if (line.length) out.push(line.join(""));
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        if (p.kind === "str") {
+          // Look at the PRECEDING kerning (number token immediately before this string).
+          // If |kerning| >= 100, insert a space before appending the string.
+          if (line.length && i > 0 && parts[i - 1].kind === "num" && Math.abs(parts[i - 1].value) >= 100) {
+            line.push(" ");
+          }
+          line.push(p.value);
+        }
+      }
+      const joined = line.join("");
+      if (joined.trim()) {
+        out.push(joined);
+        out.push(" "); // word-boundary marker
+      }
     }
   }
+  // After extractFromBlock: separate consecutive Tj/TJ operator outputs with spaces.
+  // Multiple Tj/TJ calls in a content stream typically represent distinct text runs
+  // separated by word boundaries in the source (e.g., a citation "1)" rendered as
+  // [(1)]TJ then separately [(the text after)]TJ). Without a separator, these run
+  // together without a space. We append a single space after each push; the
+  // downstream `text.replace(/[ \t]+/g, " ")` collapses any run of whitespace.
 
   // Strategy 1: BT...ET text objects with Tj/TJ operators (uncompressed PDFs)
   // SKIPPED for now — for LaTeX-generated papers this catches PDF outline/metadata
