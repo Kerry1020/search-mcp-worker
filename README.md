@@ -2,37 +2,33 @@
 
 English | [简体中文](./README.zh-CN.md)
 
-A single-file Cloudflare Worker that exposes **42 MCP tools** for web search and page fetching through one JSON-RPC endpoint. Zero dependencies, zero database, zero browser cluster.
+A single-file Cloudflare Worker that exposes **53 MCP tools** for web search, page fetching, PDF parsing, and dynamic crawling through one JSON-RPC endpoint. Zero npm dependencies, zero database, zero browser cluster.
 
-Designed for LLM agents and automation that need one stable search surface instead of stitching together many providers.
+Designed for LLM agents and automation that need one stable search/work surface instead of stitching together many providers.
 
 ## Architecture at a Glance
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                    POST /mcp                          │
-│              (JSON-RPC 2.0 endpoint)                  │
-├──────────────┬───────────────┬───────────────────────┤
-│  General     │  Vertical     │  Fetch                │
-│  Search      │  Sources      │  Tools                │
-│  (12 tools)  │  (22 tools)   │  (3 tools)            │
-├──────────────┼───────────────┼───────────────────────┤
-│ HTML parse   │ JSON API      │ HTML → text           │
-│ + fallback   │ + HTML parse  │ + metadata            │
-│ chain        │ + finalize    │ + GitHub raw          │
-├──────────────┴───────────────┴───────────────────────┤
-│  Defense Layer                                       │
-│  ┌──────────┐ ┌──────────┐ ┌──────────────────────┐ │
-│  │ Circuit  │ │ Exponent │ │ finalizeVertical     │ │
-│  │ Breaker  │ │ Backoff  │ │ SearchResults        │ │
-│  │ (5min)   │ │ Retry    │ │ (intent mismatch     │ │
-│  │          │ │ (502-504)│ │  detection + CJK/    │ │
-│  │          │ │          │ │  EN token coverage)  │ │
-│  └──────────┘ └──────────┘ └──────────────────────┘ │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                       POST /mcp  (JSON-RPC 2.0)                       │
+├──────────────┬───────────────┬──────────────┬──────────────┬──────────┤
+│  General     │  Vertical     │  Fetch       │  PDF         │  Crawl   │
+│  Search      │  Sources      │  Tools       │  Parser      │  Tools   │
+│  (12)        │  (29)         │  (7)         │  (2)         │  (4)     │
+├──────────────┼───────────────┼──────────────┼──────────────┼──────────┤
+│ HTML parse   │ JSON API +    │ HTML→text /  │ FlateDecode  │ Pure     │
+│ + multi-     │ HTML parse    │ robots /     │ + binary     │ worker   │
+│ engine       │ + finalize    │ sitemap /    │ stream scan  │ strategy │
+│ fallback     │ pipeline      │ md / extract │ (zero deps)  │ chain    │
+├──────────────┴───────────────┴──────────────┴──────────────┴──────────┤
+│  Defense Layer                                                       │
+│  Circuit Breaker │ Exponential Backoff │ Intent Mismatch │ finalize  │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-Everything lives in `src/index.js` (~4700 lines). No build step.
+Plus 1 orchestrator: `search_and_scrape` — wires search results → parallel full-text fetch.
+
+Everything lives in `src/index.js`. No build step.
 
 ## Quick Start
 
@@ -69,14 +65,16 @@ For Claude Desktop, Cursor, or any MCP client that supports SSE/StreamableHTTP:
 
 ```bash
 curl https://your-worker.example.com/health
-# → {"ok":true,"build":{"sha":"c2de5b9","time":"2026-06-03T15:15:00Z"}}
+# → {"ok":true,"build":{"sha":"b39bd1e","time":"..."}}
 ```
 
-## Tool Surface (42 tools)
+## Tool Surface (53 tools)
 
-### Tier 1: General Web Search
+The 53 tools are grouped into **6 functional layers** plus a small utility bucket. All share the same defense layer (circuit breaker, exponential backoff, intent mismatch detection).
 
-These parse HTML search result pages. Each engine has a multi-attempt fallback chain with rotating User-Agents.
+### Layer 1 — General Web Search (12 tools)
+
+Parse HTML search result pages. Each engine has a multi-attempt fallback chain with rotating User-Agents.
 
 | Tool | Engine | URL Pattern | Fallback Strategy |
 |---|---|---|---|
@@ -95,9 +93,11 @@ These parse HTML search result pages. Each engine has a multi-attempt fallback c
 | `search_qwant` | Qwant | `qwant.com/?q=` | Single attempt, HTML parse |
 | `search_ecosia` | Ecosia | `ecosia.org/search?q=` | Single attempt, HTML parse |
 
-### Tier 2: Vertical Sources — JSON API
+### Layer 2 — Vertical Sources (29 tools)
 
-These call structured JSON APIs. Results pass through `finalizeVerticalSearchResults` for intent mismatch detection and noise filtering.
+Structured JSON APIs (22) and HTML-scrape sources (7). All results pass through `finalizeVerticalSearchResults` for intent mismatch detection and noise filtering.
+
+#### 2a. JSON API (22 tools)
 
 | Tool | Source | API | Implementation Details |
 |---|---|---|---|
@@ -121,12 +121,10 @@ These call structured JSON APIs. Results pass through `finalizeVerticalSearchRes
 | `search_pypi` | PyPI | `pypi.org/search/?q=` (HTML) → `pypi.org/pypi/{name}/json` (direct lookup) | HTML scrape first; if 0 results, tries exact package name lookup |
 | `search_crates` | crates.io | `crates.io/api/v1/crates?q=` | Direct JSON API |
 | `search_github_repos` | GitHub | `api.github.com/search/repositories?q=&sort=stars` | Star-sorted; candidate over-fetch then slice |
-| `search_ollama` | Ollama | `api.ollama.com/v1/web-search` (POST) | Provider-configurable endpoint; requires API key |
+| `search_ollama` | Ollama | `api.olloma.com/v1/web-search` (POST) | Provider-configurable endpoint; requires API key |
 | `search_parallel` | Parallel | `api.parallel.ai/v1/search` (POST) | Provider-configurable endpoint |
 
-### Tier 2: Vertical Sources — HTML Scrape
-
-These parse HTML search pages. Results also pass through `finalizeVerticalSearchResults`.
+#### 2b. HTML Scrape (7 tools)
 
 | Tool | Source | URL Pattern | Parsing Strategy |
 |---|---|---|---|
@@ -138,15 +136,55 @@ These parse HTML search pages. Results also pass through `finalizeVerticalSearch
 | `search_osm` | OpenStreetMap | `nominatim.openstreetmap.org/search?q=&format=jsonv2` | Geocoding; returns lat/lon + OSM link |
 | `search_archive` | Archive.org | `archive.org/wayback/available?url=` + `advancedsearch.php?q=` | Wayback Machine lookup + advanced search; **currently limited** by CF Workers IP timeout |
 
-### Tier 3: Fetch Tools
+### Layer 3 — Fetch Tools (7 tools)
+
+Single-URL fetch + structural helpers. All start from `fetchTextWithResponse` and add layered post-processing.
 
 | Tool | Purpose | Implementation |
 |---|---|---|
 | `fetch_url` | Fetch any URL, extract readable text | `fetchTextWithResponse` → `extractReadableContent` (article extraction) → truncation at `max_chars` |
 | `fetch_metadata` | Extract metadata from a URL | Fetches HTML (128KB limit) → parses `<title>`, `<meta>` description/og:image/etc. → returns structured metadata |
 | `fetch_github_file` | Fetch a specific file from GitHub | `raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}` → returns raw text |
+| `fetch_robots` | Fetch + parse `robots.txt` | Derives origin from URL → fetches `/robots.txt` → parses user-agent blocks (Allow/Disallow) + Sitemap declarations |
+| `fetch_sitemap` | Fetch + parse sitemap.xml | Default fetches the home page → parses `<urlset>` or `<sitemapindex>`; `recursive=true` walks child sitemaps |
+| `fetch_html_to_markdown` | Markdown version of `fetch_url` | `fetchTextWithResponse` → cheerio-less DOM walker → preserves H1-H3 / links / lists / code blocks, drops `<script>`/`<style>`/`<nav>`/`<footer>` |
+| `fetch_html_extract` | Fetch + structured extraction | Prefers Workers AI binding (graceful error when absent); falls back to raw text |
 
-### Utility Tools
+### Layer 4 — PDF Parser (2 tools)
+
+Pure-worker PDF text extraction. No npm deps, no external services.
+
+| Tool | Purpose | Implementation |
+|---|---|---|
+| `pdf_parse` | Fetch a PDF from URL and extract plain text | `fetch(url)` → `extractPdfTextAsync` (binary scan of `stream...endstream` blocks) → `DecompressionStream("deflate")` for FlateDecode streams → skip font/image/XObject non-text streams → extract by `BT...ET` + `Tj/TJ` operators |
+| `pdf_to_markdown` | Fetch a PDF and convert to lightweight Markdown | Reuses `pdf_parse` → prepends `# PDF Document` metadata header → inserts `---` page-break markers between pages |
+
+**Implementation notes:**
+
+- **Binary scan**: byte-level locate `stream` (115,116,114,101,97,109) and `endstream` markers — no regex on binary streams.
+- **FlateDecode decompression**: browser-native `DecompressionStream("deflate")`.
+- **Text-stream filter**: `looksLikeTextStream()` checks decompressed stream for PDF text operators (BT/Tj/TJ/Td/Tm/Tf) or printable-ASCII ratio > 0.85; font programs / images / XObjects are skipped.
+- **Noise filtering**: Strategy 1 (outline/metadata) and Strategy 2 (Info-dict metadata) are disabled — only Strategy 3 (decompressed real content streams) is used, which cleanly handles LaTeX-generated arXiv papers and other LaTeX-heavy PDFs.
+- **Known limits**: scanned pure PDFs (image-only) need external OCR — not handled in-worker.
+
+### Layer 5 — Dynamic Crawl (4 tools)
+
+Pure-worker crawling with no browser dependency. The CF account has no Browser Rendering entitlement, so these tools use a layered heuristic strategy chain to maximize coverage without JS rendering.
+
+| Tool | Purpose | Strategy chain |
+|---|---|---|
+| `crawl_scrape` | URL → clean markdown | (1) Detect Next.js `__NEXT_DATA__` / Nuxt `__NUXT__` / SvelteKit / Astro embedded JSON; (2) extract `application/ld+json` JSON-LD; (3) OG/Twitter meta tags; (4) cheerio-less DOM walker → markdown; (5) fallback to Archive.org Wayback snapshot |
+| `crawl_screenshot` | URL content snapshot | DOM-derived snapshot: title + h1-h3 hierarchy + links + summary text + OG/Twitter + html sha256. **No PNG screenshot** — account has no BR entitlement |
+| `crawl_pdf` | URL → PDF text | Reuses `pdf_parse` / `pdf_to_markdown`; PDFs are static binaries, no JS rendering needed |
+| `crawl_extract` | URL → structured fields (no AI) | HTML heuristic extraction: (1) JSON-LD blocks; (2) OG/Twitter meta; (3) schema.org microdata `itemprop`; (4) `.price` / `.author` / `.title` heuristic class selectors → type coercion (string/number/boolean/array) |
+
+### Layer 6 — Smart Orchestration (1 tool)
+
+| Tool | Purpose | Implementation |
+|---|---|---|
+| `search_and_scrape` | Search → automatic full-text fetch | Orchestrator: calls `search_auto` internally for candidate URLs → 4-concurrent `fetch_url` or `pdf_parse` (PDF auto-routed when URL ends in `.pdf` or content-type is PDF) → returns `{query, results[], stats{elapsed_ms, succeeded, failed, concurrency: 4, deadline_hit}}`. 30s total timeout. |
+
+### Utility Tools (3 tools)
 
 | Tool | Purpose |
 |---|---|
@@ -313,6 +351,7 @@ curl -X POST http://127.0.0.1:8789/mcp \
 ## CI/CD
 
 - **Smoke tests**: Every PR triggers `.github/workflows/smoke.yml` — runs `tests/smoke_trace.mjs` against the deployed worker
+- **Extended smoke**: `tests/smoke_layer1_4.mjs` exercises the 11 Layer 1-4 tools (PDF + fetch helpers) end-to-end against the CF worker
 - **Auto-deploy**: Merged PRs to `main` trigger `.github/workflows/deploy.yml` — builds and deploys to Cloudflare Workers
 - **Branch protection**: `main` requires passing smoke CI + PR review
 - **CI networking**: `CI_STRICT_NETWORKING` env var — `true` (local) uses `assert`, `false` (CI) uses `warn` for network-sensitive tests
@@ -321,9 +360,10 @@ curl -X POST http://127.0.0.1:8789/mcp \
 
 ```
 search-mcp-worker/
-├── src/index.js              # Everything: MCP routing, tools, defense layer
+├── src/index.js              # Everything: MCP routing, 53 tools, defense layer
 ├── tests/
-│   ├── smoke_trace.mjs       # Smoke test suite (online)
+│   ├── smoke_trace.mjs       # Core smoke test suite (online)
+│   ├── smoke_layer1_4.mjs    # Extended smoke — 11 Layer 1-4 tools, 39 assertions
 │   ├── parser_harness.mjs    # Parser unit tests (offline, 25 assertions)
 │   └── provider_sweep.mjs    # Full provider audit
 ├── .github/workflows/
@@ -344,6 +384,9 @@ search-mcp-worker/
 | Sina News empty for some queries | API returns empty for certain keywords | Upstream limitation |
 | Arxiv occasional timeout | Network path from CF edge to `export.arxiv.org` | Transient |
 | Lemmy community search coverage | Only matches against a hardcoded hint list (linux/docker/rust/etc) | Expand as needed |
+| `crawl_screenshot` returns text snapshot, not PNG | CF account has no Browser Rendering entitlement | Use a BR-enabled account for real screenshots |
+| PDF parser on image-only (scanned) PDFs | No OCR in-worker | Pipe scanned PDFs to external OCR |
+| `crawl_scrape` on JS-rendered SPAs | No JS execution in pure worker | Use Archive.org Wayback fallback or BR-enabled endpoint |
 
 ## Agent Behavior Guide
 
@@ -367,12 +410,22 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 | `content_type: "challenge_page"` + `status: 202` | JS probe required — page needs browser execution | Do NOT treat text as article content. Use `search_auto` or alternative sources instead |
 | `content_type: "challenge_page"` + `status: 403` | Data center IP blocked | Same — switch to search tools for the information |
 
-### Recommended fallback chain
+### Recommended tool chains
 
 ```
-1. Try fetch_url for direct page content
-2. If challenge_page → use search_auto to find same content from other sources
-3. If search results are skeleton_fallback → cross-reference with vertical tools
+# Article / blog content
+1. fetch_url           → primary read
+2. crawl_scrape        → if fetch_url returns challenge_page, try cleaner markdown
+3. search_and_scrape   → if you don't yet have a URL, search first then auto-fetch
+
+# PDF / academic content
+1. pdf_to_markdown     → when URL ends in .pdf or content-type is PDF
+2. pdf_parse           → when you need raw text only
+
+# Site-level discovery
+1. fetch_robots        → check crawl permissions
+2. fetch_sitemap       → enumerate discoverable URLs
+3. fetch_html_extract  → structured fields from a known page
 ```
 
 ## What This Is Not
@@ -381,56 +434,14 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 - Not a browser automation platform or JS-rendering crawler
 - Not a private/authenticated connector for closed platforms
 - Not a full readability engine
+- Not a PDF OCR service
 
+## Deployment Verification
 
-## Extended Toolset (11 new tools)
-
-Added on top of the original 42 search/fetch tools — 4 new layers, 11 tools total, all implemented as pure Cloudflare Worker functions with zero external dependencies and zero new bindings:
-
-### Layer 1 — PDF Parsing
-
-| Tool | Purpose | Implementation |
-|---|---|---|
-| `pdf_parse` | Fetch a PDF from URL and extract plain text | `fetch(url)` → `extractPdfTextAsync` binary-scan stream→endstream blocks → `DecompressionStream("deflate")` for FlateDecode → skip font/image/XObject non-text streams → extract by `BT...ET` + `Tj/TJ` operators |
-| `pdf_to_markdown` | Fetch a PDF and convert to lightweight Markdown | Reuses `pdfParse` + prepends `# PDF Document` metadata header + inserts `---` page-break markers |
-
-### Layer 2 — Dynamic Crawl (pure worker, no browser)
-
-The account has no Cloudflare Browser Rendering entitlement; pure HTTP fetch + heuristic strategies maximize coverage:
-
-| Tool | Purpose | Implementation strategy chain |
-|---|---|---|
-| `crawl_scrape` | Fetch a URL → clean markdown | (1) Detect Next.js `__NEXT_DATA__` / Nuxt `__NUXT__` / SvelteKit / Astro markers → extract embedded JSON; (2) extract `application/ld+json` JSON-LD; (3) OG/Twitter meta tags; (4) cheerio-less DOM walker to markdown; (5) fallback to Archive.org Wayback snapshot |
-| `crawl_screenshot` | URL "content snapshot" (no PNG) | DOM-derived snapshot: title + h1-h3 hierarchy + links + summary text + OG/Twitter + html sha256. **Note: account has no BR entitlement, no real PNG screenshot returned** |
-| `crawl_pdf` | Fetch a URL PDF (no BR dependency) | Reuses `pdfParse` / `pdfToMarkdown`; PDFs are static binaries, no JS rendering needed |
-| `crawl_extract` | Fetch URL → structured fields (no AI) | HTML heuristic extraction: (1) JSON-LD blocks; (2) OG/Twitter meta; (3) schema.org microdata `itemprop`; (4) `.price` / `.author` / `.title` heuristic class selectors → type coercion (string/number/boolean/array) |
-
-### Layer 3 — Smart Bridge
-
-| Tool | Purpose | Implementation |
-|---|---|---|
-| `search_and_scrape` | search → automatic full-text fetch | Orchestrator tool: calls `searchAuto` internally for candidate URLs → 4-concurrent `fetchUrl` or `pdfParse` (PDF auto-routed when URL ends in `.pdf` or content-type is PDF) → returns `{query, results[], stats{elapsed_ms, succeeded, failed, concurrency:4, deadline_hit}}`, 30s total timeout |
-
-### Layer 4 — Helper Tools
-
-| Tool | Purpose | Implementation |
-|---|---|---|
-| `fetch_robots` | Fetch robots.txt + parse Allow/Disallow/Sitemap | Auto-derive origin from URL → fetch `/robots.txt` → parse user-agent blocks + Sitemap declarations |
-| `fetch_sitemap` | Fetch sitemap.xml + recursive sitemapindex | Default fetches the home page → parses `<urlset>` or `<sitemapindex>` → recursive fetches child sitemaps when `recursive=true` |
-| `fetch_html_to_markdown` | Markdown version of `fetch_url` (no JS rendering) | `fetchTextWithResponse` → cheerio-less DOM walker → preserves H1-H3 / links / lists / code blocks |
-| `fetch_html_extract` | Fetch + structured extraction (Workers AI optional) | Prefers Workers AI (graceful error when no AI binding); falls back to raw text |
-
-### PDF Parser Implementation Notes (reference)
-
-- **Binary scan**: byte-level locate `stream...endstream` (115,116,114,101,97,109) → no regex on binary streams.
-- **FlateDecode decompression**: browser-native `DecompressionStream("deflate")` (no npm dep).
-- **Text-stream filter**: `looksLikeTextStream()` checks decompressed stream for PDF text operators (BT/Tj/TJ/Td/Tm/Tf) or printable-ASCII ratio > 0.85; font programs / images / XObjects are skipped.
-- **LaTeX noise filtering**: Strategy 1 (outline/metadata capture) and Strategy 2 (Info-dict metadata capture) disabled — only Strategy 3 (decompressed real content streams) is used.
-- **Known limits**: scanned pure PDFs and LaTeX-generated arXiv papers parse cleanly; image-only (scanned) PDFs need external OCR.
-
-### Deployment Verification
-
-All 11 new tools were verified end-to-end on the CF edge (`search-mcp.qdp.qzz.io/mcp`): deployed version ID `200c5d7a-6e1c-40e5-af52-f232ead8285e`; wrangler upload 291.55 KiB / gzip 60.51 KiB; smoke test script `tests/smoke_layer1_4.mjs` (39 assertions); BabelTele paper parsing verified on arXiv 2606.19857 (23 pages / 4.26 MB) → real body text 85 K characters.
+- Live worker: `search-mcp.qdp.qzz.io/mcp`
+- Latest deployed version: `200c5d7a-6e1c-40e5-af52-f232ead8285e` (wrangler upload 291.55 KiB / gzip 60.51 KiB)
+- 53 tools verified end-to-end on CF edge (curl `--resolve` to bypass local DNS poisoning)
+- BabelTele paper parsing verified: arXiv 2606.19857 (23 pages / 4.26 MB) → 85K chars of real body text
 
 ## License
 

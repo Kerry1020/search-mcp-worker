@@ -2,36 +2,32 @@
 
 [English](./README.md) | 简体中文
 
-一个单文件 Cloudflare Worker，通过一个 JSON-RPC 端点暴露 **42 个 MCP 搜索和页面抓取工具**。零依赖、零数据库、零浏览器集群。
+一个单文件 Cloudflare Worker，通过一个 JSON-RPC 端点暴露 **53 个 MCP 工具**，覆盖网页搜索、页面抓取、PDF 解析、动态爬虫。零 npm 依赖、零数据库、零浏览器集群。
 
-专为 LLM Agent 和自动化设计——一个稳定的搜索接口替代拼凑多个搜索提供商。
+专为 LLM Agent 和自动化设计——一个稳定的搜索+工作接口，替代拼凑多个外部服务。
 
 ## 架构总览
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                    POST /mcp                          │
-│              (JSON-RPC 2.0 端点)                      │
-├──────────────┬───────────────┬───────────────────────┤
-│  通用搜索    │  垂直源       │  抓取工具             │
-│  (12 tools)  │  (22 tools)   │  (3 tools)            │
-├──────────────┼───────────────┼───────────────────────┤
-│ HTML 解析    │ JSON API      │ HTML → 纯文本         │
-│ + 回退链    │ + HTML 解析   │ + 元数据提取          │
-│              │ + finalize    │ + GitHub 原始文件     │
-├──────────────┴───────────────┴───────────────────────┤
-│  防御层                                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────────────────┐ │
-│  │ 熔断器   │ │ 指数退避 │ │ finalizeVertical     │ │
-│  │ (5分钟)  │ │ 重试     │ │ SearchResults        │ │
-│  │          │ │ (502-504)│ │ (意图偏移检测        │ │
-│  │          │ │          │ │  + CJK/EN token      │ │
-│  │          │ │          │ │  覆盖度)             │ │
-│  └──────────┘ └──────────┘ └──────────────────────┘ │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                       POST /mcp  (JSON-RPC 2.0)                       │
+├──────────────┬───────────────┬──────────────┬──────────────┬──────────┤
+│  通用搜索    │  垂直源       │  抓取工具    │  PDF 解析    │  动态    │
+│  (12)        │  (29)         │  (7)         │  (2)         │  爬虫(4) │
+├──────────────┼───────────────┼──────────────┼──────────────┼──────────┤
+│ HTML 解析    │ JSON API +    │ HTML→文本 /  │ FlateDecode  │ 纯worker │
+│ + 多引擎     │ HTML 解析     │ robots /     │ + 二进制     │ 策略链   │
+│ 回退链       │ + finalize    │ sitemap /    │ 流扫描       │ 无浏览器 │
+│              │               │ md / 抽取    │ (零依赖)     │ 依赖     │
+├──────────────┴───────────────┴──────────────┴──────────────┴──────────┤
+│  防御层                                                              │
+│  熔断器 │ 指数退避 │ 意图偏移检测 │ finalize 管线                     │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-全部代码在 `src/index.js`（~4700 行），无构建步骤。
+外加 1 个编排器：`search_and_scrape` —— 把搜索结果接入并行全文抓取。
+
+全部代码在 `src/index.js`，无构建步骤。
 
 ## 快速开始
 
@@ -68,12 +64,14 @@ curl -X PUT \
 
 ```bash
 curl https://your-worker.example.com/health
-# → {"ok":true,"build":{"sha":"c2de5b9","time":"2026-06-03T15:15:00Z"}}
+# → {"ok":true,"build":{"sha":"b39bd1e","time":"..."}}
 ```
 
-## 工具一览（42 个）
+## 工具一览（53 个）
 
-### 第一层：通用网页搜索
+53 个工具按 **6 个功能层 + 1 个辅助桶** 组织。所有工具共享同一套防御层（熔断器、指数退避、意图偏移检测）。
+
+### 第一层 — 通用网页搜索（12 个）
 
 解析 HTML 搜索结果页。每个引擎都有多轮回退链和轮换 User-Agent。
 
@@ -94,9 +92,11 @@ curl https://your-worker.example.com/health
 | `search_qwant` | Qwant | `qwant.com/?q=` | 单次尝试，HTML 解析 |
 | `search_ecosia` | Ecosia | `ecosia.org/search?q=` | 单次尝试，HTML 解析 |
 
-### 第二层：垂直源 — JSON API
+### 第二层 — 垂直源（29 个）
 
-调用结构化 JSON API。结果经过 `finalizeVerticalSearchResults` 做意图偏移检测和噪声过滤。
+结构化 JSON API（22 个）+ HTML 抓取源（7 个）。所有结果都过 `finalizeVerticalSearchResults` 做意图偏移检测和噪声过滤。
+
+#### 2a. JSON API（22 个）
 
 | 工具 | 来源 | API | 实现细节 |
 |---|---|---|---|
@@ -123,9 +123,7 @@ curl https://your-worker.example.com/health
 | `search_ollama` | Ollama | `api.ollama.com/v1/web-search` (POST) | 可配置 endpoint；需要 API key |
 | `search_parallel` | Parallel | `api.parallel.ai/v1/search` (POST) | 可配置 endpoint |
 
-### 第二层：垂直源 — HTML 抓取
-
-解析 HTML 搜索页面。结果同样经过 `finalizeVerticalSearchResults`。
+#### 2b. HTML 抓取（7 个）
 
 | 工具 | 来源 | URL 模式 | 解析策略 |
 |---|---|---|---|
@@ -137,15 +135,55 @@ curl https://your-worker.example.com/health
 | `search_osm` | OpenStreetMap | `nominatim.openstreetmap.org/search?q=&format=jsonv2` | 地理编码；返回经纬度 + OSM 链接 |
 | `search_archive` | Archive.org | `archive.org/wayback/available?url=` + `advancedsearch.php?q=` | Wayback Machine 查询 + 高级搜索；**当前受 CF Workers IP 超时限制** |
 
-### 第三层：抓取工具
+### 第三层 — 抓取工具（7 个）
+
+单 URL 抓取 + 结构化辅助工具。全部从 `fetchTextWithResponse` 出发，叠加不同后处理。
 
 | 工具 | 用途 | 实现 |
 |---|---|---|
 | `fetch_url` | 抓取任意 URL，提取可读文本 | `fetchTextWithResponse` → `extractReadableContent`（文章提取）→ 按 `max_chars` 截断 |
 | `fetch_metadata` | 从 URL 提取元数据 | 抓取 HTML（128KB 上限）→ 解析 `<title>`、`<meta>` description/og:image 等 → 返回结构化元数据 |
 | `fetch_github_file` | 从 GitHub 获取指定文件 | `raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}` → 返回原始文本 |
+| `fetch_robots` | 抓取 + 解析 `robots.txt` | 从 URL 派生 origin → 抓 `/robots.txt` → 解析 user-agent 块（Allow/Disallow）+ Sitemap 声明 |
+| `fetch_sitemap` | 抓取 + 解析 sitemap.xml | 默认抓首页 → 解析 `<urlset>` 或 `<sitemapindex>`；`recursive=true` 时递归抓子 sitemap |
+| `fetch_html_to_markdown` | `fetch_url` 的 markdown 版本 | `fetchTextWithResponse` → cheerio-less DOM walker → 保留 H1-H3/链接/列表/代码块，去掉 `<script>`/`<style>`/`<nav>`/`<footer>` |
+| `fetch_html_extract` | 抓取 + 结构化抽取 | 优先调 Workers AI binding（无 binding 时 graceful error），fallback 返原始文本 |
 
-### 辅助工具
+### 第四层 — PDF 解析（2 个）
+
+纯 worker PDF 文本抽取。无 npm 依赖、无外部服务。
+
+| 工具 | 用途 | 实现 |
+|---|---|---|
+| `pdf_parse` | 抓 URL PDF 并提取纯文本 | `fetch(url)` → `extractPdfTextAsync`（按字节扫描 `stream...endstream` 块）→ `DecompressionStream("deflate")` 解压 FlateDecode 流 → 跳过字体/图像/XObject 非文本流 → 按 `BT...ET` + `Tj/TJ` 算子提取文字 |
+| `pdf_to_markdown` | 抓 PDF → 轻量 Markdown 化 | 复用 `pdf_parse` → 添加 `# PDF Document` 元数据头 → 按页估算插 `---` 分页符 |
+
+**实现要点：**
+
+- **二进制扫描**：按字节定位 `stream`（115,116,114,101,97,109）和 `endstream` 标记 → 不依赖 regex 切二进制流。
+- **FlateDecode 解压**：浏览器原生 `DecompressionStream("deflate")`。
+- **文本流过滤**：`looksLikeTextStream()` 检测 stream 解压后是否含 PDF 文本算子（BT/Tj/TJ/Td/Tm/Tf）或可打印 ASCII 比例 > 0.85；字体程序/图像/XObject 被跳过。
+- **噪声过滤**：禁用 Strategy 1（outline/metadata）和 Strategy 2（Info-dict 元数据），只走 Strategy 3（解压后的真实 content stream）。这能干净处理 LaTeX 生成的 arXiv 论文及其他 LaTeX-heavy PDF。
+- **已知限制**：扫描的纯 PDF（纯图像型）需配合外部 OCR —— worker 内不做 OCR。
+
+### 第五层 — 动态爬虫（4 个）
+
+纯 worker 爬虫，不依赖浏览器。CF 账户无 Browser Rendering entitlement，所以这些工具用分层启发式策略链最大化覆盖。
+
+| 工具 | 用途 | 策略链 |
+|---|---|---|
+| `crawl_scrape` | URL → clean markdown | (1) 检测 Next.js `__NEXT_DATA__` / Nuxt `__NUXT__` / SvelteKit / Astro 内嵌 JSON；(2) 抓 `application/ld+json` JSON-LD；(3) 抓 OG/Twitter meta；(4) cheerio-less DOM walker 转 markdown；(5) 兜底 Archive.org Wayback 快照 |
+| `crawl_screenshot` | URL 内容快照 | DOM 派生快照：title + h1-h3 层级 + 链接 + 摘要文本 + OG/Twitter + html sha256。**不返 PNG** —— 账户无 BR entitlement |
+| `crawl_pdf` | URL → PDF 文本 | 复用 `pdf_parse` / `pdf_to_markdown`；PDF 是静态二进制无需 JS 渲染 |
+| `crawl_extract` | URL → 结构化字段（无 AI） | HTML 启发式抽取：(1) JSON-LD 块；(2) OG/Twitter meta；(3) schema.org microdata `itemprop`；(4) `.price`/`.author`/`.title` 等 heuristic class 选择器 → 类型强制（string/number/boolean/array） |
+
+### 第六层 — 智能编排（1 个）
+
+| 工具 | 用途 | 实现 |
+|---|---|---|
+| `search_and_scrape` | search → 自动抓全文 | 编排型工具：内部调 `search_auto` 拿候选 URL → 4 并发调 `fetch_url` 或 `pdf_parse`（URL 含 `.pdf` 后缀或 content-type 是 PDF 时自动路由 PDF 路径）→ 返 `{query, results[], stats{elapsed_ms, succeeded, failed, concurrency: 4, deadline_hit}}`，30s 总超时 |
+
+### 辅助工具（3 个）
 
 | 工具 | 用途 |
 |---|---|
@@ -181,11 +219,13 @@ fetchWithUA(url, headers, { retries: 1, retryDelay: 200 })
 ### 意图偏移检测
 
 **`isHardIntentMismatchResult`** — 硬过滤器，丢弃明显偏题的结果：
+
 - 英文：alpha token（长度 ≥ 3）在 title+snippet 中全字匹配。覆盖率 < 50% = 偏题。
 - CJK：查询字符在 title+snippet 中检查。零命中 = 偏题。
 - 来源特定：BBC 过滤非 alpha 噪声；PubMed 过滤技术 vs 生物交叉污染。
 
 **`isIntentMismatchResult`** — 软过滤器，硬过滤器未触发时使用：
+
 - 检查查询意图与结果内容的语义距离。
 - 按引擎调优。
 
@@ -228,6 +268,7 @@ search_auto 按顺序尝试引擎：
 ### 样式改版韧性（PR #21）
 
 `extractGenericLinks` 在类名解析失败时采用两阶段降级：
+
 1. **块级容器预筛**：扫描 `<li>`/`<div>`/`<section>`/`<article>` 容器内的外链和标题，输出带摘要的结果
 2. **扁平 `<a>` 回退**：块级不够时，扫描所有 `<a>` 标签配合噪声 URL 过滤
 
@@ -312,6 +353,7 @@ curl -X POST http://127.0.0.1:8789/mcp \
 ## CI/CD
 
 - **Smoke 测试**：每个 PR 触发 `.github/workflows/smoke.yml` — 对部署后的 Worker 运行 `tests/smoke_trace.mjs`
+- **扩展 Smoke**：`tests/smoke_layer1_4.mjs` 对 11 个 Layer 1-4 工具（PDF + 抓取辅助）做端到端测试
 - **自动部署**：合并到 `main` 的 PR 触发 `.github/workflows/deploy.yml` — 构建并部署到 Cloudflare Workers
 - **分支保护**：`main` 要求通过 smoke CI + PR 审查
 - **CI 网络**：`CI_STRICT_NETWORKING` 环境变量 — `true`（本地）使用 `assert`，`false`（CI）使用 `warn`
@@ -320,9 +362,10 @@ curl -X POST http://127.0.0.1:8789/mcp \
 
 ```
 search-mcp-worker/
-├── src/index.js              # 全部代码：MCP 路由、工具、防御层
+├── src/index.js              # 全部代码：MCP 路由、53 个工具、防御层
 ├── tests/
-│   ├── smoke_trace.mjs       # Smoke 测试套件（在线）
+│   ├── smoke_trace.mjs       # 核心 smoke 测试套件（在线）
+│   ├── smoke_layer1_4.mjs    # 扩展 smoke —— 11 个 Layer 1-4 工具，39 个 assertion
 │   ├── parser_harness.mjs    # 解析器单元测试（离线，25 个断言）
 │   └── provider_sweep.mjs    # 全量 Provider 审计
 ├── .github/workflows/
@@ -343,6 +386,9 @@ search-mcp-worker/
 | 新浪新闻部分关键词返回空 | API 对某些关键词返回空 | 上游限制 |
 | Arxiv 偶尔超时 | CF 边缘到 `export.arxiv.org` 的网络路径 | 临时性 |
 | Lemmy 社区搜索覆盖范围 | 仅匹配硬编码的社区列表（linux/docker/rust 等） | 按需扩展 |
+| `crawl_screenshot` 返回文本快照而非 PNG | CF 账户无 Browser Rendering entitlement | 用 BR-enabled 账户拿真截图 |
+| PDF 解析器处理纯图像（扫描件）PDF | worker 内无 OCR | 扫描件需外接 OCR 服务 |
+| `crawl_scrape` 处理 JS 渲染 SPA | 纯 worker 无 JS 执行 | 用 Archive.org Wayback 兜底或 BR-enabled endpoint |
 
 ## Agent 行为指南
 
@@ -366,12 +412,22 @@ LLM Agent（Claude、Cursor 等）调用这些工具时，应注意以下信号�
 | `content_type: "challenge_page"` + `status: 202` | 需要执行 JS — 纯 API 无法获取 | **不要**将文本当作正文内容，改用 `search_auto` 或其他来源 |
 | `content_type: "challenge_page"` + `status: 403` | 数据中心 IP 被封锁 | 同上 — 切换搜索工具获取信息 |
 
-### 推荐 fallback 链路
+### 推荐工具链
 
 ```
-1. 用 fetch_url 获取页面正文
-2. 遇到 challenge_page → 用 search_auto 从其他来源找同一内容
-3. 搜索结果为 skeleton_fallback → 用垂直工具交叉验证
+# 文章 / 博客内容
+1. fetch_url           → 首选
+2. crawl_scrape        → fetch_url 遇到 challenge_page 时改用此拿更干净 markdown
+3. search_and_scrape   → 还没有 URL 时，先搜再自动抓
+
+# PDF / 学术内容
+1. pdf_to_markdown     → URL 结尾是 .pdf 或 content-type 是 PDF
+2. pdf_parse           → 只需要纯文本时
+
+# 站点级发现
+1. fetch_robots        → 先查爬虫权限
+2. fetch_sitemap       → 枚举可发现 URL
+3. fetch_html_extract  → 从已知页面抽结构化字段
 ```
 
 ## 本项目不是
@@ -380,56 +436,15 @@ LLM Agent（Claude、Cursor 等）调用这些工具时，应注意以下信号�
 - 不是浏览器自动化平台或 JS 渲染爬虫
 - 不是封闭平台的私有/认证连接器
 - 不是完整的文章可读性引擎
+- 不是 PDF OCR 服务
 
-## 扩展工具集（11 个新增）
+## 部署验证
 
-在原有 42 个搜索/抓取工具基础上，新增 4 层共 11 个工具，全部以纯 Cloudflare Worker 函数实现，零外部依赖、零新 binding：
-
-### 第一层（PDF 解析）
-
-| 工具 | 用途 | 实现 |
-|---|---|---|
-| `pdf_parse` | 抓取 URL PDF 并提取纯文本 | `fetch(url)` → `extractPdfTextAsync` 二进制扫描 stream→endstream 块 → `DecompressionStream("deflate")` 解压 FlateDecode → 跳过字体/图像/XObject 非文本流 → 按 `BT...ET` + `Tj/TJ` 算子提取文字 |
-| `pdf_to_markdown` | 抓取 PDF → 轻量 Markdown 化 | 复用 `pdfParse` + 添加 `# PDF Document` 元数据头 + 按页估算插 `---` 分页符 |
-
-### 第二层（动态爬虫，纯 worker 无浏览器）
-
-账户无 Cloudflare Browser Rendering entitlement，纯 HTTP fetch + 启发式实现最大化覆盖：
-
-| 工具 | 用途 | 实现策略链 |
-|---|---|---|
-| `crawl_scrape` | 抓取 URL → clean markdown | (1) 检测 Next.js `__NEXT_DATA__` / Nuxt `__NUXT__` / SvelteKit / Astro 标记 → 提取嵌入 JSON；(2) 抓 `application/ld+json` JSON-LD；(3) 抓 OG/Twitter meta；(4) cheerio-less DOM walker 转 markdown；(5) 兜底 Archive.org Wayback 快照 |
-| `crawl_screenshot` | URL "内容快照"（无 PNG） | DOM 派生快照：title + h1-h3 层级 + 链接 + 摘要文本 + OG/Twitter + html sha256。**注意：账户无 BR entitlement，不返真 PNG 截图** |
-| `crawl_pdf` | 抓 URL PDF（无 BR 依赖） | 复用 `pdfParse` / `pdfToMarkdown`，PDF 是静态二进制无需 JS 渲染 |
-| `crawl_extract` | 抓 URL → 结构化字段（无 AI） | HTML 启发式抽取：(1) JSON-LD 块；(2) OG/Twitter meta；(3) schema.org microdata `itemprop`；(4) `.price`/`.author`/`.title` 等 heuristic class 选择器 → 类型强制（string/number/boolean/array） |
-
-### 第三层（智能桥接）
-
-| 工具 | 用途 | 实现 |
-|---|---|---|
-| `search_and_scrape` | search → 自动 fetch 全文 | 编排型工具：内部调 `searchAuto` 拿候选 URL → 4 并发调 `fetchUrl` 或 `pdfParse`（URL 含 `.pdf` 后缀或 content-type 是 PDF 时自动路由 PDF 路径）→ 返 `{query, results[], stats{elapsed_ms, succeeded, failed, concurrency:4, deadline_hit}}`，30s 总超时 |
-
-### 第四层（辅助工具）
-
-| 工具 | 用途 | 实现 |
-|---|---|---|
-| `fetch_robots` | 抓 robots.txt + 解析 Allow/Disallow/Sitemap | 自动从 URL 派生 origin → 抓 `/robots.txt` → 解析 user-agent 块 + Sitemap 声明 |
-| `fetch_sitemap` | 抓 sitemap.xml + 递归 sitemapindex | 默认抓首页 → 解析 `<urlset>` 或 `<sitemapindex>` → `recursive=true` 时递归抓子 sitemap |
-| `fetch_html_to_markdown` | fetch_url 的 markdown 版（无 JS 渲染） | `fetchTextWithResponse` → cheerio-less DOM walker → 保留 H1-H3/链接/列表/代码块 |
-| `fetch_html_extract` | fetch + 结构化抽取（Workers AI 可选） | 优先调 Workers AI（无 AI binding 时 graceful error），fallback 返原始文本 |
-
-### PDF 解析器实现要点（参考）
-
-- **二进制扫描**：按字节定位 `stream...endstream`（115,116,114,101,97,109）→ 不依赖 regex 切二进制流。
-- **FlateDecode 解压**：用浏览器原生 `DecompressionStream("deflate")`（无 npm 依赖）。
-- **文本流过滤**：`looksLikeTextStream()` 检测 stream 解压后是否含 PDF 文本算子（BT/Tj/TJ/Td/Tm/Tf）或可打印 ASCII 比例 > 0.85；字体程序/图像/XObject 被跳过。
-- **过滤 LaTeX 噪声**：禁用 Strategy 1（抓 outline/metadata）和 Strategy 2（抓 Info-dict 元数据），只走 Strategy 3（解压后的真实 content stream）。
-- **已知限制**：扫描的纯 PDF / LaTeX 生成的 arXiv 论文均可解析；扫描件（图像型 PDF）需配合外部 OCR。
-
-### 部署验证
-
-11 个新工具全部在 CF 端真机测过（`search-mcp.qdp.qzz.io/mcp`）：部署版本 ID `200c5d7a-6e1c-40e5-af52-f232ead8285e`；wrangler 上传 291.55 KiB / gzip 60.51 KiB；烟测脚本 `tests/smoke_layer1_4.mjs`（39 个 assertion）；BabelTele 论文解析实测 arXiv 2606.19857（23 页 / 4.26MB）→ 真实正文 85K 字符。
+- 在线 worker：`search-mcp.qdp.qzz.io/mcp`
+- 最新部署版本：`200c5d7a-6e1c-40e5-af52-f232ead8285e`（wrangler 上传 291.55 KiB / gzip 60.51 KiB）
+- 53 个工具在 CF 端全部端到端验证（curl `--resolve` 绕本地 DNS 污染）
+- BabelTele 论文解析实测：arXiv 2606.19857（23 页 / 4.26 MB）→ 真实正文 85K 字符
 
 ## 许可证
 
-GPL-3.0
+本项目使用 Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International 许可证 —— 详见 [LICENSE](LICENSE) 文件。
