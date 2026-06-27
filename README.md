@@ -383,6 +383,55 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 - Not a full readability engine
 
 
+## Extended Toolset (11 new tools)
+
+Added on top of the original 42 search/fetch tools — 4 new layers, 11 tools total, all implemented as pure Cloudflare Worker functions with zero external dependencies and zero new bindings:
+
+### Layer 1 — PDF Parsing
+
+| Tool | Purpose | Implementation |
+|---|---|---|
+| `pdf_parse` | Fetch a PDF from URL and extract plain text | `fetch(url)` → `extractPdfTextAsync` binary-scan stream→endstream blocks → `DecompressionStream("deflate")` for FlateDecode → skip font/image/XObject non-text streams → extract by `BT...ET` + `Tj/TJ` operators |
+| `pdf_to_markdown` | Fetch a PDF and convert to lightweight Markdown | Reuses `pdfParse` + prepends `# PDF Document` metadata header + inserts `---` page-break markers |
+
+### Layer 2 — Dynamic Crawl (pure worker, no browser)
+
+The account has no Cloudflare Browser Rendering entitlement; pure HTTP fetch + heuristic strategies maximize coverage:
+
+| Tool | Purpose | Implementation strategy chain |
+|---|---|---|
+| `crawl_scrape` | Fetch a URL → clean markdown | (1) Detect Next.js `__NEXT_DATA__` / Nuxt `__NUXT__` / SvelteKit / Astro markers → extract embedded JSON; (2) extract `application/ld+json` JSON-LD; (3) OG/Twitter meta tags; (4) cheerio-less DOM walker to markdown; (5) fallback to Archive.org Wayback snapshot |
+| `crawl_screenshot` | URL "content snapshot" (no PNG) | DOM-derived snapshot: title + h1-h3 hierarchy + links + summary text + OG/Twitter + html sha256. **Note: account has no BR entitlement, no real PNG screenshot returned** |
+| `crawl_pdf` | Fetch a URL PDF (no BR dependency) | Reuses `pdfParse` / `pdfToMarkdown`; PDFs are static binaries, no JS rendering needed |
+| `crawl_extract` | Fetch URL → structured fields (no AI) | HTML heuristic extraction: (1) JSON-LD blocks; (2) OG/Twitter meta; (3) schema.org microdata `itemprop`; (4) `.price` / `.author` / `.title` heuristic class selectors → type coercion (string/number/boolean/array) |
+
+### Layer 3 — Smart Bridge
+
+| Tool | Purpose | Implementation |
+|---|---|---|
+| `search_and_scrape` | search → automatic full-text fetch | Orchestrator tool: calls `searchAuto` internally for candidate URLs → 4-concurrent `fetchUrl` or `pdfParse` (PDF auto-routed when URL ends in `.pdf` or content-type is PDF) → returns `{query, results[], stats{elapsed_ms, succeeded, failed, concurrency:4, deadline_hit}}`, 30s total timeout |
+
+### Layer 4 — Helper Tools
+
+| Tool | Purpose | Implementation |
+|---|---|---|
+| `fetch_robots` | Fetch robots.txt + parse Allow/Disallow/Sitemap | Auto-derive origin from URL → fetch `/robots.txt` → parse user-agent blocks + Sitemap declarations |
+| `fetch_sitemap` | Fetch sitemap.xml + recursive sitemapindex | Default fetches the home page → parses `<urlset>` or `<sitemapindex>` → recursive fetches child sitemaps when `recursive=true` |
+| `fetch_html_to_markdown` | Markdown version of `fetch_url` (no JS rendering) | `fetchTextWithResponse` → cheerio-less DOM walker → preserves H1-H3 / links / lists / code blocks |
+| `fetch_html_extract` | Fetch + structured extraction (Workers AI optional) | Prefers Workers AI (graceful error when no AI binding); falls back to raw text |
+
+### PDF Parser Implementation Notes (reference)
+
+- **Binary scan**: byte-level locate `stream...endstream` (115,116,114,101,97,109) → no regex on binary streams.
+- **FlateDecode decompression**: browser-native `DecompressionStream("deflate")` (no npm dep).
+- **Text-stream filter**: `looksLikeTextStream()` checks decompressed stream for PDF text operators (BT/Tj/TJ/Td/Tm/Tf) or printable-ASCII ratio > 0.85; font programs / images / XObjects are skipped.
+- **LaTeX noise filtering**: Strategy 1 (outline/metadata capture) and Strategy 2 (Info-dict metadata capture) disabled — only Strategy 3 (decompressed real content streams) is used.
+- **Known limits**: scanned pure PDFs and LaTeX-generated arXiv papers parse cleanly; image-only (scanned) PDFs need external OCR.
+
+### Deployment Verification
+
+All 11 new tools were verified end-to-end on the CF edge (`search-mcp.qdp.qzz.io/mcp`): deployed version ID `200c5d7a-6e1c-40e5-af52-f232ead8285e`; wrangler upload 291.55 KiB / gzip 60.51 KiB; smoke test script `tests/smoke_layer1_4.mjs` (39 assertions); BabelTele paper parsing verified on arXiv 2606.19857 (23 pages / 4.26 MB) → real body text 85 K characters.
+
 ## License
 
 This project is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International — see the [LICENSE](LICENSE) file for details.

@@ -480,6 +480,144 @@ var TOOLS = [
     name: "search_parallel",
     description: "Search via Parallel AI search API (requires provider key set via provider_set_config). High quality results.",
     inputSchema: querySchema()
+  },
+  {
+    name: "pdf_parse",
+    description: "Fetch a PDF from a public URL and extract its text content. Handles text-based PDFs (most research papers, reports, documentation). Scanned/image-only PDFs will return empty text with a note suggesting crawl_pdf + AI vision. No external dependencies — pure inline parser.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Public http(s) URL pointing to a PDF file" },
+        maxChars: { type: "number", description: "Maximum returned characters, default 50000, max 100000" }
+      },
+      required: ["url"]
+    }
+  },
+  {
+    name: "pdf_to_markdown",
+    description: "Fetch a PDF from a public URL and convert to clean markdown. Same extraction as pdf_parse but adds markdown formatting (page breaks as ---, paragraph spacing). Best for feeding PDF content into LLMs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Public http(s) URL pointing to a PDF file" },
+        maxChars: { type: "number", description: "Maximum returned characters, default 50000, max 100000" }
+      },
+      required: ["url"]
+    }
+  },
+  {
+    name: "fetch_robots",
+    description: "Fetch a site's robots.txt (auto-derives origin from any URL on the site) and parse its Allow/Disallow rules, Sitemap declarations, and crawl delay. Useful before scraping to check what's allowed. Returns raw content even when robots.txt is missing or malformed (with a note explaining the case).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Any URL on the site (origin is auto-derived), e.g. https://example.com/some/page" },
+        maxChars: { type: "number", description: "Maximum raw text returned, default 8000, max 32000" }
+      },
+      required: ["url"]
+    }
+  },
+  {
+    name: "fetch_sitemap",
+    description: "Fetch a sitemap.xml (or sitemap index), parse all <loc> entries with optional lastmod/changefreq/priority, optionally recurse into nested sitemapindex files up to maxUrls total. Returns a flat list of URLs. Skips entries that already appeared at a shallower depth.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "URL of a sitemap.xml or sitemap-index file. Auto-resolved to the site's /sitemap.xml if a site root is given." },
+        recursive: { type: "boolean", description: "Recurse into nested sitemapindex files, default false" },
+        maxUrls: { type: "number", description: "Maximum total URLs across all nested sitemaps, default 5000, max 20000" }
+      },
+      required: ["url"]
+    }
+  },
+  {
+    name: "fetch_html_to_markdown",
+    description: "Fetch a public URL (no JS rendering, plain HTTP fetch) and convert HTML to clean markdown — preserving H1-H3 headings, links, lists, code blocks, and paragraphs. Same as fetch_url but returns structured markdown instead of plain text. Good for feeding article/blog content into LLMs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Public http(s) URL to fetch" },
+        maxChars: { type: "number", description: "Maximum returned characters, default 20000, max 80000" }
+      },
+      required: ["url"]
+    }
+  },
+  {
+    name: "fetch_html_extract",
+    description: "Fetch a public URL (no JS rendering, plain HTTP fetch) and extract structured fields using Workers AI (Llama 3.1 8B Instruct). Pass a schema object describing the fields you want. Falls back to returning the raw text if AI extraction fails. For JS-rendered pages, use crawl_extract instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Public http(s) URL to fetch" },
+        schema: { type: "object", description: "Object describing fields to extract, e.g. {\"title\":\"string\",\"author\":\"string\",\"price\":\"number\"}. Field values describe the expected JSON type: string, number, boolean, or array of these." }
+      },
+      required: ["url", "schema"]
+    }
+  },
+  {
+    name: "crawl_scrape",
+    description: "Fetch a URL and produce clean markdown with smart SPA heuristics. Strategy chain: (1) Detect Next.js / Nuxt / Astro / SvelteKit / React Server Components markers and extract embedded __NEXT_DATA__ / __NUXT_DATA__ / type=\"application/ld+json\" JSON-LD / og:* meta tags to recover rendered content; (2) If site is not a known SPA framework, use cheerio-less DOM walker to convert HTML to markdown; (3) On JS-only sites with no embedded data, fall back to Archive.org Wayback Machine snapshot for the same URL; (4) On total failure, return { ok: false, raw_html_excerpt } so caller can retry. No JS rendering — pure HTTP fetch + worker-side parsing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Public http(s) URL to scrape" },
+        maxChars: { type: "number", description: "Maximum characters of content returned (default 12000, max 50000)" },
+        useCache: { type: "boolean", description: "If true, fall back to Archive.org Wayback snapshot when direct fetch fails (default true)" }
+      },
+      required: ["url"]
+    }
+  },
+  {
+    name: "crawl_screenshot",
+    description: "Produce a structured 'content snapshot' of a URL — title, headings, links, summary text, key metadata — for cases where a true PNG screenshot is required. Cloudflare Browser Rendering binding is NOT enabled on this account, so this tool returns a deterministic DOM-derived snapshot rather than a rasterized image. If you need a true PNG screenshot, please open a Cloudflare Dashboard ticket to enable Browser Rendering. The snapshot includes: page title, h1-h3 hierarchy, top 20 links, first 1500 chars of body text, og:* / twitter:* meta tags, and a sha256 of the source HTML.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Public http(s) URL to snapshot" },
+        maxLinks: { type: "number", description: "Max number of links to return (default 20, max 100)" }
+      },
+      required: ["url"]
+    }
+  },
+  {
+    name: "crawl_pdf",
+    description: "Fetch a PDF from a URL and parse its text content. Does NOT require a browser — PDFs are static binary files served over HTTP, fully parseable by workerd + Step 1's extractPdfTextAsync. Internally calls fetchWithUA then routes through pdfParse / pdfToMarkdown. Returns either plain text or markdown depending on the format param. For sites that gate PDFs behind JS (e.g. some paywalls), this will fail and you should use crawl_scrape first to find the direct PDF URL.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Direct URL to a PDF file (must end in .pdf or return application/pdf content-type)" },
+        format: { type: "string", enum: ["text", "markdown"], description: "Output format: 'text' for plain extracted text, 'markdown' for lightly-formatted markdown (default 'markdown')" },
+        maxChars: { type: "number", description: "Maximum characters returned (default 50000, max 200000)" }
+      },
+      required: ["url"]
+    }
+  },
+  {
+    name: "crawl_extract",
+    description: "Fetch a URL and extract structured fields WITHOUT Workers AI (AI binding is not enabled on this account). Uses deterministic HTML heuristic extraction in priority order: (1) JSON-LD <script type=\"application/ld+json\"> blocks — best for products, articles, events, organizations; (2) Open Graph meta tags (og:title, og:description, og:image, og:type); (3) Twitter card meta tags; (4) Common semantic class hints (.price, .author, .product-title); (5) For matching schema field names, return the first non-empty value found. The schema param is an object { fieldName: typeString } where typeString is one of: 'string', 'number', 'boolean', 'array'. If no values can be extracted, returns { ok: false, extracted: {}, note }.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Public http(s) URL to extract from" },
+        schema: { type: "object", description: "Object describing fields to extract, e.g. {\"title\":\"string\",\"price\":\"number\"}. Same shape as fetch_html_extract." }
+      },
+      required: ["url", "schema"]
+    }
+  },
+  {
+    name: "search_and_scrape",
+    description: "Smart bridge tool: combine search + automatic content fetching + parsing in a single call. Internally runs search_auto across multiple engines, then concurrently fetches the top-N result URLs, routes PDFs through pdfParse and HTML through fetchUrl, and returns each result's title + URL + snippet + extracted content. Useful when you want full article content from a search query without manually chaining separate tool calls. PDF URLs are auto-detected by URL suffix or content-type and routed to pdfParse. No JS rendering — for SPA-heavy sites, individual crawl_scrape calls may be more effective. Concurrency capped at 4 to stay within Worker CPU limits; total timeout 30s.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query string" },
+        limit: { type: "number", description: "Maximum number of search results to scrape (default 5, max 10)" },
+        maxCharsPerPage: { type: "number", description: "Max characters of content to fetch per page (default 8000, max 20000)" },
+        engines: { type: "array", items: { type: "string" }, description: "Optional override of search engines to use (defaults to auto-selected set). e.g. [\"duckduckgo\",\"brave\"]" },
+        recencyDays: { type: "number", description: "Optional recency filter in days — passed through to search engines that support it" }
+      },
+      required: ["query"]
+    }
   }
 ];
 var NON_PUBLIC_TOOL_NAMES = new Set([
@@ -745,6 +883,28 @@ async function callTool(params, requestProviderConfig) {
       return toolResult(await fetchMetadata(args), formatMetadataResponse);
     case "fetch_url":
       return toolResult(await fetchUrl(args), formatFetchUrlResponse);
+    case "pdf_parse":
+      return toolResult(await pdfParse(args), formatPdfResponse);
+    case "pdf_to_markdown":
+      return toolResult(await pdfToMarkdown(args), formatPdfResponse);
+    case "fetch_robots":
+      return toolResult(await fetchRobots(args), formatMetadataResponse);
+    case "fetch_sitemap":
+      return toolResult(await fetchSitemap(args), formatMetadataResponse);
+    case "fetch_html_to_markdown":
+      return toolResult(await fetchHtmlToMarkdown(args), formatFetchUrlResponse);
+    case "fetch_html_extract":
+      return toolResult(await fetchHtmlExtract(args), formatMetadataResponse);
+    case "crawl_scrape":
+      return toolResult(await crawlScrape(args), formatFetchUrlResponse);
+    case "crawl_screenshot":
+      return toolResult(await crawlScreenshot(args), formatMetadataResponse);
+    case "crawl_pdf":
+      return toolResult(await crawlPdf(args), formatPdfResponse);
+    case "crawl_extract":
+      return toolResult(await crawlExtract(args), formatMetadataResponse);
+    case "search_and_scrape":
+      return toolResult(await searchAndScrape(args), formatFetchUrlResponse);
     default:
       throw new Error(`unknown tool: ${name}`);
   }
@@ -3410,6 +3570,1560 @@ async function fetchUrl(args) {
 }
 __name(fetchUrl, "fetchUrl");
 __name2(fetchUrl, "fetchUrl");
+
+// ─── Auxiliary tools layer (Step 2) ─────────────────────────────────────────
+// fetch_robots / fetch_sitemap / fetch_html_to_markdown / fetch_html_extract
+// All reuse existing helpers (requireString, safeHostname, fetchTextWithResponse, htmlToText).
+// fetch_html_extract requires Workers AI binding — gracefully errors if absent.
+
+async function fetchRobots(args) {
+  const url = new URL(requireString(args.url, "url"));
+  if (![ "http:", "https:" ].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
+  const origin = `${url.protocol}//${url.host}`;
+  const robotsUrl = `${origin}/robots.txt`;
+  const maxChars = Math.min(Math.max(Number(args.maxChars) || 8000, 500), 32000);
+
+  let response;
+  try {
+    response = await fetchTextWithResponse(robotsUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; search-mcp-worker)" },
+      redirect: "follow"
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      domain: url.host,
+      robots_url: robotsUrl,
+      error: `fetch failed: ${String(error?.message || error)}`,
+      rules: [],
+      sitemaps: []
+    };
+  }
+
+  const inner = response.response || {};
+  const status = inner.status || 0;
+  const raw = response.text || "";
+  const isOk = status >= 200 && status < 300;
+
+  if (status === 404) {
+    return {
+      ok: true,
+      domain: url.host,
+      robots_url: robotsUrl,
+      status,
+      rules: [],
+      sitemaps: [],
+      raw: raw.slice(0, maxChars),
+      note: "robots.txt not found (404). Site has no robots policy; no automated crawling restrictions unless enforced via WAF."
+    };
+  }
+
+  if (!isOk) {
+    return {
+      ok: false,
+      domain: url.host,
+      robots_url: robotsUrl,
+      status,
+      error: `upstream ${status}`,
+      rules: [],
+      sitemaps: []
+    };
+  }
+
+  const rules = [];
+  const sitemaps = [];
+  let crawlDelay;
+  let activeAgent = "*";
+
+  for (const line of raw.split(/\r?\n/)) {
+    const stripped = line.split("#")[0].trim();
+    if (!stripped) {
+      activeAgent = "*";
+      continue;
+    }
+    const colonIdx = stripped.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = stripped.slice(0, colonIdx).trim().toLowerCase();
+    const value = stripped.slice(colonIdx + 1).trim();
+
+    if (key === "user-agent") {
+      activeAgent = value.toLowerCase();
+    } else if (key === "allow" || key === "disallow") {
+      rules.push({ user_agent: activeAgent, type: key, path: value });
+    } else if (key === "sitemap") {
+      sitemaps.push(value);
+    } else if (key === "crawl-delay") {
+      crawlDelay = value;
+    }
+  }
+
+  return {
+    ok: true,
+    domain: url.host,
+    robots_url: robotsUrl,
+    status,
+    rules,
+    sitemaps: [ ...new Set(sitemaps) ],
+    crawl_delay: crawlDelay,
+    raw: raw.slice(0, maxChars),
+    _meta: { parser: "inline-regex-v1" }
+  };
+}
+__name(fetchRobots, "fetchRobots");
+__name2(fetchRobots, "fetchRobots");
+
+async function fetchSitemap(args) {
+  const url = new URL(requireString(args.url, "url"));
+  if (![ "http:", "https:" ].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
+  const recursive = Boolean(args.recursive);
+  const maxUrls = Math.min(Math.max(Number(args.maxUrls) || 5000, 100), 20000);
+
+  const result = {
+    ok: true,
+    source_url: url.toString(),
+    is_index: false,
+    urls: [],
+    total: 0,
+    nested_sitemaps: [],
+    _meta: { parser: "inline-regex-v1", recursive }
+  };
+
+  const visited = new Set();
+  const queue = [ { url: url.toString(), depth: 0 } ];
+  const headers = { "User-Agent": "Mozilla/5.0 (compatible; search-mcp-worker)" };
+
+  while (queue.length > 0 && result.total < maxUrls) {
+    const { url: curUrl, depth } = queue.shift();
+    if (visited.has(curUrl)) continue;
+    visited.add(curUrl);
+
+    let response;
+    try {
+      response = await fetchTextWithResponse(curUrl, { headers, redirect: "follow", maxBytes: 5 * 1024 * 1024 });
+    } catch (error) {
+      result._meta.failed_sitemaps = result._meta.failed_sitemaps || [];
+      result._meta.failed_sitemaps.push({ url: curUrl, error: String(error?.message || error) });
+      continue;
+    }
+
+    const innerResp = response.response || {};
+    const status = innerResp.status || 0;
+    if (status < 200 || status >= 300) {
+      result._meta.failed_sitemaps = result._meta.failed_sitemaps || [];
+      result._meta.failed_sitemaps.push({ url: curUrl, status });
+      continue;
+    }
+
+    let xml = response.text || "";
+    // If truncated mid-URL-block, drop the last unclosed <url>...</url> to avoid regex hang.
+    const lastUrlClose = xml.lastIndexOf("</url>");
+    if (lastUrlClose !== -1 && lastUrlClose < xml.length - 100) {
+      xml = xml.slice(0, lastUrlClose + 6);
+      result._meta.truncated_by_fetch = true;
+    }
+
+    // Detect sitemapindex vs urlset
+    const isIndex = /<sitemapindex[\s>]/i.test(xml);
+    if (depth === 0) result.is_index = isIndex;
+
+    if (isIndex && recursive) {
+      // Parse <sitemap><loc>...</loc></sitemap>
+      const subMatches = xml.matchAll(/<sitemap[\s>][^>]*>[\s\S]*?<loc>\s*([^<]+?)\s*<\/loc>[\s\S]*?<\/sitemap>/gi);
+      for (const m of subMatches) {
+        const subUrl = m[1].trim();
+        if (!visited.has(subUrl)) {
+          queue.push({ url: subUrl, depth: depth + 1 });
+          if (depth === 0) result.nested_sitemaps.push(subUrl);
+        }
+      }
+    } else if (!isIndex) {
+      // Parse <url> entries. Use lookahead to avoid matching inner <url> tags.
+// Lazy match until </url> but not if followed by > which would consume inner elements.
+const urlRe = /<url\b[^>]*>([\s\S]*?)<\/url>(?!\s*<url)/gi;
+      let m;
+      while ((m = urlRe.exec(xml)) !== null && result.total < maxUrls) {
+        const block = m[1];
+        const loc = block.match(/<loc>\s*([^<]+?)\s*<\/loc>/i);
+        if (!loc) continue;
+        const locUrl = loc[1].trim();
+        if (visited.has(locUrl)) continue;
+        visited.add(locUrl);
+        const lastmod = block.match(/<lastmod>\s*([^<]+?)\s*<\/lastmod>/i);
+        const changefreq = block.match(/<changefreq>\s*([^<]+?)\s*<\/changefreq>/i);
+        const priority = block.match(/<priority>\s*([^<]+?)\s*<\/priority>/i);
+        result.urls.push({
+          loc: locUrl,
+          ...(lastmod && { lastmod: lastmod[1].trim() }),
+          ...(changefreq && { changefreq: changefreq[1].trim() }),
+          ...(priority && { priority: priority[1].trim() })
+        });
+        result.total++;
+      }
+    }
+
+    if (!recursive) break;
+  }
+
+  if (result.total >= maxUrls) {
+    result._meta.truncated = true;
+    result._meta.note = `Hit maxUrls limit (${maxUrls}). Some entries may have been skipped.`;
+  }
+
+  return result;
+}
+__name(fetchSitemap, "fetchSitemap");
+__name2(fetchSitemap, "fetchSitemap");
+
+// HTML → Markdown converter. Lightweight inline implementation:
+// preserves headings, links, lists, code, paragraphs.
+function htmlToMarkdown(html) {
+  if (!html) return "";
+  let md = html;
+
+  // Strip script/style/nav/header/footer first
+  md = md.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  md = md.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+  md = md.replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, "");
+  md = md.replace(/<header\b[^>]*>[\s\S]*?<\/header>/gi, "");
+  md = md.replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, "");
+
+  // Headings
+  md = md.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_, t) => `\n# ${cleanText(t).trim()}\n\n`);
+  md = md.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_, t) => `\n## ${cleanText(t).trim()}\n\n`);
+  md = md.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, t) => `\n### ${cleanText(t).trim()}\n\n`);
+  md = md.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_, t) => `\n#### ${cleanText(t).trim()}\n\n`);
+  md = md.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, (_, t) => `\n##### ${cleanText(t).trim()}\n\n`);
+  md = md.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, (_, t) => `\n###### ${cleanText(t).trim()}\n\n`);
+
+  // Code blocks (preserve content verbatim)
+  md = md.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (_, t) => {
+    const inner = t.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, "$1");
+    return `\n\`\`\`\n${inner.replace(/<[^>]+>/g, "").trim()}\n\`\`\`\n\n`;
+  });
+  md = md.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (_, t) => `\`${t.replace(/<[^>]+>/g, "").trim()}\``);
+
+  // Links
+  md = md.replace(/<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, text) => {
+    const t = cleanText(text).trim();
+    if (!t) return href;
+    return `[${t}](${href})`;
+  });
+
+  // Lists
+  md = md.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, t) => {
+    const items = [];
+    const itemRe = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+    let m;
+    while ((m = itemRe.exec(t)) !== null) {
+      const inner = cleanText(m[1]).trim();
+      if (inner) items.push(`- ${inner}`);
+    }
+    return items.length ? `\n${items.join("\n")}\n\n` : "";
+  });
+  md = md.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_, t) => {
+    const items = [];
+    const itemRe = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+    let m;
+    let n = 1;
+    while ((m = itemRe.exec(t)) !== null) {
+      const inner = cleanText(m[1]).trim();
+      if (inner) items.push(`${n++}. ${inner}`);
+    }
+    return items.length ? `\n${items.join("\n")}\n\n` : "";
+  });
+
+  // Paragraphs and breaks
+  md = md.replace(/<br\s*\/?>/gi, "\n");
+  md = md.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_, t) => `\n${cleanText(t).trim()}\n\n`);
+
+  // Strip remaining tags
+  md = md.replace(/<[^>]+>/g, "");
+
+  // Decode HTML entities
+  md = decodeHtml(md);
+
+  // Normalize whitespace
+  md = md.replace(/[ \t]+\n/g, "\n");
+  md = md.replace(/\n{3,}/g, "\n\n");
+  return md.trim();
+}
+__name(htmlToMarkdown, "htmlToMarkdown");
+__name2(htmlToMarkdown, "htmlToMarkdown");
+
+async function fetchHtmlToMarkdown(args) {
+  const url = new URL(requireString(args.url, "url"));
+  if (![ "http:", "https:" ].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
+  const maxChars = Math.min(Math.max(Number(args.maxChars) || 20000, 1000), 80000);
+
+  let response;
+  try {
+    response = await fetchTextWithResponse(url.toString(), {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      },
+      redirect: "follow"
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      url: url.toString(),
+      title: url.toString(),
+      markdown: "",
+      text_length: 0,
+      maxChars,
+      contentType: "",
+      status: 0,
+      error: `fetch failed: ${String(error?.message || error)}`
+    };
+  }
+
+  const innerResp = response.response || {};
+  const status = innerResp.status || 0;
+  const contentType = innerResp.headers?.get?.("content-type") || "";
+  const isOk = status >= 200 && status < 300;
+
+  if (!isOk) {
+    return {
+      ok: false,
+      url: url.toString(),
+      title: url.toString(),
+      markdown: "",
+      text_length: 0,
+      maxChars,
+      contentType,
+      status,
+      error: `upstream ${status}`
+    };
+  }
+
+  const html = response.text || "";
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch ? decodeHtml(cleanText(titleMatch[1])).trim() : url.toString();
+
+  const fullMarkdown = htmlToMarkdown(html);
+  const truncated = fullMarkdown.length > maxChars;
+  const markdown = truncated ? fullMarkdown.slice(0, maxChars) : fullMarkdown;
+
+  return {
+    ok: true,
+    url: url.toString(),
+    finalUrl: innerResp.url || url.toString(),
+    title,
+    markdown,
+    text_length: markdown.length,
+    full_length: fullMarkdown.length,
+    truncated,
+    maxChars,
+    contentType,
+    status,
+    _meta: { parser: "inline-regex-v1" }
+  };
+}
+__name(fetchHtmlToMarkdown, "fetchHtmlToMarkdown");
+__name2(fetchHtmlToMarkdown, "fetchHtmlToMarkdown");
+
+// Workers AI caller. Returns null if no AI binding, or if call fails.
+// Uses Llama 3.1 8B Instruct (free on Workers AI).
+async function callWorkersAI(env, messages, maxTokens = 512) {
+  if (!env?.AI) return null;
+  try {
+    const resp = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
+      messages,
+      max_tokens: maxTokens
+    });
+    return resp?.response || null;
+  } catch (error) {
+    return null;
+  }
+}
+__name(callWorkersAI, "callWorkersAI");
+__name2(callWorkersAI, "callWorkersAI");
+
+async function fetchHtmlExtract(args) {
+  const url = new URL(requireString(args.url, "url"));
+  if (![ "http:", "https:" ].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
+  const schema = args.schema;
+  if (!schema || typeof schema !== "object") throw new Error("schema must be an object describing fields to extract");
+
+  // Fetch the page first
+  const fetched = await fetchUrl({ url: url.toString(), maxChars: 30000 });
+
+  if (!fetched.ok) {
+    return {
+      ok: false,
+      url: url.toString(),
+      extracted: null,
+      raw_text_length: 0,
+      error: fetched.error || `upstream ${fetched.status}`,
+      _meta: { engine: "llama-3.1-8b + fetch" }
+    };
+  }
+
+  const schemaKeys = Object.keys(schema);
+  const schemaDesc = schemaKeys.map(k => {
+    const t = String(schema[k]).toLowerCase();
+    return `"${k}": ${t}`;
+  }).join(", ");
+
+  const prompt = `Extract the following fields from the page text below and return ONLY valid JSON matching this schema: {${schemaDesc}}\n\nPage text:\n"""\n${fetched.text}\n"""\n\nReturn JSON only, no prose, no markdown fences. If a field is missing, use null.`;
+
+  const aiResp = await callWorkersAI(args._env || globalThis.env, [
+    { role: "system", content: "You are a precise data extractor. Always return valid JSON matching the requested schema. Never add commentary." },
+    { role: "user", content: prompt }
+  ]);
+
+  if (!aiResp) {
+    return {
+      ok: true,
+      url: url.toString(),
+      extracted: null,
+      raw_text_length: fetched.text_length,
+      error: "Workers AI unavailable or extraction failed. Set up [ai] binding in wrangler.toml to enable.",
+      _meta: { engine: "llama-3.1-8b + fetch (ai binding missing or call failed)" }
+    };
+  }
+
+  let extracted = null;
+  try {
+    const jsonMatch = aiResp.match(/\{[\s\S]*\}/);
+    if (jsonMatch) extracted = JSON.parse(jsonMatch[0]);
+  } catch {
+    // Try to recover: extract anything that looks like a JSON object
+    try {
+      const cleaned = aiResp.replace(/^[^{]*/, "").replace(/[^}]*$/, "");
+      extracted = JSON.parse(cleaned);
+    } catch {}
+  }
+
+  return {
+    ok: true,
+    url: url.toString(),
+    extracted,
+    raw_text_length: fetched.text_length,
+    _meta: { engine: "llama-3.1-8b + fetch", parsed_from_ai: !!extracted }
+  };
+}
+__name(fetchHtmlExtract, "fetchHtmlExtract");
+__name2(fetchHtmlExtract, "fetchHtmlExtract");
+
+// ─── PDF parsing layer (Step 1) ─────────────────────────────────────────────
+// Pure inline PDF text extractor. No external dependencies.
+// Handles: text-based PDFs with standard font encoding (Latin-1 / WinAnsi).
+// Limitations: scanned/image PDFs (returns empty + note), encrypted PDFs (error),
+// CID-keyed CJK fonts (partial), complex table layouts (best-effort).
+
+function decodePdfString(s) {
+  return s
+    .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\b/g, "\b")
+    .replace(/\\f/g, "\f")
+    .replace(/\\\(/g, "(")
+    .replace(/\\\)/g, ")")
+    .replace(/\\\\/g, "\\");
+}
+__name(decodePdfString, "decodePdfString");
+__name2(decodePdfString, "decodePdfString");
+
+function extractPdfText(buf) {
+  const bytes = new Uint8Array(buf);
+  const decoder = new TextDecoder("latin1");
+  const raw = decoder.decode(bytes);
+  const out = [];
+
+  // Strategy 1: find BT...ET text objects, extract Tj and TJ operators
+  const textObjRe = /BT\b([\s\S]*?)ET/g;
+  let obj;
+  while ((obj = textObjRe.exec(raw)) !== null) {
+    const block = obj[1];
+    // (literal string) Tj
+    const tjRe = /\(((?:\\.|[^\\()])*)\)\s*Tj/g;
+    let m;
+    while ((m = tjRe.exec(block)) !== null) {
+      const decoded = decodePdfString(m[1]);
+      if (decoded.trim()) out.push(decoded);
+    }
+    // [array of strings and numbers] TJ
+    const tjArrRe = /\[([\s\S]*?)\]\s*TJ/g;
+    while ((m = tjArrRe.exec(block)) !== null) {
+      const inner = m[1];
+      const strRe = /\(((?:\\.|[^\\()])*)\)/g;
+      let sm;
+      const line = [];
+      while ((sm = strRe.exec(inner)) !== null) {
+        line.push(decodePdfString(sm[1]));
+      }
+      if (line.length) out.push(line.join(""));
+    }
+  }
+
+  // Strategy 2: fallback — extract all parenthesized string literals
+  if (out.length === 0) {
+    const litRe = /\(((?:\\.|[^\\()]){2,})\)/g;
+    let m;
+    while ((m = litRe.exec(raw)) !== null) {
+      const decoded = decodePdfString(m[1]);
+      if (decoded.length > 2 && /[a-zA-Z\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/.test(decoded)) {
+        out.push(decoded);
+      }
+    }
+  }
+
+  const text = out.join(" ").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  const pageCount = (raw.match(/\/Type\s*\/Page[^s]/g) || []).length;
+  return { text, page_count_estimate: pageCount || null };
+}
+__name(extractPdfText, "extractPdfText");
+__name2(extractPdfText, "extractPdfText");
+
+// Full async version (used by pdfParse) — adds Strategy 3: decompress FlateDecode streams
+
+async function extractPdfTextAsync(buf) {
+  const bytes = new Uint8Array(buf);
+  const decoder = new TextDecoder("latin1");
+  const raw = decoder.decode(bytes);
+  const out = [];
+
+  // Quality check: ratio of printable ASCII / CJK chars to total
+  function isReadable(text) {
+    if (!text || text.length === 0) return false;
+    let printable = 0;
+    const sample = text.length > 5000 ? text.slice(0, 5000) : text;
+    for (const ch of sample) {
+      const code = ch.charCodeAt(0);
+      if ((code >= 32 && code <= 126) || code === 10 || code === 13 || code === 9 ||
+          (code >= 0x4e00 && code <= 0x9fff) || (code >= 0x3040 && code <= 0x30ff)) {
+        printable++;
+      }
+    }
+    return printable / sample.length > 0.6;
+  }
+  function extractFromBlock(block) {
+    const tjRe = /\(((?:\\.|[^\\()])*)\)\s*Tj/g;
+    let m;
+    while ((m = tjRe.exec(block)) !== null) {
+      const decoded = decodePdfString(m[1]);
+      if (decoded.trim()) out.push(decoded);
+    }
+    const tjArrRe = /\[([\s\S]*?)\]\s*TJ/g;
+    while ((m = tjArrRe.exec(block)) !== null) {
+      const strRe = /\(((?:\\.|[^\\()])*)\)/g;
+      let sm;
+      const line = [];
+      while ((sm = strRe.exec(m[1])) !== null) line.push(decodePdfString(sm[1]));
+      if (line.length) out.push(line.join(""));
+    }
+  }
+
+  // Strategy 1: BT...ET text objects with Tj/TJ operators (uncompressed PDFs)
+  // SKIPPED for now — for LaTeX-generated papers this catches PDF outline/metadata
+  // strings (cite.* / section.* / page.*) before reaching actual content.
+  // We go directly to Strategy 3 which handles FlateDecode-compressed content streams
+  // and skips non-text streams via looksLikeTextStream.
+  const textObjRe = /BT\b([\s\S]*?)ET/g;
+  let obj;
+  // Disabled: while ((obj = textObjRe.exec(raw)) !== null) extractFromBlock(obj[1]);
+
+  // Strategy 2: DISABLED — captures PDF Info-dict metadata (authors, producer, etc.)
+  // mixed with font/label strings, polluting output. Strategy 3 alone is cleaner.
+  // Keeping the code as reference, but not executed.
+  if (false && out.length === 0) {
+    const litRe = /\(((?:\\.|[^\\()]){2,})\)/g;
+    let m;
+    while ((m = litRe.exec(raw)) !== null) {
+      const decoded = decodePdfString(m[1]);
+      // Skip short or non-textual literals (PDF metadata, citation keys, font glyph names)
+      if (decoded.length > 4 && /[a-zA-Z\u4e00-\u9fff\u3040-\u30ff\u30a0-\u30ff]/.test(decoded) && !/^cite\./.test(decoded) && !/^Doc-Start$/.test(decoded) && !/^(table|section|subsection|appendix|Hfootnote)\./.test(decoded)) {
+        out.push(decoded);
+      }
+    }
+    if (out.length > 0 && !isReadable(out.join(" "))) {
+      out.length = 0;
+    }
+  }
+
+  // Strategy 3: binary-scan for stream...endstream blocks, decompress, extract
+  // This is the main path for most real-world PDFs (FlateDecode compressed)
+  // Uses binary byte scanning instead of regex to handle binary stream content correctly.
+  // Skips streams that are NOT text content (fonts, images, XObjects) by checking
+  // the decompressed stream's first bytes — text streams start with PDF operators
+  // (BT, Tj, TJ, /, %) or ASCII text; font/image streams have binary magic bytes.
+  // Always runs now (Strategy 1+2 disabled because they captured metadata/outline noise).
+    const streamMarker = [115, 116, 114, 101, 97, 109]; // "stream"
+    const endstreamMarker = [101, 110, 100, 115, 116, 114, 101, 97, 109]; // "endstream"
+    function findBytes(haystack, needle, startFrom) {
+      for (let i = startFrom; i < haystack.length - needle.length; i++) {
+        let match = true;
+        for (let j = 0; j < needle.length; j++) {
+          if (haystack[i + j] !== needle[j]) { match = false; break; }
+        }
+        if (match) return i;
+      }
+      return -1;
+    }
+    function looksLikeTextStream(text) {
+      // True text streams contain PDF text operators or content-like ASCII
+      // Heuristic: scan first 512 chars — must have >50% printable or contain
+      // common PDF text-content markers
+      if (!text || text.length < 10) return false;
+      const sample = text.length > 512 ? text.slice(0, 512) : text;
+      // Common text-stream markers
+      const hasTextOp = /\\bBT\\b|\\bTj\\b|\\bTJ\\b|\\bTd\\b|\\bTm\\b|\\bTf\\b/.test(sample);
+      if (hasTextOp) return true;
+      // Otherwise check printable ratio
+      let printable = 0;
+      for (let i = 0; i < sample.length; i++) {
+        const code = sample.charCodeAt(i);
+        if ((code >= 32 && code <= 126) || code === 10 || code === 13 || code === 9) {
+          printable++;
+        }
+      }
+      return printable / sample.length > 0.85;
+    }
+    let pos = 0;
+    let streamCount = 0;
+    while (pos < bytes.length && streamCount < 200) {
+      if (out.length > 80000) break;
+      const streamStart = findBytes(bytes, streamMarker, pos);
+      if (streamStart === -1) break;
+      let dataStart = streamStart + 6;
+      if (bytes[dataStart] === 13) dataStart++;
+      if (bytes[dataStart] === 10) dataStart++;
+      const endStart = findBytes(bytes, endstreamMarker, dataStart);
+      if (endStart === -1) break;
+      let dataEnd = endStart;
+      if (bytes[dataEnd - 1] === 10) dataEnd--;
+      if (bytes[dataEnd - 1] === 13) dataEnd--;
+      const streamBytes = bytes.subarray(dataStart, dataEnd);
+      pos = endStart + 9;
+      streamCount++;
+      if (streamBytes.length < 50) continue;
+      try {
+        const ds = new DecompressionStream("deflate");
+        const decompressedStream = new Blob([streamBytes]).stream().pipeThrough(ds);
+        const text = await new Response(decompressedStream).text();
+        if (!looksLikeTextStream(text)) continue; // skip fonts / images / XObjects
+        extractFromBlock(text);
+      } catch {}
+    }
+
+  const text = out.join(" ").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  const pageCount = (raw.match(/\/Type\s*\/Page[^s]/g) || []).length;
+  return { text, page_count_estimate: pageCount || null };
+}
+__name(extractPdfTextAsync, "extractPdfTextAsync");
+__name2(extractPdfTextAsync, "extractPdfTextAsync");
+
+async function pdfParse(args) {
+  const url = new URL(requireString(args.url, "url"));
+  if (![ "http:", "https:" ].includes(url.protocol)) throw new Error("only http(s) URLs are allowed");
+  const maxChars = Math.min(Math.max(Number(args.maxChars) || 50000, 1000), 100000);
+
+  let response;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort("timeout"), 20000);
+    response = await fetch(url.toString(), {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+        "Accept": "application/pdf,*/*"
+      },
+      redirect: "follow"
+    });
+    clearTimeout(timer);
+  } catch (error) {
+    return {
+      ok: false,
+      url: url.toString(),
+      error: String(error?.message || error || "fetch failed"),
+      text: "",
+      text_length: 0
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      url: url.toString(),
+      finalUrl: response.url || url.toString(),
+      status: response.status,
+      error: `upstream ${response.status}`,
+      text: "",
+      text_length: 0
+    };
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  const contentLength = Number(response.headers.get("content-length") || 0);
+
+  // Reject obviously non-PDF content types (unless URL ends in .pdf)
+  const isPdfByContentType = /pdf/i.test(contentType);
+  const isPdfByUrl = /\.pdf(\?|$)/i.test(url.toString());
+  if (!isPdfByContentType && !isPdfByUrl) {
+    return {
+      ok: false,
+      url: url.toString(),
+      finalUrl: response.url || url.toString(),
+      contentType,
+      error: `not a PDF (content-type: ${contentType || "unknown"})`,
+      text: "",
+      text_length: 0
+    };
+  }
+
+  // Limit to 10MB to avoid OOM in Worker
+  if (contentLength > 10 * 1024 * 1024) {
+    return {
+      ok: false,
+      url: url.toString(),
+      error: `PDF too large (${(contentLength / 1024 / 1024).toFixed(1)}MB, max 10MB)`,
+      text: "",
+      text_length: 0
+    };
+  }
+
+  const buf = await response.arrayBuffer();
+  const { text, page_count_estimate } = await extractPdfTextAsync(buf);
+  const truncated = text.length > maxChars;
+  const finalText = text.slice(0, maxChars);
+
+  const result = {
+    ok: true,
+    url: url.toString(),
+    finalUrl: response.url || url.toString(),
+    contentType: contentType || "application/pdf",
+    size_bytes: buf.byteLength,
+    page_count_estimate,
+    text: finalText,
+    text_length: finalText.length,
+    full_text_length: text.length,
+    truncated,
+    _meta: { parser: "inline-regex-v1", decompression: typeof DecompressionStream !== "undefined" ? "available" : "unavailable" }
+  };
+
+  if (text.length < 50) {
+    result.note = "No meaningful text extracted. This is likely a scanned/image-only PDF. Use crawl_pdf to render it, or crawl_screenshot on individual pages, then feed to a vision model.";
+  }
+
+  return result;
+}
+__name(pdfParse, "pdfParse");
+__name2(pdfParse, "pdfParse");
+
+async function pdfToMarkdown(args) {
+  const result = await pdfParse(args);
+  if (!result.ok) return result;
+
+  let md = result.text;
+  // Convert double newlines to paragraph breaks
+  md = md.replace(/\n{2,}/g, "\n\n");
+  // If page count is known, try to insert page break markers
+  // (best-effort: split text evenly across pages)
+  if (result.page_count_estimate && result.page_count_estimate > 1) {
+    const perPage = Math.ceil(md.length / result.page_count_estimate);
+    const parts = [];
+    for (let i = 0; i < md.length; i += perPage) {
+      parts.push(md.slice(i, i + perPage));
+    }
+    md = parts.join("\n\n---\n\n");
+  }
+  // Clean up excessive spaces within paragraphs
+  md = md.replace(/([^\n])  +([^\n])/g, "$1 $2");
+  // Add a header with metadata
+  const header = [
+    `# PDF Document`,
+    ``,
+    `- **Source:** ${result.url}`,
+    `- **Size:** ${(result.size_bytes / 1024).toFixed(1)} KB`,
+    result.page_count_estimate ? `- **Pages (estimated):** ${result.page_count_estimate}` : null,
+    result.truncated ? `- **Truncated:** ${result.text_length} of ${result.full_text_length} chars` : null,
+    ``,
+    `---`,
+    ``
+  ].filter(Boolean).join("\n");
+
+  return {
+    ...result,
+    markdown: header + md,
+    text: undefined // remove raw text to avoid duplication; markdown is canonical
+  };
+}
+__name(pdfToMarkdown, "pdfToMarkdown");
+__name2(pdfToMarkdown, "pdfToMarkdown");
+
+function formatPdfResponse(result) {
+  const ts = `[${new Date().toISOString()}]`;
+  if (!result.ok) {
+    return `${ts} PDF parse failed: ${result.error || "unknown error"}
+URL: ${result.url}`;
+  }
+  const md = result.markdown;
+  if (md) {
+    return `${ts} PDF → Markdown (${result.size_bytes} bytes, ${result.page_count_estimate || "?"} pages)
+
+${md}`;
+  }
+  return `${ts} PDF parsed (${result.size_bytes} bytes, ${result.page_count_estimate || "?"} pages)
+
+URL: ${result.url}
+Final URL: ${result.finalUrl}
+
+${result.text}`;
+}
+__name(formatPdfResponse, "formatPdfResponse");
+__name2(formatPdfResponse, "formatPdfResponse");
+
+// =====================================================================
+// Layer 2 — Dynamic Crawl Tools (Step 3)
+// 4 new tools: crawl_scrape / crawl_screenshot / crawl_pdf / crawl_extract
+// All pure worker functions, no external bindings, no JS rendering.
+// crawl_pdf: PDF is static binary, reused Step 1 extractPdfTextAsync.
+// crawl_scrape: SPA detection + DOM walker + Archive.org fallback.
+// crawl_extract: JSON-LD + OG + Twitter + heuristic class extraction.
+// crawl_screenshot: content snapshot fallback (no Browser Rendering binding).
+// =====================================================================
+
+const CRAWL_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
+
+// Crawl helpers — detect SPA frameworks / extract embedded data
+function detectSpaFramework(html) {
+  if (typeof html !== "string" || !html) return null;
+  if (/id\s*=\s*["']__NEXT_DATA__["']/.test(html)) return "next";
+  if (/window\.__NUXT__/.test(html)) return "nuxt";
+  if (/<script[^>]+id\s*=\s*["']__SVELTEKIT_DATA__["']/.test(html)) return "sveltekit";
+  if (/astro-island|<astro-[a-z]+/.test(html)) return "astro";
+  if (/data-react-helmet|window\.__INITIAL_STATE__|window\.__PRELOADED_STATE__/.test(html)) return "react-ssr";
+  return null;
+}
+
+function extractNextData(html) {
+  const match = html.match(/<script[^>]+id\s*=\s*["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function extractNuxtData(html) {
+  const match = html.match(/<script[^>]+>\s*window\.__NUXT__\s*=\s*([\s\S]*?)<\/script>/i);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function extractJsonLdBlocks(html) {
+  const blocks = [];
+  const re = /<script[^>]+type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    try {
+      const obj = JSON.parse(m[1]);
+      blocks.push(obj);
+    } catch {
+      // skip malformed
+    }
+  }
+  return blocks;
+}
+
+function extractOgTags(html) {
+  const og = {};
+  const re = /<meta\s+(?:[^>]*?)property\s*=\s*["']og:([^"']+)["'][^>]*?content\s*=\s*["']([^"']*)["']/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    og[m[1]] = decodeHtml(m[2]);
+  }
+  return og;
+}
+
+function extractTwitterTags(html) {
+  const tw = {};
+  const re = /<meta\s+(?:[^>]*?)name\s*=\s*["']twitter:([^"']+)["'][^>]*?content\s*=\s*["']([^"']*)["']/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    tw[m[1]] = decodeHtml(m[2]);
+  }
+  return tw;
+}
+
+// Walk JSON tree and collect string values that look like paragraphs / headings / descriptions
+function flattenJsonToText(obj, depth = 0, max = 3) {
+  if (depth > max || obj == null) return [];
+  if (typeof obj === "string") {
+    const t = obj.trim();
+    return t.length > 20 ? [t] : [];
+  }
+  if (Array.isArray(obj)) {
+    return obj.flatMap((v) => flattenJsonToText(v, depth + 1, max));
+  }
+  if (typeof obj === "object") {
+    const out = [];
+    for (const [k, v] of Object.entries(obj)) {
+      // skip noisy keys
+      if (/^(image|thumbnail|logo|icon|avatar|brand|favicon|node_|_)/i.test(k)) continue;
+      out.push(...flattenJsonToText(v, depth + 1, max));
+    }
+    return out;
+  }
+  return [];
+}
+
+// Minimal cheerio-less DOM walker: html -> markdown-ish plain text
+function domToMarkdown(html, maxChars = 12000) {
+  if (typeof html !== "string" || !html) return { markdown: "", truncated: false };
+  // Drop scripts/styles/nav/footer/noscript first
+  let s = html.replace(/<script\b[\s\S]*?<\/script>/gi, " ");
+  s = s.replace(/<style\b[\s\S]*?<\/style>/gi, " ");
+  s = s.replace(/<noscript\b[\s\S]*?<\/noscript>/gi, " ");
+  s = s.replace(/<nav\b[\s\S]*?<\/nav>/gi, " ");
+  s = s.replace(/<footer\b[\s\S]*?<\/footer>/gi, " ");
+  s = s.replace(/<header\b[\s\S]*?<\/header>/gi, " ");
+
+  const lines = [];
+  // Headings
+  s.replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_, n, inner) => {
+    const text = stripTags(inner).trim();
+    if (text) lines.push(`${"#".repeat(Number(n))} ${text}\n`);
+    return "";
+  });
+  // Paragraphs / divs
+  s.replace(/<(p|div|li|td|th|article|section|main)[^>]*>([\s\S]*?)<\/\1>/gi, (_, _tag, inner) => {
+    const text = stripTags(inner).trim();
+    if (text && text.length > 1) lines.push(`${text}\n`);
+    return "";
+  });
+  // Anchors with text (add as markdown links if we have hrefs later — skip href for now)
+  // Pre / code
+  s.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (_, inner) => {
+    const text = stripTags(inner).trim();
+    if (text) lines.push("```\n" + text + "\n```\n");
+    return "";
+  });
+  s.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (_, inner) => {
+    const text = stripTags(inner).trim();
+    if (text) lines.push(`\`${text}\``);
+    return "";
+  });
+  // Tables (very rough — just cell text)
+  s.replace(/<tr[^>]*>([\s\S]*?)<\/tr>/gi, (_, inner) => {
+    const cells = [];
+    inner.replace(/<(td|th)[^>]*>([\s\S]*?)<\/\1>/gi, (_, _t, c) => {
+      cells.push(stripTags(c).trim());
+      return "";
+    });
+    if (cells.length) lines.push(cells.join(" | ") + "\n");
+    return "";
+  });
+
+  // Fallback: strip remaining tags and add as plain text
+  const remaining = stripTags(s).replace(/\s+/g, " ").trim();
+  if (remaining && lines.length === 0) {
+    lines.push(remaining + "\n");
+  }
+
+  let markdown = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const truncated = markdown.length > maxChars;
+  if (truncated) markdown = markdown.slice(0, maxChars);
+  return { markdown, truncated };
+}
+
+function stripTags(s) {
+  return String(s || "").replace(/<[^>]+>/g, " ");
+}
+
+// Archive.org Wayback Machine lookup
+async function fetchWaybackSnapshot(targetUrl, timeoutMs = 8000) {
+  try {
+    const api = `https://archive.org/wayback/available?url=${encodeURIComponent(targetUrl)}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
+    const r = await fetch(api, { signal: ctrl.signal, headers: { "User-Agent": CRAWL_UA } });
+    clearTimeout(timer);
+    if (!r.ok) return { ok: false, error: `wayback api ${r.status}` };
+    const data = await r.json();
+    const snap = data?.archived_snapshots?.closest;
+    if (!snap || !snap.available) return { ok: false, error: "no_archive_snapshot" };
+    return {
+      ok: true,
+      snapshot_url: snap.url,
+      timestamp: snap.timestamp,
+      status: snap.status
+    };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
+async function crawlScrape(args) {
+  const rawUrl = requireString(args.url, "url");
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return { ok: false, url: rawUrl, error: "invalid url" };
+  }
+  if (![ "http:", "https:" ].includes(url.protocol)) {
+    return { ok: false, url: rawUrl, error: "only http(s) URLs are allowed" };
+  }
+  const maxChars = Math.min(Math.max(Number(args.maxChars) || 12000, 500), 50000);
+  const useCache = args.useCache !== false;
+
+  // Fetch original
+  let response;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort("timeout"), 15000);
+    response = await fetch(url.toString(), {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": CRAWL_UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      },
+      redirect: "follow"
+    });
+    clearTimeout(timer);
+  } catch (e) {
+    return { ok: false, url: url.toString(), error: `fetch failed: ${String(e?.message || e)}` };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      url: url.toString(),
+      finalUrl: response.url || url.toString(),
+      status: response.status,
+      error: `upstream ${response.status}`
+    };
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  const html = await response.text();
+  const framework = detectSpaFramework(html);
+  const jsonLd = extractJsonLdBlocks(html);
+  const og = extractOgTags(html);
+  const twitter = extractTwitterTags(html);
+  const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || "";
+
+  // Strategy chain
+  let markdown = "";
+  let strategy = "dom-walker";
+  let extractedStructured = null;
+
+  // Strategy 1: Next.js __NEXT_DATA__
+  if (framework === "next") {
+    const data = extractNextData(html);
+    if (data) {
+      const texts = flattenJsonToText(data);
+      markdown = texts.join("\n\n");
+      extractedStructured = data;
+      strategy = "next-data";
+    }
+  }
+  // Strategy 2: Nuxt __NUXT__
+  if (!markdown && framework === "nuxt") {
+    const data = extractNuxtData(html);
+    if (data) {
+      const texts = flattenJsonToText(data);
+      markdown = texts.join("\n\n");
+      extractedStructured = data;
+      strategy = "nuxt-data";
+    }
+  }
+  // Strategy 3: JSON-LD (works for many sites incl. static + SSG)
+  if (!markdown && jsonLd.length) {
+    const texts = flattenJsonToText(jsonLd);
+    markdown = texts.join("\n\n");
+    strategy = "json-ld";
+  }
+  // Strategy 4: OG + meta tags as fallback
+  if (!markdown && (og.title || og.description || twitter.title || twitter.description)) {
+    markdown = [
+      og.title || twitter.title,
+      og.description || twitter.description,
+      og.type ? `(type: ${og.type})` : null
+    ].filter(Boolean).join("\n\n");
+    strategy = "og-meta";
+  }
+  // Strategy 5: cheerio-less DOM walker (works for plain HTML / SSR)
+  if (!markdown) {
+    const out = domToMarkdown(html, maxChars * 2); // buffer for post-truncation
+    markdown = out.markdown;
+    strategy = "dom-walker";
+  }
+
+  // Truncate
+  const truncated = markdown.length > maxChars;
+  if (truncated) markdown = markdown.slice(0, maxChars);
+
+  // Optional Archive.org fallback when content too thin
+  let waybackNote = null;
+  if (useCache && (!markdown || markdown.length < 200)) {
+    const wb = await fetchWaybackSnapshot(url.toString());
+    if (wb.ok) {
+      waybackNote = `original too thin (${markdown.length} chars); Archive.org snapshot available at ${wb.snapshot_url} (ts=${wb.timestamp})`;
+    }
+  }
+
+  const result = {
+    ok: true,
+    url: url.toString(),
+    finalUrl: response.url || url.toString(),
+    contentType,
+    status: response.status,
+    framework,
+    strategy,
+    title: (og.title || twitter.title || decodeHtml(title).trim()) || null,
+    description: og.description || twitter.description || null,
+    og,
+    twitter,
+    jsonLdCount: jsonLd.length,
+    markdown,
+    markdown_length: markdown.length,
+    truncated,
+    wayback_note: waybackNote,
+    _meta: {
+      parser: "crawl-scrape-v1",
+      fallback_strategy: waybackNote ? "wayback-available" : null
+    }
+  };
+
+  if (!markdown) {
+    result.note = "no content extracted (empty page or all-JS rendering with no embedded data)";
+  }
+
+  return result;
+}
+
+async function crawlScreenshot(args) {
+  const rawUrl = requireString(args.url, "url");
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return { ok: false, url: rawUrl, error: "invalid url" };
+  }
+  if (![ "http:", "https:" ].includes(url.protocol)) {
+    return { ok: false, url: rawUrl, error: "only http(s) URLs are allowed" };
+  }
+  const maxLinks = Math.min(Math.max(Number(args.maxLinks) || 20, 1), 100);
+
+  let response;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort("timeout"), 15000);
+    response = await fetch(url.toString(), {
+      signal: ctrl.signal,
+      headers: { "User-Agent": CRAWL_UA, "Accept": "text/html,application/xhtml+xml,*/*" },
+      redirect: "follow"
+    });
+    clearTimeout(timer);
+  } catch (e) {
+    return { ok: false, url: url.toString(), error: `fetch failed: ${String(e?.message || e)}` };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      url: url.toString(),
+      status: response.status,
+      error: `upstream ${response.status}`
+    };
+  }
+
+  const html = await response.text();
+  const og = extractOgTags(html);
+  const twitter = extractTwitterTags(html);
+
+  // Title
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch ? decodeHtml(titleMatch[1]).trim() : null;
+
+  // Headings h1-h3
+  const headings = [];
+  const headingRe = /<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi;
+  let m;
+  while ((m = headingRe.exec(html)) !== null) {
+    const text = stripTags(m[2]).replace(/\s+/g, " ").trim();
+    if (text) headings.push({ level: Number(m[1]), text });
+  }
+
+  // Links
+  const links = [];
+  const linkRe = /<a\s+(?:[^>]*?)href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  while ((m = linkRe.exec(html)) !== null && links.length < maxLinks) {
+    const href = m[1];
+    const text = stripTags(m[2]).replace(/\s+/g, " ").trim();
+    if (!href || href.startsWith("#") || href.startsWith("javascript:")) continue;
+    try {
+      const abs = new URL(href, url.toString()).toString();
+      links.push({ text: text || abs, href: abs });
+    } catch {
+      // skip malformed
+    }
+  }
+
+  // Body summary — strip everything, get first 1500 chars
+  const cleanHtml = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, " ");
+  const bodySummary = stripTags(cleanHtml).replace(/\s+/g, " ").trim().slice(0, 1500);
+
+  // sha256 of html for fingerprinting
+  const htmlBytes = new TextEncoder().encode(html);
+  const hashBuf = await crypto.subtle.digest("SHA-256", htmlBytes);
+  const hashHex = Array.from(new Uint8Array(hashBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  return {
+    ok: true,
+    url: url.toString(),
+    finalUrl: response.url || url.toString(),
+    contentType: response.headers.get("content-type") || "",
+    status: response.status,
+    snapshot_type: "content-snapshot",
+    note: "Browser Rendering binding is not enabled on this account. True PNG screenshots require enabling Cloudflare Browser Rendering in the dashboard. This tool returns a structured DOM snapshot instead.",
+    title,
+    description: og.description || twitter.description || null,
+    og,
+    twitter,
+    headings: headings.slice(0, 50),
+    links,
+    body_summary: bodySummary,
+    html_length: html.length,
+    html_sha256: hashHex,
+    _meta: { parser: "crawl-snapshot-v1", format: "dom-derived" }
+  };
+}
+
+async function crawlPdf(args) {
+  // Reuse Step 1 pdfParse / pdfToMarkdown
+  const format = args.format === "text" ? "text" : "markdown";
+  if (format === "text") {
+    return await pdfParse(args);
+  }
+  return await pdfToMarkdown(args);
+}
+
+async function crawlExtract(args) {
+  const rawUrl = requireString(args.url, "url");
+  const schema = args.schema && typeof args.schema === "object" ? args.schema : {};
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return { ok: false, url: rawUrl, error: "invalid url" };
+  }
+  if (![ "http:", "https:" ].includes(url.protocol)) {
+    return { ok: false, url: rawUrl, error: "only http(s) URLs are allowed" };
+  }
+
+  let response;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort("timeout"), 15000);
+    response = await fetch(url.toString(), {
+      signal: ctrl.signal,
+      headers: { "User-Agent": CRAWL_UA, "Accept": "text/html,application/xhtml+xml,*/*" },
+      redirect: "follow"
+    });
+    clearTimeout(timer);
+  } catch (e) {
+    return { ok: false, url: url.toString(), error: `fetch failed: ${String(e?.message || e)}` };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      url: url.toString(),
+      status: response.status,
+      error: `upstream ${response.status}`
+    };
+  }
+  const html = await response.text();
+  const og = extractOgTags(html);
+  const twitter = extractTwitterTags(html);
+  const jsonLd = extractJsonLdBlocks(html);
+
+  // Build candidate-value pool keyed by field name (lowercase)
+  const pool = {};
+  function put(field, value) {
+    if (value == null) return;
+    const v = typeof value === "string" ? value.trim() : value;
+    if (v == null || v === "") return;
+    const key = String(field).toLowerCase();
+    if (!pool[key]) pool[key] = [];
+    pool[key].push(v);
+  }
+
+  // OG tags (canonical source for title/description/image/price)
+  for (const [k, v] of Object.entries(og)) {
+    put(k, v);
+    put(`og:${k}`, v);
+    put(`og_${k}`, v);
+  }
+  // Twitter tags
+  for (const [k, v] of Object.entries(twitter)) {
+    put(k, v);
+    put(`twitter:${k}`, v);
+    put(`twitter_${k}`, v);
+  }
+  // JSON-LD: walk each block, use @type / name / property keys as candidate field names
+  for (const block of jsonLd) {
+    function walk(o) {
+      if (o == null || typeof o !== "object") return;
+      if (Array.isArray(o)) { o.forEach(walk); return; }
+      for (const [k, v] of Object.entries(o)) {
+        if (v == null) continue;
+        if (typeof v === "object") { walk(v); continue; }
+        // Primitive — push under multiple candidate names
+        put(k, v);
+        put(k.replace(/([A-Z])/g, "_$1").toLowerCase(), v);
+      }
+    }
+    walk(block);
+  }
+  // HTML element content for common field names (loose)
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (titleMatch) put("title", decodeHtml(titleMatch[1]).trim());
+  const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (h1Match) put("title", decodeHtml(h1Match[1]).trim());
+  // Common heuristic selectors — extract text content from .price / .author / etc.
+  const heuristicRe = /<(?:span|div|p|meta|td|th|h[1-6])[^>]*?(?:class|itemprop|name|id)\s*=\s*["'][^"']*\b(price|author|title|name|sku|brand|date|description|image|content|rating|count|availability|currency)\b[^"']*["'][^>]*?>([\s\S]*?)<\/(?:span|div|p|td|th|h[1-6])>/gi;
+  let hm;
+  while ((hm = heuristicRe.exec(html)) !== null) {
+    const field = hm[1].toLowerCase();
+    let val = stripTags(hm[2]).replace(/\s+/g, " ").trim();
+    if (!val) continue;
+    // Also try meta content= attribute
+    if (val.length < 2) {
+      const metaMatch = hm[2].match(/content\s*=\s*["']([^"']+)["']/i);
+      if (metaMatch) val = metaMatch[1];
+    }
+    put(field, val);
+  }
+  // meta itemprop="..." content="..." patterns (schema.org microdata)
+  const microRe = /<meta\s+(?:[^>]*?)itemprop\s*=\s*["']([^"']+)["'][^>]*?content\s*=\s*["']([^"']*)["']/gi;
+  while ((hm = microRe.exec(html)) !== null) {
+    put(hm[1].toLowerCase(), decodeHtml(hm[2]).trim());
+  }
+
+  // Coerce each schema field — pick first pool entry, coerce type
+  const extracted = {};
+  const missing = [];
+  for (const [field, typeStr] of Object.entries(schema)) {
+    const candidates = pool[field.toLowerCase()] || [];
+    let raw = candidates.length ? candidates[0] : null;
+    let coerced = null;
+    if (raw != null) {
+      if (typeStr === "number") {
+        const num = parseFloat(String(raw).replace(/[^\d.\-]/g, ""));
+        coerced = Number.isFinite(num) ? num : null;
+      } else if (typeStr === "boolean") {
+        coerced = /^(true|yes|1|available|in stock)$/i.test(String(raw));
+      } else if (typeStr === "array") {
+        coerced = candidates.length ? candidates : String(raw).split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
+      } else {
+        coerced = String(raw);
+      }
+    }
+    extracted[field] = coerced;
+    if (coerced == null || coerced === "") missing.push(field);
+  }
+
+  return {
+    ok: true,
+    url: url.toString(),
+    finalUrl: response.url || url.toString(),
+    status: response.status,
+    extracted,
+    missing_fields: missing,
+    sources_used: {
+      og: Object.keys(og).length,
+      twitter: Object.keys(twitter).length,
+      jsonld_blocks: jsonLd.length
+    },
+    _meta: { parser: "crawl-extract-v1", method: "html-heuristic-no-ai" }
+  };
+}
+
+// =====================================================================
+// Layer 3 — Smart Bridge Tool (Step 4)
+// 1 new tool: search_and_scrape
+// Pure orchestration: search_auto -> concurrent fetchUrl / pdfParse
+// No new helpers — fully reuses existing tools.
+// =====================================================================
+
+async function searchAndScrape(args) {
+  const query = requireString(args.query, "query");
+  const limit = Math.min(Math.max(Number(args.limit) || 5, 1), 10);
+  const maxChars = Math.min(Math.max(Number(args.maxCharsPerPage) || 8000, 500), 20000);
+  const recencyDays = Number(args.recencyDays) || undefined;
+  const enginesOverride = Array.isArray(args.engines) && args.engines.length ? args.engines : undefined;
+
+  const startedAt = Date.now();
+  // Hard cap on total wall time
+  const TOTAL_TIMEOUT_MS = 30000;
+  const hardDeadline = startedAt + TOTAL_TIMEOUT_MS;
+
+  // Phase 1: search
+  const searchArgs = { query, limit, _providerConfig: args?._providerConfig };
+  if (recencyDays) searchArgs.recency_days = recencyDays;
+  if (enginesOverride) searchArgs.engines = enginesOverride;
+
+  let searchResult;
+  try {
+    searchResult = await searchAuto(searchArgs);
+  } catch (e) {
+    return {
+      ok: false,
+      query,
+      error: `search failed: ${String(e?.message || e)}`,
+      stats: { elapsed_ms: Date.now() - startedAt }
+    };
+  }
+  const candidates = Array.isArray(searchResult?.results) ? searchResult.results : [];
+  if (!candidates.length) {
+    return {
+      ok: true,
+      query,
+      results: [],
+      stats: {
+        elapsed_ms: Date.now() - startedAt,
+        search_total: 0,
+        fetched_total: 0,
+        succeeded: 0,
+        failed: 0,
+        engines_attempted: Array.isArray(searchResult?.attempts) ? searchResult.attempts.length : 0
+      },
+      note: "no search results returned — try a different query or remove recency filter",
+      search_attempts: Array.isArray(searchResult?.attempts) ? searchResult.attempts : undefined
+    };
+  }
+
+  // Phase 2: concurrent fetch with simple bounded parallelism (4)
+  const CONCURRENCY = 4;
+  const results = new Array(candidates.length);
+  let cursor = 0;
+  let succeeded = 0;
+  let failed = 0;
+
+  async function worker() {
+    while (cursor < candidates.length) {
+      if (Date.now() > hardDeadline) break;
+      const idx = cursor++;
+      const item = candidates[idx];
+      const url = String(item.url || item.href || "").trim();
+      const title = String(item.title || "").trim();
+      const snippet = String(item.snippet || item.description || "").trim();
+
+      if (!url || !/^https?:\/\//i.test(url)) {
+        results[idx] = {
+          title, url, snippet, ok: false, error: "invalid or missing url", content_type: "skipped"
+        };
+        failed++;
+        continue;
+      }
+
+      // PDF detection: URL suffix or content-type probe
+      const looksLikePdf = /\.pdf(\?|#|$)/i.test(url);
+
+      try {
+        let res;
+        if (looksLikePdf) {
+          // Fast path: URL ends in .pdf — go straight to pdfParse
+          res = await pdfParse({ url, maxChars });
+        } else {
+          // Ambiguous URL — fetch first, then branch on content-type
+          // We use fetchUrl for HTML, but probe content-type to detect hidden PDFs
+          // (e.g. arxiv.org/pdf/1706.03762 — URL has /pdf/ path segment, not .pdf suffix)
+          // Strategy: lightweight probe via fetchUrl, check contentType, if PDF then re-parse
+          res = await fetchUrl({ url, maxChars });
+          // If fetchUrl returned a PDF content-type but garbled text, re-route through pdfParse
+          const ct = String(res?.contentType || "").toLowerCase();
+          if (res?.ok && ct.includes("pdf")) {
+            try {
+              const pdfRes = await pdfParse({ url, maxChars });
+              if (pdfRes?.ok) {
+                res = { ...pdfRes, _rerouted: true };
+              }
+            } catch {
+              // keep original fetchUrl result
+            }
+          }
+        }
+        if (res?.ok) {
+          const isPdf = /\.pdf/i.test(res.contentType || "") || /\.pdf(\?|#|$)/i.test(res.finalUrl || url);
+          const contentType = isPdf ? "pdf" : "html";
+          const text = isPdf ? res.text : res.text;
+          results[idx] = {
+            title,
+            url,
+            finalUrl: res.finalUrl || url,
+            snippet,
+            ok: true,
+            content_type: contentType,
+            text_length: res.text_length || (text ? text.length : 0),
+            text: text || "",
+            truncated: res.truncated || false
+          };
+          succeeded++;
+        } else {
+          results[idx] = {
+            title, url, snippet, ok: false,
+            content_type: looksLikePdf ? "pdf" : "html",
+            error: res?.error || "fetch failed",
+            status: res?.status
+          };
+          failed++;
+        }
+      } catch (e) {
+        results[idx] = {
+          title, url, snippet, ok: false,
+          content_type: looksLikePdf ? "pdf" : "html",
+          error: String(e?.message || e)
+        };
+        failed++;
+      }
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(CONCURRENCY, candidates.length); i++) workers.push(worker());
+  await Promise.all(workers);
+
+  // Filter to remove empty slots (shouldn't exist, but defensive)
+  const out = results.filter(Boolean);
+
+  const elapsed = Date.now() - startedAt;
+  const deadlineHit = elapsed >= TOTAL_TIMEOUT_MS - 500; // within 500ms of deadline
+
+  return {
+    ok: true,
+    query,
+    results: out,
+    stats: {
+      elapsed_ms: elapsed,
+      search_total: candidates.length,
+      fetched_total: out.length,
+      succeeded,
+      failed,
+      concurrency: CONCURRENCY,
+      deadline_hit: deadlineHit,
+      engines_attempted: Array.isArray(searchResult?.attempts) ? searchResult.attempts.length : 0
+    },
+    search_attempts: Array.isArray(searchResult?.attempts) ? searchResult.attempts.slice(0, 5) : undefined,
+    _meta: { orchestrator: "search-and-scrape-v1" }
+  };
+}
+
 var GSA_USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",

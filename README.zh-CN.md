@@ -381,6 +381,55 @@ LLM Agent（Claude、Cursor 等）调用这些工具时，应注意以下信号�
 - 不是封闭平台的私有/认证连接器
 - 不是完整的文章可读性引擎
 
+## 扩展工具集（11 个新增）
+
+在原有 42 个搜索/抓取工具基础上，新增 4 层共 11 个工具，全部以纯 Cloudflare Worker 函数实现，零外部依赖、零新 binding：
+
+### 第一层（PDF 解析）
+
+| 工具 | 用途 | 实现 |
+|---|---|---|
+| `pdf_parse` | 抓取 URL PDF 并提取纯文本 | `fetch(url)` → `extractPdfTextAsync` 二进制扫描 stream→endstream 块 → `DecompressionStream("deflate")` 解压 FlateDecode → 跳过字体/图像/XObject 非文本流 → 按 `BT...ET` + `Tj/TJ` 算子提取文字 |
+| `pdf_to_markdown` | 抓取 PDF → 轻量 Markdown 化 | 复用 `pdfParse` + 添加 `# PDF Document` 元数据头 + 按页估算插 `---` 分页符 |
+
+### 第二层（动态爬虫，纯 worker 无浏览器）
+
+账户无 Cloudflare Browser Rendering entitlement，纯 HTTP fetch + 启发式实现最大化覆盖：
+
+| 工具 | 用途 | 实现策略链 |
+|---|---|---|
+| `crawl_scrape` | 抓取 URL → clean markdown | (1) 检测 Next.js `__NEXT_DATA__` / Nuxt `__NUXT__` / SvelteKit / Astro 标记 → 提取嵌入 JSON；(2) 抓 `application/ld+json` JSON-LD；(3) 抓 OG/Twitter meta；(4) cheerio-less DOM walker 转 markdown；(5) 兜底 Archive.org Wayback 快照 |
+| `crawl_screenshot` | URL "内容快照"（无 PNG） | DOM 派生快照：title + h1-h3 层级 + 链接 + 摘要文本 + OG/Twitter + html sha256。**注意：账户无 BR entitlement，不返真 PNG 截图** |
+| `crawl_pdf` | 抓 URL PDF（无 BR 依赖） | 复用 `pdfParse` / `pdfToMarkdown`，PDF 是静态二进制无需 JS 渲染 |
+| `crawl_extract` | 抓 URL → 结构化字段（无 AI） | HTML 启发式抽取：(1) JSON-LD 块；(2) OG/Twitter meta；(3) schema.org microdata `itemprop`；(4) `.price`/`.author`/`.title` 等 heuristic class 选择器 → 类型强制（string/number/boolean/array） |
+
+### 第三层（智能桥接）
+
+| 工具 | 用途 | 实现 |
+|---|---|---|
+| `search_and_scrape` | search → 自动 fetch 全文 | 编排型工具：内部调 `searchAuto` 拿候选 URL → 4 并发调 `fetchUrl` 或 `pdfParse`（URL 含 `.pdf` 后缀或 content-type 是 PDF 时自动路由 PDF 路径）→ 返 `{query, results[], stats{elapsed_ms, succeeded, failed, concurrency:4, deadline_hit}}`，30s 总超时 |
+
+### 第四层（辅助工具）
+
+| 工具 | 用途 | 实现 |
+|---|---|---|
+| `fetch_robots` | 抓 robots.txt + 解析 Allow/Disallow/Sitemap | 自动从 URL 派生 origin → 抓 `/robots.txt` → 解析 user-agent 块 + Sitemap 声明 |
+| `fetch_sitemap` | 抓 sitemap.xml + 递归 sitemapindex | 默认抓首页 → 解析 `<urlset>` 或 `<sitemapindex>` → `recursive=true` 时递归抓子 sitemap |
+| `fetch_html_to_markdown` | fetch_url 的 markdown 版（无 JS 渲染） | `fetchTextWithResponse` → cheerio-less DOM walker → 保留 H1-H3/链接/列表/代码块 |
+| `fetch_html_extract` | fetch + 结构化抽取（Workers AI 可选） | 优先调 Workers AI（无 AI binding 时 graceful error），fallback 返原始文本 |
+
+### PDF 解析器实现要点（参考）
+
+- **二进制扫描**：按字节定位 `stream...endstream`（115,116,114,101,97,109）→ 不依赖 regex 切二进制流。
+- **FlateDecode 解压**：用浏览器原生 `DecompressionStream("deflate")`（无 npm 依赖）。
+- **文本流过滤**：`looksLikeTextStream()` 检测 stream 解压后是否含 PDF 文本算子（BT/Tj/TJ/Td/Tm/Tf）或可打印 ASCII 比例 > 0.85；字体程序/图像/XObject 被跳过。
+- **过滤 LaTeX 噪声**：禁用 Strategy 1（抓 outline/metadata）和 Strategy 2（抓 Info-dict 元数据），只走 Strategy 3（解压后的真实 content stream）。
+- **已知限制**：扫描的纯 PDF / LaTeX 生成的 arXiv 论文均可解析；扫描件（图像型 PDF）需配合外部 OCR。
+
+### 部署验证
+
+11 个新工具全部在 CF 端真机测过（`search-mcp.qdp.qzz.io/mcp`）：部署版本 ID `200c5d7a-6e1c-40e5-af52-f232ead8285e`；wrangler 上传 291.55 KiB / gzip 60.51 KiB；烟测脚本 `tests/smoke_layer1_4.mjs`（39 个 assertion）；BabelTele 论文解析实测 arXiv 2606.19857（23 页 / 4.26MB）→ 真实正文 85K 字符。
+
 ## 许可证
 
 GPL-3.0
