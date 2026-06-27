@@ -440,10 +440,9 @@ LLM Agent（Claude、Cursor 等）调用这些工具时，应注意以下信号�
 
 ## 部署验证
 
-- 在线 worker：`search-mcp.qdp.qzz.io/mcp`
-- 最新部署版本：`200c5d7a-6e1c-40e5-af52-f232ead8285e`（wrangler 上传 291.55 KiB / gzip 60.51 KiB）
-- 53 个工具在 CF 端全部端到端验证（curl `--resolve` 绕本地 DNS 污染）
-- BabelTele 论文解析实测：arXiv 2606.19857（23 页 / 4.26 MB）→ 真实正文 85K 字符
+- 53 个工具对一个 CF Workers 边缘部署做端到端验证
+- PDF 解析器在一篇真实 arXiv 论文（23 页、LaTeX-heavy）上验证 → 干净正文抽取
+- 详见 `tests/smoke_layer1_4.mjs`（39 个 assertion 覆盖 Layer 1-4 的扩展 smoke 套件）
 
 ## 许可证
 

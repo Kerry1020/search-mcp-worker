@@ -438,10 +438,9 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 
 ## Deployment Verification
 
-- Live worker: `search-mcp.qdp.qzz.io/mcp`
-- Latest deployed version: `200c5d7a-6e1c-40e5-af52-f232ead8285e` (wrangler upload 291.55 KiB / gzip 60.51 KiB)
-- 53 tools verified end-to-end on CF edge (curl `--resolve` to bypass local DNS poisoning)
-- BabelTele paper parsing verified: arXiv 2606.19857 (23 pages / 4.26 MB) → 85K chars of real body text
+- 53 tools verified end-to-end against a CF Workers edge deployment
+- PDF parser verified on a real arXiv paper (23 pages, LaTeX-heavy) → clean body text extraction
+- See `tests/smoke_layer1_4.mjs` for the 39-assertion extended smoke suite covering Layers 1-4
 
 ## License
 

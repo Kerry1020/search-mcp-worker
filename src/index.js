@@ -3364,17 +3364,63 @@ async function fetchGitHubFile(args) {
   const ref = args.ref ? requireString(args.ref, "ref") : "main";
   const maxChars = Math.min(Math.max(Number(args.maxChars) || 2e4, 1e3), 5e4);
   const encodedRef = ref.split("/").map(encodeURIComponent).join("/");
-  const url = `https://raw.githubusercontent.com/${owner}/${repo}/${encodedRef}/${path.split("/").map(encodeURIComponent).join("/")}`;
-  const text = await fetchText(url, { maxBytes: Math.min(MAX_FETCH_BYTES, maxChars * 4) });
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodedRef}/${encodedPath}`;
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodedRef}`;
+  const maxBytes = Math.min(MAX_FETCH_BYTES, maxChars * 4);
+
+  // Strategy 1: raw.githubusercontent.com (fast, no rate limit header)
+  let rawError = null;
+  try {
+    const text = await fetchText(rawUrl, { maxBytes, retries: 1, retryDelay: 200 });
+    if (text && text.length > 0) {
+      return {
+        owner, repo, path, ref,
+        url: rawUrl,
+        source: "raw",
+        content: text.slice(0, maxChars),
+        truncated: text.length > maxChars,
+        maxChars
+      };
+    }
+  } catch (e) {
+    rawError = String(e?.message || e || "raw fetch failed");
+  }
+
+  // Strategy 2: GitHub REST Contents API (base64-encoded, more reliable on CF edge)
+  try {
+    const headers = { "User-Agent": "search-mcp-worker", "Accept": "application/vnd.github.v3+json" };
+    const { text, response } = await fetchTextWithResponse(apiUrl, { maxBytes: Math.min(MAX_FETCH_BYTES, maxChars * 6), headers });
+    if (response.status === 200 && text) {
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { parsed = null; }
+      if (parsed && typeof parsed.content === "string") {
+        // GitHub API returns base64-encoded content; the raw decoder handles both
+        // standard base64 and base64url, stripping whitespace.
+        const b64 = parsed.content.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+        // atob is available in CF Workers runtime
+        const decoded = atob(b64);
+        return {
+          owner, repo, path, ref,
+          url: parsed.html_url || rawUrl,
+          source: "api",
+          content: decoded.slice(0, maxChars),
+          truncated: decoded.length > maxChars,
+          maxChars
+        };
+      }
+    }
+  } catch (e) {
+    // Both strategies failed — fall through to error return
+  }
+
+  // Both strategies failed — return structured error
   return {
-    owner,
-    repo,
-    path,
-    ref,
-    url,
-    content: text.slice(0, maxChars),
-    truncated: text.length > maxChars,
-    maxChars
+    ok: false,
+    owner, repo, path, ref,
+    url: rawUrl,
+    error: `GitHub file fetch failed — raw: ${rawError || "empty"}; api: unreachable`,
+    hint: "Check repo/ref/path exist and are public. Private repos need a GITHUB_TOKEN binding."
   };
 }
 __name(fetchGitHubFile, "fetchGitHubFile");
