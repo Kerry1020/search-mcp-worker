@@ -2,33 +2,45 @@
 
 English | [简体中文](./README.zh-CN.md)
 
-A single-file Cloudflare Worker that exposes **53 MCP tools** for web search, page fetching, PDF parsing, and dynamic crawling through one JSON-RPC endpoint. Zero npm dependencies, zero database, zero browser cluster.
+A single-file Cloudflare Worker that exposes **52 MCP tools** for web search, page fetching, PDF parsing, and dynamic crawling through one JSON-RPC endpoint. Zero npm dependencies, zero database, zero browser cluster.
 
 Designed for LLM agents and automation that need one stable search/work surface instead of stitching together many providers.
 
 ## Architecture at a Glance
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                       POST /mcp  (JSON-RPC 2.0)                       │
-├──────────────┬───────────────┬──────────────┬──────────────┬──────────┤
-│  General     │  Vertical     │  Fetch       │  PDF         │  Crawl   │
-│  Search      │  Sources      │  Tools       │  Parser      │  Tools   │
-│  (12)        │  (29)         │  (7)         │  (2)         │  (4)     │
-├──────────────┼───────────────┼──────────────┼──────────────┼──────────┤
-│ HTML parse   │ JSON API +    │ HTML→text /  │ FlateDecode  │ Pure     │
-│ + multi-     │ HTML parse    │ robots /     │ + binary     │ worker   │
-│ engine       │ + finalize    │ sitemap /    │ stream scan  │ strategy │
-│ fallback     │ pipeline      │ md / extract │ (zero deps)  │ chain    │
-├──────────────┴───────────────┴──────────────┴──────────────┴──────────┤
-│  Defense Layer                                                       │
-│  Circuit Breaker │ Exponential Backoff │ Intent Mismatch │ finalize  │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       POST /mcp  (JSON-RPC 2.0)                          │
+├──────────────┬───────────────┬──────────────┬──────────────┬─────────────┤
+│  General     │  Vertical     │  Fetch       │  PDF         │  Crawl      │
+│  Search      │  Sources      │  Tools       │  Parser      │  Tools      │
+│  (12)        │  (27)         │  (7)         │  (2)         │  (4)        │
+├──────────────┴───────────────┴──────────────┴──────────────┴─────────────┤
+│  Ranking Pipeline                                                       │
+│  Engine-confidence → 5 hard drops → 3-type cascade → RRF(k=60) →        │
+│  Tiebreaker chain → Domain diversity (window 8, max 2/domain)            │
+├──────────────────────────────────────────────────────────────────────────┤
+│  Defense Layer                                                           │
+│  Circuit Breaker │ JUNK Soft-Freeze │ Exponential Backoff │ Health Log  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 Plus 1 orchestrator: `search_and_scrape` — wires search results → parallel full-text fetch.
 
 Everything lives in `src/index.js`. No build step.
+
+## What's New in v3 — Ranking Pipeline Rewrite
+
+The ranking pipeline was rewritten from first principles in 2026-06-27 to remove a 30-constant additive scoring scheme in favor of a principled, multi-layer architecture. Detailed before/after:
+
+| Layer | Before | After |
+|---|---|---|
+| Single-engine scoring | 30 hardcoded constants added (rank×3, type ±90, token ×14, CJK +60, gov +35...) | 3-type cascade (A: web search / B: API / C: news) with sequential criteria |
+| Engine health | Single binary circuit breaker (3 blocked → 5min freeze) | Adds: 4-signal confidence assessment (HIGH/MED/LOW/JUNK) + JUNK soft-freeze (2 consecutive → 1min skip) + per-engine `block_rate` health multiplier |
+| Cross-engine merging | URL exact dedup + additive multi-source bonus | URL exact + same-domain Levenshtein ≥0.85 fuzzy dedup + RRF (k=60) with 3-layer engine weight (base × query-type × health) + 5-stage tiebreaker chain + sliding-window domain diversity (window 8, max 2/domain) |
+| Result types | Classified but used as additive scores | Hard-pre-filter (engine-specific drop rules) + no scoring influence |
+
+The full reasoning is documented in the project changelog (PR #27+). The TL;DR: an additive scoring model cannot represent the fact that "3 engines all rank this in the top 5" is multiplicative evidence, not 3× additive.
 
 ## Quick Start
 
@@ -65,25 +77,25 @@ For Claude Desktop, Cursor, or any MCP client that supports SSE/StreamableHTTP:
 
 ```bash
 curl https://your-worker.example.com/health
-# → {"ok":true,"build":{"sha":"b39bd1e","time":"..."}}
+# → {"ok":true,"build":{"sha":"...","time":"..."}}
 ```
 
-## Tool Surface (53 tools)
+## Tool Surface (52 tools)
 
-The 53 tools are grouped into **6 functional layers** plus a small utility bucket. All share the same defense layer (circuit breaker, exponential backoff, intent mismatch detection).
+The 52 tools are grouped into **6 functional layers** plus a small utility bucket. All share the same defense layer (circuit breaker, JUNK soft-freeze, exponential backoff, intent mismatch detection).
 
 ### Layer 1 — General Web Search (12 tools)
 
-Parse HTML search result pages. Each engine has a multi-attempt fallback chain with rotating User-Agents.
+Parse HTML search result pages. Each engine has a multi-attempt fallback chain with rotating User-Agents. Engines marked **(indie)** use specialized small-web or alternative indexes; engines marked **(api)** return JSON.
 
 | Tool | Engine | URL Pattern | Fallback Strategy |
 |---|---|---|---|
-| `search_auto` | Multi-engine | — | Tries engines in order, merges, reranks. Returns `fallback_used`, `quality_status`, `quality_reason` |
+| `search_auto` | Multi-engine RRF | — | Intent-based engine selection → 4-concurrent race → RRF merge → tiebreaker → domain diversity |
 | `search_duckduckgo` | DuckDuckGo | `noai.duckduckgo.com/?q=` → `lite.duckduckgo.com/lite/` (POST) → `html.duckduckgo.com/html/` | 3 attempts: noai → lite (POST form) → html |
 | `search_bing` | Bing (US) | `bing.com/search?q=` | Primary params → fallback params, 2 routes |
 | `search_bing_global` | Bing (Global) | `bing.com/search?q=` + `cn.bing.com/search?q=` | US + CN routes, primary → fallback params |
 | `search_bing_cn` | Bing (CN) | `cn.bing.com/search?q=` | CN-optimized headers + fallback params |
-| `search_yahoo` | Yahoo | `search.yahoo.com/search?p=` | 3 attempts: nojs → standard → minimal headers; auto-handles consent form via `retryYahooWithConsentForm` |
+| `search_yahoo` | Yahoo | `search.yahoo.com/search?p=` | 3 attempts: nojs → standard → minimal headers; auto-handles consent form |
 | `search_google_web` | Google | `google.com/search?q=` | 3 attempts: GSA UA → Chrome UA + `gbv=1` → bare |
 | `search_baidu` | Baidu | `m.baidu.com/s?word=` → `baidu.com/s?wd=&tn=json` → `baidu.com/s?wd=` | Mobile HTML → JSON API → Desktop HTML |
 | `search_yandex` | Yandex | `yandex.com/search/?text=` | GSA UA → bare; captcha detection → returns `blocked: true` |
@@ -93,11 +105,11 @@ Parse HTML search result pages. Each engine has a multi-attempt fallback chain w
 | `search_qwant` | Qwant | `qwant.com/?q=` | Single attempt, HTML parse |
 | `search_ecosia` | Ecosia | `ecosia.org/search?q=` | Single attempt, HTML parse |
 
-### Layer 2 — Vertical Sources (29 tools)
+### Layer 2 — Vertical Sources (27 tools)
 
-Structured JSON APIs (22) and HTML-scrape sources (7). All results pass through `finalizeVerticalSearchResults` for intent mismatch detection and noise filtering.
+Structured JSON APIs (20) and HTML-scrape sources (7). All results pass through the v3 finalize pipeline (engine-confidence → 5 hard drops → type-specific cascade).
 
-#### 2a. JSON API (22 tools)
+#### 2a. JSON API (20 tools)
 
 | Tool | Source | API | Implementation Details |
 |---|---|---|---|
@@ -105,7 +117,7 @@ Structured JSON APIs (22) and HTML-scrape sources (7). All results pass through 
 | `search_pubmed` | PubMed | `eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch` → `efetch` | Two-step: esearch gets IDs → efetch gets abstracts; **tech signal detection** prevents bio queries from returning tech noise |
 | `search_hackernews` | Hacker News | `hn.algolia.com/api/v1/search?tags=story` | Algolia API; `objectID` fallback for self-posts |
 | `search_stackoverflow` | Stack Exchange | `api.stackexchange.com/2.3/search/advanced` | Configurable `site` param (default: `stackoverflow`); body included via `filter=withbody` |
-| `search_reddit` | Reddit | `reddit.com/search.json?q=&sort=relevance` | Optional `subreddit` param; `raw_json=1`; fallback to `searchRedditFallback` on failure |
+| `search_reddit_rss` | Reddit via Startpage | `search.startpage.com/sp/search?q=reddit+QUERY` | Reddit blocks all CF Worker IPs (403 across direct/RSS/JSON/redlib). Uses Startpage as a search proxy for Reddit discussions, filtered to reddit.com URLs |
 | `search_npm` | npm | `registry.npmjs.org/-/v1/search?text=` | Direct JSON → `{name}@{version}` |
 | `search_devto` | dev.to | `dev.to/api/articles?tag=` then `?q=` | **3-tier tag strategy**: compound tag (e.g. `machinelearning`) → first word tag → `?q=` fallback |
 | `search_mastodon` | Mastodon | `mastodon.social/api/v2/search?q=` + `/api/v1/timelines/tag/` | Extracts hashtags from query, searches tag timeline as supplement; multi-instance |
@@ -116,11 +128,12 @@ Structured JSON APIs (22) and HTML-scrape sources (7). All results pass through 
 | `search_wikidata` | Wikidata | `wikidata.org/w/api.php?action=wbsearchentities` | Returns entity ID + description |
 | `search_wiktionary` | Wiktionary | `{lang}.wiktionary.org/w/api.php?action=query&list=search` | Configurable `language` |
 | `search_openlibrary` | Open Library | `openlibrary.org/search.json?q=` | Returns work OLID, author, year |
-| `search_musicbrainz` | MusicBrainz | `musicbrainz.org/ws/2/recording/?query=&fmt=json` | Artist + album in snippet |
+| `search_musicbrainz` | MusicBrainZ | `musicbrainz.org/ws/2/recording/?query=&fmt=json` | Artist + album in snippet |
 | `search_crossref` | Crossref | `api.crossref.org/works?query=` | DOI-linked academic papers |
 | `search_pypi` | PyPI | `pypi.org/search/?q=` (HTML) → `pypi.org/pypi/{name}/json` (direct lookup) | HTML scrape first; if 0 results, tries exact package name lookup |
 | `search_crates` | crates.io | `crates.io/api/v1/crates?q=` | Direct JSON API |
 | `search_github_repos` | GitHub | `api.github.com/search/repositories?q=&sort=stars` | Star-sorted; candidate over-fetch then slice |
+| `search_semantic_scholar` | Semantic Scholar | `api.semanticscholar.org/graph/v1/paper/search` | Covers IEEE/ACM/Springer/Elsevier. HTTP 429 triggers automatic fallback to arXiv. API key optional via `PROVIDER_CONFIG.semantic_scholar.apiKey` |
 | `search_ollama` | Ollama | `api.olloma.com/v1/web-search` (POST) | Provider-configurable endpoint; requires API key |
 | `search_parallel` | Parallel | `api.parallel.ai/v1/search` (POST) | Provider-configurable endpoint |
 
@@ -135,6 +148,14 @@ Structured JSON APIs (22) and HTML-scrape sources (7). All results pass through 
 | `search_paperswithcode` | Papers With Code | `api.semanticscholar.org/graph/v1/paper/search` | Semantic Scholar API as backend |
 | `search_osm` | OpenStreetMap | `nominatim.openstreetmap.org/search?q=&format=jsonv2` | Geocoding; returns lat/lon + OSM link |
 | `search_archive` | Archive.org | `archive.org/wayback/available?url=` + `advancedsearch.php?q=` | Wayback Machine lookup + advanced search; **currently limited** by CF Workers IP timeout |
+
+#### 2c. Indie / Small-Web (3 tools)
+
+| Tool | Source | Notes |
+|---|---|---|
+| `search_wiby` | Wiby.me | Old-school independent web search. Pure HTML, no JS |
+| `search_marginalia` | Marginalia | Indie/non-commercial web. JSON API primary + HTML fallback |
+| `searchmysite` | searchmysite | Independent site search |
 
 ### Layer 3 — Fetch Tools (7 tools)
 
@@ -160,7 +181,6 @@ Pure-worker PDF text extraction. No npm deps, no external services.
 | `pdf_to_markdown` | Fetch a PDF and convert to lightweight Markdown | Reuses `pdf_parse` → prepends `# PDF Document` metadata header → inserts `---` page-break markers between pages |
 
 **Implementation notes:**
-
 - **Binary scan**: byte-level locate `stream` (115,116,114,101,97,109) and `endstream` markers — no regex on binary streams.
 - **FlateDecode decompression**: browser-native `DecompressionStream("deflate")`.
 - **Text-stream filter**: `looksLikeTextStream()` checks decompressed stream for PDF text operators (BT/Tj/TJ/Td/Tm/Tf) or printable-ASCII ratio > 0.85; font programs / images / XObjects are skipped.
@@ -188,13 +208,81 @@ Pure-worker crawling with no browser dependency. The CF account has no Browser R
 
 | Tool | Purpose |
 |---|---|
-| `instant_answer` | DuckDuckGo Instant Answer API (`api.duckduckgo.com/?format=json`) |
+| `instant_answer` | DuckDuckGo Instant Answer API (`api.duckduck.com/?format=json`) |
 | `find_rss` | Discover RSS/Atom feeds on a given URL |
 | `debug_capture_search_html` | Debug tool: returns raw HTML from a search engine for parser development |
 
+## Ranking Pipeline v3 (Detailed)
+
+The ranking system has two layers: **per-engine finalize** (applied to each engine's results before they enter the cross-engine merger) and **cross-engine merge** (RRF + tiebreaker + diversity).
+
+### Per-Engine Finalize
+
+Every engine's results pass through this pipeline before reaching RRF:
+
+```
+Raw results
+  │
+  ├─ 0. Engine-confidence assessment (4 signals)
+  │     • domain concentration (≥50% same 2nd-level domain = signal)
+  │     • title diversity (unique titles / total ≤ 60% = signal)
+  │     • empty-snippet rate (≥60% snippets < 20 chars = signal)
+  │     • ad/sponsor rate (≥30% contain "Sponsored/Ad/广告/推广" = signal)
+  │     0-1 signals → HIGH (send top 15) | MEDIUM (top 8) | LOW (top 3) | JUNK (send 0)
+  │     JUNK events: recordEngineJunk → after 2 consecutive → 1min soft-freeze
+  │
+  ├─ 1. 5 hard-drop filters (any match = drop)
+  │     Gate 1: isGenericWrapperResult (search pages, ads, sponsored)
+  │     Gate 2: isHardIntentMismatchResult (off-topic)
+  │     Gate 3: isLowTrustResult (CJK SEO spam, e.g. .org.cn with year)
+  │     Gate 4: shouldDropVerticalResultType (when better types exist)
+  │     Gate 5: isEngineSelfPage (engine self-domain / help / captcha / snippet == title)
+  │
+  ├─ 2. Type-specific cascade sort
+  │     Type A (web search):
+  │       L1: title match ratio (≥100% / ≥80% / ≥50% / <50%)
+  │       L2: time decay (≤2yr / 2-5yr / >5yr / no date = center)
+  │       L3: content info (snippet ≥200 / ≥100 / <100 chars)
+  │       L4: original rank
+  │     Type B (API): exact name match → API order → anomaly sink
+  │     Type C (news): time bucket (24h / 7d / 30d / old) → title match within bucket
+  │
+  └─ 3. Confidence-based truncation (HIGH=15, MED=8, LOW=3, JUNK=0)
+```
+
+### Cross-Engine Merge (RRF)
+
+```
+All engines' filtered results
+  │
+  ├─ 1. Fuzzy dedup
+  │     Pass A: URL exact match
+  │     Pass B: same domain + title Levenshtein similarity ≥ 0.85
+  │     On match: keep longer snippet/title, merge engine list
+  │
+  ├─ 2. RRF score
+  │     finalScore = Σ over matching engines { engineWeight / (60 + rank) }
+  │     engineWeight = base × queryTypeMult × healthMult
+  │     base:  startpage/google=1.2, bing/yahoo/brave=1.0-1.1, indie=0.5
+  │     queryTypeMult: developer→github/stackoverflow/npm ×1.5, news→bing_news/bbc ×1.5,
+  │                    CJK→baidu/sogou/bing_cn ×1.3, academic→arxiv/semantic_scholar ×1.5
+  │     healthMult: block_rate>50% → ×0.3, >30% → ×0.6, else ×1.0
+  │
+  ├─ 3. Tiebreaker chain (sequential, not additive)
+  │     (1) more engines verified
+  │     (2) more query tokens in title
+  │     (3) longer title+snippet (more information)
+  │     (4) domain authority (gov > edu > org > others)
+  │     (5) result type (article/question/note > thread > others)
+  │
+  └─ 4. Domain diversity (sliding window)
+        Window size 8, max 2 results per domain
+        Overflow → deferred → appended after main pass
+```
+
 ## Defense Layer
 
-### Circuit Breaker (PR #2)
+### Circuit Breaker
 
 Per-engine sliding window. After 3 consecutive blocked/captcha responses, the engine is frozen for 5 minutes. Auto-recovers when `frozenUntil` expires.
 
@@ -207,14 +295,35 @@ Next request → isEngineCircuitBroken() → true → skip engine, try next
 
 Applies to: Google, Yahoo, Bing, Yandex, and other HTML-scraped engines.
 
-### Exponential Backoff Retry (PR #5)
+### JUNK Soft-Freeze (v3)
+
+Complements the circuit breaker with a shorter-cycle soft freeze for engines returning low-quality results rather than hard blocks:
+
+```
+Engine returns JUNK confidence → recordEngineJunk() → count++
+2 consecutive JUNK → frozenUntil = now + 1min
+Next request → isEngineJunkFrozen() → true → skip engine
+Engine returns non-JUNK → resetEngineJunk() → counter cleared
+1min later → auto-clear
+```
+
+The soft freeze prevents Yahoo-style "garbage pages that aren't technically blocked" from being re-requested every search. The 1-minute window is short enough to self-heal quickly but long enough to skip one duplicate request batch.
+
+### Engine Health Log
+
+Per-engine sliding 1-hour event log (`success / blocked / empty / junk`). Used by:
+- `_healthWeightMultiplier` in RRF engine weights: `block_rate > 50% → ×0.3, > 30% → ×0.6`
+- The JUNK soft-freeze tracker
+- The circuit breaker (alongside its own failure counter)
+
+### Exponential Backoff Retry
 
 For transient server errors (502, 503, 504) and network failures:
 
 ```
 fetchWithUA(url, headers, { retries: 1, retryDelay: 200 })
-→ 200ms * 2^attempt + random(0, 50ms) jitter
-→ max 2 attempts (1 retry)
+  → 200ms * 2^attempt + random(0, 50ms) jitter
+  → max 2 attempts (1 retry)
 ```
 
 ### Intent Mismatch Detection
@@ -224,78 +333,24 @@ fetchWithUA(url, headers, { retries: 1, retryDelay: 200 })
 - CJK: query characters checked against title+snippet. Zero hits = mismatch.
 - Source-specific: BBC drops non-alpha noise; PubMed drops tech vs bio cross-contamination.
 
-**`isIntentMismatchResult`** — soft filter, used when hard filter doesn't fire:
-- Checks semantic distance between query intent and result content.
-- Engine-specific tuning.
+### Finalize Safeguards
 
-### `finalizeVerticalSearchResults`
+The finalize defense layer includes protections against over-filtering:
+- **Small-sample protection**: ≤2 results are never junk-killed as `generic_wrapper_results`
+- **Cross-lingual pass**: pure English queries matching Chinese results skip `intent_mismatch`
+- **Search engine host exemption**: results from `baidu.com/link?url=`, `/s?wd=`, or `/item/` paths are not auto-killed as search engine noise
 
-Pipeline for all vertical sources (hackernews, reddit, devto, mastodon, peertube, stackoverflow, sec_edgar, osm, bbc, bing_news, sina_news, 163_news, wikipedia, pubmed):
-
-```
-Raw results
-  → classifyVerticalResultType (forum_post, news_article, package, etc.)
-  → filter: isGenericWrapperResult (drop wrapper/portal pages)
-  → filter: isHardIntentMismatchResult (drop off-topic)
-  → filter: isLowTrustResult (drop low-quality signals)
-  → filter: shouldDropVerticalResultType (keep preferred types)
-  → scoreVerticalResult (relevance scoring)
-  → sort by score, slice to limit
-  → return with filtered_count + filtered_reason
-```
-
-**Note:** `lemmy` bypasses `finalizeVerticalSearchResults` (uses `searchResult` directly) because Lemmy post titles use community jargon that token coverage filters incorrectly kill.
-
-### Circuit Breaker Flow for `search_auto`
-
-```
-search_auto attempts engines in order:
-  for each engine:
-    if isEngineCircuitBroken(engine) → skip, report "circuit_breaker_frozen"
-    results = engine.search(query)
-    if results.length > 0 → recordEngineSuccess, use results
-    if blocked/captcha → recordEngineBlocked, try next engine
-  merge all successful results
-  rerank
-  return with quality_status: green/yellow/red
-```
-
-### JSON Watchdog (PR #21)
+### JSON Watchdog
 
 `parseLenientJsonObject` has an 8KB guard: inputs larger than 8192 bytes skip the character-level repair loop and return `null` immediately. This prevents Cloudflare Worker CPU timeouts when upstream returns malformed large payloads.
 
-### Style-Churn Resilience (PR #21)
+### Style-Churn Resilience
 
 `extractGenericLinks` uses a two-phase approach when class-based parsers fail:
 1. **Block-level pre-filter**: scans `<li>`, `<div>`, `<section>`, `<article>` containers with internal links and title length ≥ 6, yielding results with snippets.
 2. **Flat `<a>` fallback**: if blocks don't fill the limit, falls back to scanning all `<a>` tags with noise URL filtering.
 
 This provides 85%+ recall even when upstream completely removes CSS class names.
-
-### `_meta.parser` Observability (PR #23)
-
-Every search response includes a `_meta` field indicating how results were obtained:
-
-```json
-{
-  "ok": true,
-  "results": [...],
-  "_meta": { "parser": "exact" }
-}
-```
-
-- `"exact"`: results from primary class-based or API parsing
-- `"skeleton_fallback"`: results from `extractGenericLinks` style-churn fallback
-
-LLM agents can use this to assess result quality and adjust behavior (e.g., cross-reference with vertical sources when skeleton_fallback fires repeatedly).
-
-### Finalize Safeguards (PR #24)
-
-The finalize defense layer includes protections against over-filtering:
-
-- **Small-sample protection**: ≤2 results are never junk-killed as `generic_wrapper_results`
-- **Cross-lingual pass**: pure English queries matching Chinese results skip `intent_mismatch` (prevents killing cross-language search results)
-- **Search engine host exemption**: results from `baidu.com/link?url=`, `/s?wd=`, or `/item/` paths are not auto-killed as search engine noise
 
 ## Response Format
 
@@ -309,30 +364,33 @@ Every search tool returns a consistent structure:
   "results": [
     {
       "rank": 1,
-      "source": "duckduckgo",
+      "source": "startpage",
+      "engine": "startpage",
       "url": "https://...",
       "title": "...",
-      "snippet": "..."
+      "snippet": "...",
+      "engine_count": 2,
+      "sources": ["startpage", "brave"]
     }
   ],
-  "fallback_used": true,
+  "attempts": [
+    { "engine": "brave", "ok": true, "quality_status": "green" },
+    { "engine": "yahoo", "ok": false, "error": "junk_frozen" }
+  ],
   "quality_status": "green",
   "quality_reason": "usable_results",
   "filtered_count": 2,
-  "filtered_reason": "intent_mismatch",
-  "blocked": false,
-  "block_reason": "",
-  "_meta": { "parser": "exact" }
+  "filtered_reason": "engine_self_pages"
 }
 ```
 
 The MCP text output is prefixed with an ISO 8601 timestamp:
 
 ```
-[2026-06-03T14:45:12.693Z] Duckduckgo search results for "query":
+[2026-06-27T14:45:12.693Z] Search results for "query":
 1. Title
-https://...
-Snippet text
+   https://...
+   Snippet text
 ```
 
 ## Local Development
@@ -360,7 +418,7 @@ curl -X POST http://127.0.0.1:8789/mcp \
 
 ```
 search-mcp-worker/
-├── src/index.js              # Everything: MCP routing, 53 tools, defense layer
+├── src/index.js              # Everything: MCP routing, 52 tools, ranking pipeline, defense layer
 ├── tests/
 │   ├── smoke_trace.mjs       # Core smoke test suite (online)
 │   ├── smoke_layer1_4.mjs    # Extended smoke — 11 Layer 1-4 tools, 39 assertions
@@ -378,8 +436,9 @@ search-mcp-worker/
 
 | Issue | Cause | Status |
 |---|---|---|
-| Bing sometimes returns e-commerce (e.g. Best Buy for "best pizza recipe") | Bing's algorithmic bias toward shopping | Won't fix — filtering would kill legitimate commercial queries |
-| Sogou returns empty on CF Workers IP | Sogou serves degraded results (suggestions only) to datacenter IPs | Upstream limitation |
+| Reddit direct access (API/RSS/JSON/redlib) | Reddit blocks all CF Worker IP ranges (403) | Worked around via Startpage proxy in `search_reddit_rss` |
+| Bing sometimes returns e-commerce for general queries | Bing's algorithmic bias toward shopping | Won't fix — filtering would kill legitimate commercial queries |
+| Sogou returns empty on CF Workers IP | Sogou serves degraded results to datacenter IPs | Upstream limitation |
 | Archive.org `advancedsearch` timeout | API unreachable from CF Workers edge nodes | Upstream limitation |
 | Sina News empty for some queries | API returns empty for certain keywords | Upstream limitation |
 | Arxiv occasional timeout | Network path from CF edge to `export.arxiv.org` | Transient |
@@ -391,15 +450,6 @@ search-mcp-worker/
 ## Agent Behavior Guide
 
 When using these tools from an LLM agent (Claude, Cursor, etc.), observe these signals:
-
-### `_meta.parser` (search tools)
-
-Every search response includes `_meta.parser`:
-
-| Value | Meaning | Agent action |
-|---|---|---|
-| `"exact"` | Primary parser matched site structure | High confidence — use results directly |
-| `"skeleton_fallback"` | Generic fallback due to site layout changes | Lower precision — cross-reference with vertical tools (e.g., `search_github_repos`, `search_pubmed`) |
 
 ### `content_type: "challenge_page"` (fetch_url)
 
@@ -438,7 +488,10 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 
 ## Deployment Verification
 
-- 53 tools verified end-to-end against a CF Workers edge deployment
+- 52 tools verified end-to-end against a CF Workers edge deployment
+- Ranking pipeline v3 verified across 4 query intents (default / developer / CJK / academic / news)
+- RRF cross-engine consensus verified producing top-3 multi-source agreement on academic and English queries
+- Engine confidence assessment verified correctly identifying Yahoo garbage pages via 4-signal detection
 - PDF parser verified on a real arXiv paper (23 pages, LaTeX-heavy) → clean body text extraction
 - See `tests/smoke_layer1_4.mjs` for the 39-assertion extended smoke suite covering Layers 1-4
 

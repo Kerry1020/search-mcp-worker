@@ -24,8 +24,72 @@ var PROVIDER_CONFIG = {
   serpapi: { apiKey: "", baseUrl: "", enabled: true },
   bing: { apiKey: "", baseUrl: "", enabled: true },
   parallel: { apiKey: "", baseUrl: "", enabled: true },
-  ollama: { apiKey: "", baseUrl: "https://api.ollama.com/v1/web-search", enabled: true }
+  ollama: { apiKey: "", baseUrl: "https://api.ollama.com/v1/web-search", enabled: true },
+  semantic_scholar: { apiKey: "", baseUrl: "https://api.semanticscholar.org", enabled: true }
 };
+// ── Engine weights for RRF ranking (3-layer: base × query-type × health) ──
+var ENGINE_BASE_WEIGHTS = {
+  // Tier 1: Major search engines (most reliable)
+  startpage: 1.2, google: 1.2,
+  bing_global: 1.1, bing_cn: 1.1, bing_news: 1.1,
+  yahoo: 1.0, brave: 1.0, duckduckgo: 1.0,
+  // Tier 2: Regional / specialized
+  baidu: 0.9, sogou: 0.9, naver: 0.8,
+  wikipedia: 0.9, bbc: 0.8,
+  // Tier 3: Developer / community
+  github_repos: 0.85, stackoverflow: 0.85, npm: 0.85,
+  devto: 0.85, hackernews: 0.85, reddit_rss: 0.8,
+  // Tier 4: Academic
+  arxiv: 0.7, semantic_scholar: 0.7, pubmed: 0.7, paperswithcode: 0.7,
+  // Tier 5: Indie / small-web
+  wiby: 0.5, marginalia: 0.5, searchmysite: 0.5,
+  // Tier 6: Other verticals
+  archive: 0.6, mastodon: 0.5, peertube: 0.5, lemmy: 0.5,
+  ecosia: 0.7, qwant: 0.7, yandex: 0.7,
+  wikidata: 0.5, crates: 0.6, pypi: 0.6, osm: 0.5,
+  sec_edgar: 0.6
+};
+
+// ── Engine type classification (determines per-engine processing) ──
+// A = web search proxy, B = structured API, C = news source
+var ENGINE_TYPE = {
+  // Type A: Web search proxies (HTML parsing, SEO garbage possible)
+  startpage: "A", google: "A", bing_global: "A", bing_cn: "A",
+  yahoo: "A", brave: "A", duckduckgo: "A", baidu: "A", sogou: "A", naver: "A",
+  ecosia: "A", qwant: "A", yandex: "A",
+  wiby: "A", marginalia: "A", searchmysite: "A",
+  reddit_rss: "A",
+  // Type B: Structured API sources (already sorted by relevance)
+  github_repos: "B", stackoverflow: "B", npm: "B", devto: "B", hackernews: "B",
+  arxiv: "B", semantic_scholar: "B", pubmed: "B", paperswithcode: "B",
+  crates: "B", pypi: "B", wikidata: "B", osm: "B", sec_edgar: "B",
+  wikipedia: "B",
+  mastodon: "B", peertube: "B", lemmy: "B", reddit: "B",
+  // Type C: News sources (time-sensitive)
+  bbc: "C", bing_news: "C"
+};
+// Override bing_news: it's classified as C for news
+ENGINE_TYPE.bing_news = "C";
+
+// ── Engine-specific domain blacklists (URLs from these domains are always dropped) ──
+var ENGINE_DOMAIN_BLACKLIST = {
+  bing_global: ["bing.com", "www.bing.com", "cn.bing.com", "microsoft.com", "msn.com", "live.com"],
+  bing_cn: ["bing.com", "www.bing.com", "cn.bing.com", "microsoft.com", "msn.com", "live.com"],
+  yahoo: ["help.yahoo.com", "advertising.yahoo.com", "feedback.yahoo.com", "uk.help.yahoo.com",
+          "search.yahoo.com", "login.yahoo.com", "privacy.yahoo.com", "legal.yahoo.com",
+          "info.yahoo.com", "downloads.yahoo.com", "jp.promotions.yahoo.com"],
+  google: [],
+  duckduckgo: ["duckduckgo.com", "duck.com"],
+  brave: ["search.brave.com"],
+  baidu: ["baidu.com/link", "baidu.com/home", "passport.baidu.com", "tieba.baidu.com"],
+  sogou: ["sogou.com/web", "sogou.com/link"],
+  startpage: [],
+  naver: ["help.naver.com"],
+  ecosia: [],
+  qwant: [],
+  yandex: []
+};
+
 function getProviderConfig(name) {
   const key = String(name || "").toLowerCase();
   return PROVIDER_CONFIG[key] || null;
@@ -124,6 +188,18 @@ var TOOLS = [
         query: { type: "string", description: "Search query or URL to look up in the archive" },
         limit: { type: "number", description: "Maximum results, default 5, max 10" },
         mode: { type: "string", description: "Search mode: 'search' for archive items, 'wayback' for URL snapshots, default 'search'" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_semantic_scholar",
+    description: "Search academic papers across all publishers (IEEE, ACM, Springer, Elsevier, etc) via Semantic Scholar. Returns title, authors, abstract snippet, year, citation count, and URL. Broader than arXiv alone — covers the full corpus of scientific literature. No API key required.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query for academic papers" },
+        limit: { type: "number", description: "Maximum results, default 5, max 10" }
       },
       required: ["query"]
     }
@@ -618,7 +694,80 @@ var TOOLS = [
       },
       required: ["query"]
     }
-  }
+  },
+  {
+    name: "search_mojeek",
+    description: "Search the Mojeek independent web index (UK-based, own crawler, no Google/Bing dependency). Stable, fast (~0.3s), CAPTCHA-resistant. Returns web search results with title/URL/snippet. Use for general web search — Mojeek indexes a broad crawl of the open web. Add keywords like 'reddit' or 'github' to narrow results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query. Use plain keywords or phrases." },
+        limit: { type: "number", description: "Maximum results to return (default 5, max 20)" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_startpage",
+    description: "Search via Startpage (privacy-focused Google proxy). Returns Google-quality results without CAPTCHAs on CF Workers edge. Good for broad web search, technical queries, and Reddit content. Note: do NOT use site: operator — it triggers CAPTCHA. Instead add keywords like 'reddit' or 'github' to narrow results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query. Avoid site: operator — use keywords instead (e.g. 'reddit docker' instead of 'site:reddit.com docker')." },
+        limit: { type: "number", description: "Maximum results to return (default 5, max 20)" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_searchmysite",
+    description: "Search the SearchMySite index — a curated collection of personal blogs and indie websites (~15,000 sites). Ideal for finding authentic, human-written content: tutorials, opinion pieces, technical deep-dives. No corporate/SEO content. Results include title/URL/date.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query for personal blog content" },
+        limit: { type: "number", description: "Maximum results to return (default 5, max 20)" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_marginalia",
+    description: "Search the Marginalia independent search engine — focuses on non-commercial, small-web content (blogs, forums, wikis, academic sites). Curated index that deliberately excludes big-tech and SEO-heavy sites. May be rate-limited from CF Worker IPs (retry on 429). Results include title/URL/snippet with source categories.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query for small-web/indie content" },
+        limit: { type: "number", description: "Maximum results to return (default 5, max 20)" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_wiby",
+    description: "Search Wiby — a deliberately simple, old-school search engine that indexes hand-curated, non-commercial personal websites, blogs, and hobbyist pages. No JavaScript, no CAPTCHAs, fast response from CF Workers. Ideal for discovering authentic, human-written content (tutorials, personal projects, niche blogs). Results include title/URL/snippet.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query for indie/personal web content" },
+        limit: { type: "number", description: "Maximum results to return (default 5, max 20)" }
+      },
+      required: ["query"]
+    }
+  },
+  {
+    name: "search_reddit_rss",
+    description: "Search Reddit discussions — returns posts with title, URL, subreddit, and snippet. Because Reddit blocks CF Worker IPs, this tool uses a privacy search proxy to find Reddit discussions. Good for finding community opinions, real-world experiences, troubleshooting threads, and product recommendations. Results are filtered to reddit.com/r/ discussion URLs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query for Reddit posts and discussions" },
+        limit: { type: "number", description: "Maximum results to return (default 5, max 20)" },
+        sort: { type: "string", description: "Sort order: 'relevance' (default), 'new', 'top', 'comments'" }
+      },
+      required: ["query"]
+    }
+  },
 ];
 var NON_PUBLIC_TOOL_NAMES = new Set([
   "provider_list",
@@ -817,6 +966,8 @@ async function callTool(params, requestProviderConfig) {
       return toolResult(await searchEcosia(args), formatSearchResponse);
     case "search_archive":
       return toolResult(await searchArchive(args), formatSearchResponse);
+    case "search_semantic_scholar":
+      return toolResult(await searchSemanticScholar(args), formatSearchResponse);
     case "search_brave":
       return toolResult(await searchBrave(args), formatSearchResponse);
     case "search_arxiv":
@@ -905,6 +1056,18 @@ async function callTool(params, requestProviderConfig) {
       return toolResult(await crawlExtract(args), formatMetadataResponse);
     case "search_and_scrape":
       return toolResult(await searchAndScrape(args), formatFetchUrlResponse);
+    case "search_mojeek":
+      return toolResult(await searchMojeek(args), formatSearchResponse);
+    case "search_startpage":
+      return toolResult(await searchStartpage(args), formatSearchResponse);
+    case "search_searchmysite":
+      return toolResult(await searchSearchmysite(args), formatSearchResponse);
+    case "search_marginalia":
+      return toolResult(await searchMarginalia(args), formatSearchResponse);
+    case "search_wiby":
+      return toolResult(await searchWiby(args), formatSearchResponse);
+    case "search_reddit_rss":
+      return toolResult(await searchRedditRss(args), formatSearchResponse);
     default:
       throw new Error(`unknown tool: ${name}`);
   }
@@ -1236,16 +1399,17 @@ function detectSearchIntent(query) {
   const isChinese = /[㐀-鿿]/.test(text);
   const isNews = /\b(news|policy|press|regulation|government|announcement|update|breaking)\b|新闻|政策|发布|公告/.test(lowered);
   const isDeveloper = /\b(api|sdk|docs?|documentation|github|gitlab|stackoverflow|npm|package|library|framework|typescript|javascript|python|java|golang|rust|error|bug)\b/.test(lowered);
-  return { isChinese, isNews, isDeveloper };
+  const isAcademic = /\b(paper|research|study|algorithm|model|neural|transformer|benchmark|dataset|arxiv|conference|journal|citation|abstract|theorem|proof|experiment|evaluation|methodology|semantic|embedding|fine-tun|pre-train|gradient|optimi[sz]ation|regulari[sz]|convolution|attention|sequence|token|rnn|lstm|bert|gpt|clip|diffusion|gan|reinforcement|clustering|classification|regression|embed|vector|tensor|epoch|loss|accuracy|f1|precision|recall)\b|论文|研究|算法|模型|神经网络|深度学习|机器学习|梯度|优化|训练|微调/.test(lowered);
+  return { isChinese, isNews, isDeveloper, isAcademic };
 }
 __name(detectSearchIntent, "detectSearchIntent");
 __name2(detectSearchIntent, "detectSearchIntent");
 function defaultSearchAutoEngines(query) {
   const intent = detectSearchIntent(query);
-  if (intent.isChinese) return ["sogou", "bing_cn", "bing_news", "baidu", "bing_global", "brave", "duckduckgo", "google", "yahoo", "yandex"];
-  if (intent.isNews) return ["bbc", "bing_news", "bing_global", "brave", "duckduckgo", "google", "yahoo", "archive"];
-  if (intent.isDeveloper) return ["github_repos", "stackoverflow", "npm", "devto", "hackernews", "brave", "duckduckgo", "bing_global", "google"];
-  return ["bing_global", "duckduckgo", "google", "yahoo", "brave", "sogou", "baidu", "yandex", "naver", "archive", "wikipedia"];
+  if (intent.isChinese) return ["brave", "yahoo", "mojeek", "bing_cn", "bing_news", "baidu", "sogou", "bing_global", "naver", "wikipedia", "startpage", "reddit_rss", "marginalia", "semantic_scholar", "duckduckgo", "google", "yandex"];
+  if (intent.isNews) return ["brave", "mojeek", "bbc", "bing_news", "bing_global", "yahoo", "startpage", "reddit_rss", "naver", "archive", "wikipedia", "marginalia", "semantic_scholar", "duckduckgo", "google"];
+  if (intent.isDeveloper) return ["brave", "mojeek", "github_repos", "stackoverflow", "npm", "devto", "hackernews", "searchmysite", "reddit_rss", "naver", "startpage", "wiby", "marginalia", "semantic_scholar", "bing_global", "wikipedia", "duckduckgo", "google"];
+  return ["brave", "mojeek", "yahoo", "startpage", "bing_global", "naver", "wikipedia", "archive", "searchmysite", "marginalia", "wiby", "reddit_rss", "semantic_scholar", "bbc", "duckduckgo", "google", "sogou", "baidu", "yandex"];
 }
 __name(defaultSearchAutoEngines, "defaultSearchAutoEngines");
 __name2(defaultSearchAutoEngines, "defaultSearchAutoEngines");
@@ -1280,7 +1444,13 @@ function fullSearchAutoEngines(query) {
     "lemmy",
     "wikidata",
     "crates",
-    "pypi"
+    "pypi",
+    "semantic_scholar",
+    "wiby",
+    "reddit_rss",
+    "marginalia",
+    "mastodon",
+    "peertube"
   ];
   return [...new Set([...defaults, ...publicEngines])];
 }
@@ -1335,6 +1505,7 @@ async function runSearchEngine(engine, args) {
   if (engine === "qwant") return await searchQwant(args);
   if (engine === "ecosia") return await searchEcosia(args);
   if (engine === "archive") return await searchArchive(args);
+  if (engine === "semantic_scholar") return await searchSemanticScholar(args);
   if (engine === "arxiv") return await searchArxiv(args);
   if (engine === "pubmed") return await searchPubmed(args);
   if (engine === "hackernews") return await searchHackerNews(args);
@@ -1356,6 +1527,12 @@ async function runSearchEngine(engine, args) {
   if (engine === "crates") return await searchCrates(args);
   if (engine === "pypi") return await searchPypi(args);
   if (engine === "wiktionary") return await searchWiktionary(args);
+  if (engine === "mojeek") return await searchMojeek(args);
+  if (engine === "startpage") return await searchStartpage(args);
+  if (engine === "searchmysite") return await searchSearchmysite(args);
+  if (engine === "marginalia") return await searchMarginalia(args);
+  if (engine === "wiby") return await searchWiby(args);
+  if (engine === "reddit_rss") return await searchRedditRss(args);
   if (engine === "openlibrary") return await searchOpenLibrary(args);
   if (engine === "musicbrainz") return await searchMusicbrainz(args);
   if (engine === "crossref") return await searchCrossref(args);
@@ -1394,57 +1571,228 @@ function buildSearchAutoAttempt(engine, result, quality) {
 }
 __name(buildSearchAutoAttempt, "buildSearchAutoAttempt");
 __name2(buildSearchAutoAttempt, "buildSearchAutoAttempt");
-function scoreSearchAutoResult(item, query = "") {
-  const qualityWeight = item.quality_status === "green" ? 220 : item.quality_status === "yellow" ? 110 : 0;
-  const rankWeight = Math.max(0, 30 - (Number(item.rank_within_engine) || 0) * 3);
-  const itemSources = Array.isArray(item?.sources) ? item.sources.filter(Boolean) : item?.source ? [item.source] : [];
-  const multiSourceWeight = Math.max(0, itemSources.length - 1) * 40;
-  const title = String(item?.title || "");
-  const snippet = String(item?.snippet || "");
-  const content = `${title} ${snippet}`.trim();
-  const tokenMatches = tokenizeSearchText(query).filter((token) => token.length >= 2 && content.toLowerCase().includes(token)).length;
-  const tokenWeight = Math.min(45, tokenMatches * 8);
-  const officialHost = safeHostname(item?.url || "");
-  const officialWeight = /(?:^|\.)(?:gov|edu|org|nhc\.gov\.cn|who\.int)$/i.test(officialHost) ? 35 : 0;
-  const genericPenalty = isGenericWrapperResult(item, query, item.engine || item.source || "") ? 60 : 0;
-  const mismatchPenalty = isIntentMismatchResult(item, query, item.engine || item.source || "") ? 80 : 0;
-  const lowTrustPenalty = isLowTrustResult(item, query, item.engine || item.source || "") ? 120 : 0;
-  const cjkCoverage = cjkSubTokenCoverage(content, query);
-  const cjkCoverageWeight = Math.min(80, Math.round(cjkCoverage * 120));
-  const cjkSynonymWeight = hasCjkIntentSynonymMatch(content, query) ? 45 : 0;
-  const intentKeywords = SYNONYM_DICT ? SYNONYM_DICT.intent_action_keywords : ["推荐", "对比", "教程", "攻略", "食谱", "注意事项", "排行", "评测", "最佳实践", "安全加固", "替代方案", "入门", "课程", "减肥", "办公", "软件", "app"];
-  const intentNeedsSpecificPage = intentKeywords.some((k) => String(query || "").toLowerCase().includes(k));
-  const conceptTitlePatterns = SYNONYM_DICT ? SYNONYM_DICT.concept_page_title_patterns : ["百度百科", "wikipedia", "维基百科"];
-  const conceptHostPatterns = SYNONYM_DICT ? SYNONYM_DICT.concept_page_host_patterns : ["baike.baidu.com", "wikipedia.org", "linux.org"];
-  const conceptTitleExact = SYNONYM_DICT ? SYNONYM_DICT.concept_page_title_exact : ["download linux", "linux.org"];
-  const conceptPage = conceptTitlePatterns.some((p) => title.toLowerCase().includes(p.toLowerCase())) || conceptTitleExact.some((p) => title.toLowerCase() === p) || conceptHostPatterns.some((p) => officialHost.endsWith(p));
-  const conceptPenalty = intentNeedsSpecificPage && conceptPage && cjkCoverage < 0.35 ? 120 : 0;
-  return qualityWeight + rankWeight + multiSourceWeight + tokenWeight + cjkCoverageWeight + cjkSynonymWeight + officialWeight - genericPenalty - mismatchPenalty - lowTrustPenalty - conceptPenalty;
+// ════════════════════════════════════════════════════════════════
+// RRF-BASED RANKING (Reciprocal Rank Fusion with engine weights)
+// Replaces all hardcoded additive constants with a principled formula.
+// See: https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf
+// ════════════════════════════════════════════════════════════════
+const RRF_K = 60;
+
+// ── Levenshtein distance for fuzzy title matching ──────────
+function _levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
 }
-__name(scoreSearchAutoResult, "scoreSearchAutoResult");
-__name2(scoreSearchAutoResult, "scoreSearchAutoResult");
+function _titleSimilarity(a, b) {
+  const na = String(a || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const nb = String(b || "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  if (na.includes(nb) || nb.includes(na)) return 0.9;
+  const maxLen = Math.max(na.length, nb.length);
+  if (maxLen < 4) return na === nb ? 1 : 0;
+  const dist = _levenshtein(na, nb);
+  return 1 - dist / maxLen;
+}
+
+// ── Layer 2: Query-type dynamic weight multiplier ─────────
+function _queryTypeWeightMultiplier(engine, intent) {
+  let mult = 1.0;
+  if (intent.isDeveloper && /github_repos|stackoverflow|npm|devto|hackernews/.test(engine)) mult *= 1.5;
+  if (intent.isNews && /bing_news|bbc/.test(engine)) mult *= 1.5;
+  if (intent.isChinese && /baidu|sogou|bing_cn/.test(engine)) mult *= 1.3;
+  if (intent.isAcademic && /arxiv|semantic_scholar|pubmed|paperswithcode/.test(engine)) mult *= 1.5;
+  return mult;
+}
+
+// ── Layer 3: Health-based weight decay ────────────────────
+function _healthWeightMultiplier(engine) {
+  const stats = getEngineHealthStats();
+  const s = stats[engine];
+  if (!s || s.total < 3) return 1.0;
+  if (s.block_rate > 50) return 0.3;
+  if (s.block_rate > 30) return 0.6;
+  return 1.0;
+}
+
+// ── Combined engine weight (base × query-type × health) ───
+function getEngineWeight(engine, query) {
+  const base = ENGINE_BASE_WEIGHTS[engine] ?? 1.0;
+  const intent = detectSearchIntent(query);
+  const qMult = _queryTypeWeightMultiplier(engine, intent);
+  const hMult = _healthWeightMultiplier(engine);
+  return base * qMult * hMult;
+}
+
+// ── RRF score: sum of weight/(k+rank) for each matching engine ──
+function computeRRFScore(positions, query) {
+  // positions: array of { engine, rank }
+  let score = 0;
+  for (const { engine, rank } of positions) {
+    const weight = getEngineWeight(engine, query);
+    score += weight / (RRF_K + Math.max(1, rank));
+  }
+  return score;
+}
+
+// ── Tiebreaker chain (sequential, NOT additive) ───────────
+function compareTiebreakers(a, b, query) {
+  // 1. More engines = higher priority
+  const aEngines = (a._positions?.length || 0);
+  const bEngines = (b._positions?.length || 0);
+  if (aEngines !== bEngines) return bEngines - aEngines;
+
+  // 2. Title contains more query tokens
+  const aTokens = tokenizeSearchText(query).filter(t => t.length >= 2 && (a.title || "").toLowerCase().includes(t)).length;
+  const bTokens = tokenizeSearchText(query).filter(t => t.length >= 2 && (b.title || "").toLowerCase().includes(t)).length;
+  if (aTokens !== bTokens) return bTokens - aTokens;
+
+  // 3. Longer content = more information
+  const aLen = String(a.title || "").length + String(a.snippet || "").length;
+  const bLen = String(b.title || "").length + String(b.snippet || "").length;
+  if (aLen !== bLen) return bLen - aLen;
+
+  // 4. Domain authority: gov > edu > org > others
+  const _domainScore = (url) => {
+    const h = safeHostname(url);
+    if (/(?:^|\.)(gov|edu)$/.test(h)) return 3;
+    if (/(?:^|\.)org$/.test(h)) return 2;
+    if (/(?:^|\.)(gov|edu)\./.test(h)) return 2;
+    return 0;
+  };
+  const aDom = _domainScore(a.url), bDom = _domainScore(b.url);
+  if (aDom !== bDom) return bDom - aDom;
+
+  // 5. Result type quality
+  const _typeScore = (item) => {
+    const t = item.result_type || "";
+    if (t === "question" || t === "article" || t === "note") return 2;
+    if (t === "thread") return 1;
+    return 0;
+  };
+  const aType = _typeScore(a), bType = _typeScore(b);
+  if (aType !== bType) return bType - aType;
+
+  return 0; // truly tied
+}
+
+// ── Domain diversity: sliding window dedup ────────────────
+function applyDomainDiversity(results, windowSize, maxPerDomain) {
+  const final = [];
+  const deferred = [];
+  for (const r of results) {
+    const domain = safeHostname(r.url || "");
+    const recentDomains = final.slice(-windowSize).map(item => safeHostname(item.url || ""));
+    const domainCount = recentDomains.filter(d => d === domain).length;
+    if (domainCount >= maxPerDomain) {
+      deferred.push(r);
+    } else {
+      final.push(r);
+    }
+  }
+  return [...final, ...deferred];
+}
+
+// ════════════════════════════════════════════════════════════════
+// MERGE — replaces old scoreSearchAutoResult + mergeSearchAutoResults
+// ════════════════════════════════════════════════════════════════
 function mergeSearchAutoResults(collectedResults, limit, query = "") {
-  const byUrl = /* @__PURE__ */ new Map();
+  const maxLimit = clampLimit(limit);
+
+  // ── Phase 1: Fuzzy dedup (URL exact + same-domain title similarity ≥ 0.85) ──
+  const dedupMap = new Map(); // key → merged entry
+
   for (const item of collectedResults) {
     const url = String(item?.url || "").trim();
     if (!url) continue;
-    const candidate = { ...item, score: scoreSearchAutoResult(item, query) };
-    const existing = byUrl.get(url);
-    if (!existing || candidate.score > existing.score) {
-      const mergedSources = [...new Set([...(Array.isArray(existing?.sources) ? existing.sources : existing?.source ? [existing.source] : []), ...(Array.isArray(candidate.sources) ? candidate.sources : candidate.source ? [candidate.source] : [])].filter(Boolean))];
-      byUrl.set(url, mergedSources.length ? { ...candidate, sources: mergedSources } : candidate);
-      continue;
+    const host = safeHostname(url);
+    const title = String(item?.title || "").trim();
+    const engine = String(item?.engine || item?.source || "").toLowerCase();
+    const rank = Number(item?.rank_within_engine) || 99;
+
+    // Try URL exact match first
+    let matched = dedupMap.get(url);
+
+    // If no URL match, try same-domain + title similarity
+    if (!matched && title && host) {
+      for (const [existingUrl, entry] of dedupMap) {
+        const existingHost = safeHostname(existingUrl);
+        if (existingHost === host) {
+          const sim = _titleSimilarity(title, entry.title);
+          if (sim >= 0.85) {
+            matched = entry;
+            break;
+          }
+        }
+      }
     }
-    const mergedSources = [...new Set([...(Array.isArray(existing?.sources) ? existing.sources : existing?.source ? [existing.source] : []), ...(Array.isArray(candidate.sources) ? candidate.sources : candidate.source ? [candidate.source] : [])].filter(Boolean))];
-    if (mergedSources.length) {
-      existing.sources = mergedSources;
-      existing.score += Math.max(10, (mergedSources.length - 1) * 15);
+
+    if (matched) {
+      // Merge: accumulate positions + engines, keep best content
+      matched._positions.push({ engine, rank });
+      matched._engines.add(engine);
+      // Keep the longer snippet/title
+      if (String(item.snippet || "").length > String(matched.snippet || "").length) {
+        matched.snippet = item.snippet;
+      }
+      if (title.length > String(matched.title || "").length) {
+        matched.title = title;
+      }
+      // Keep URLs: prefer shorter/cleaner URL
+      if (url.length < String(matched.url || "").length && !url.includes("?")) {
+        matched.url = url;
+      }
+    } else {
+      dedupMap.set(url, {
+        ...item,
+        title,
+        url,
+        _positions: [{ engine, rank }],
+        _engines: new Set([engine])
+      });
     }
   }
-  return [...byUrl.values()].sort((a, b) => b.score - a.score || a.rank_within_engine - b.rank_within_engine).slice(0, clampLimit(limit)).map(({ score, ...item }) => item);
+
+  // ── Phase 2: RRF scoring ──
+  const scored = [...dedupMap.values()].map(item => {
+    const rrfScore = computeRRFScore(item._positions, query);
+    return { ...item, _rrfScore: rrfScore };
+  });
+
+  // ── Phase 3: Sort by RRF score, then tiebreaker chain ──
+  scored.sort((a, b) => {
+    if (b._rrfScore !== a._rrfScore) return b._rrfScore - a._rrfScore;
+    return compareTiebreakers(a, b, query);
+  });
+
+  // ── Phase 4: Domain diversity (window=8, max 2 per domain) ──
+  const diversified = applyDomainDiversity(scored, 8, 2);
+
+  // ── Phase 5: Clean up internal fields + truncate ──
+  return diversified.slice(0, maxLimit).map(({ _positions, _engines, _rrfScore, ...item }) => {
+    const engines = [..._engines].filter(Boolean);
+    const sources = [...new Set([...engines, ...(Array.isArray(item.sources) ? item.sources : []), ...(item.source ? [item.source] : [])])];
+    return {
+      ...item,
+      sources: sources.length ? sources : undefined,
+      engine: engines[0] || item.engine || item.source,
+      engine_count: engines.length
+    };
+  });
 }
-__name(mergeSearchAutoResults, "mergeSearchAutoResults");
-__name2(mergeSearchAutoResults, "mergeSearchAutoResults");
 function buildSearchAutoResponse({ args, engines, attempts, acceptedResults, siteTarget }) {
   const mergedResults = mergeSearchAutoResults(acceptedResults, args.limit, args.query);
   const contributingSources = [...new Set(mergedResults.flatMap((item) => Array.isArray(item?.sources) && item.sources.length ? item.sources : item?.source ? [item.source] : []).filter(Boolean))];
@@ -1501,7 +1849,7 @@ async function searchAuto(args) {
   const RACE_TIMEOUT_MS = 12000;
   let raceWon = false;
   let raceResults = [];
-  const circuitBroken = engines.filter((e) => !isEngineCircuitBroken(e));
+  const circuitBroken = engines.filter((e) => !isEngineCircuitBroken(e) && !isEngineJunkFrozen(e));
   const firstBatch = circuitBroken.slice(0, CONCURRENT_LIMIT);
   const remaining = circuitBroken.slice(CONCURRENT_LIMIT);
   const racePromises = firstBatch.map(async (engine) => {
@@ -1561,6 +1909,10 @@ async function searchAuto(args) {
   for (const engine of remaining) {
     if (isEngineCircuitBroken(engine)) {
       attempts.push({ engine, ok: false, error: "circuit_breaker", quality_status: "red", quality_reason: "circuit_breaker_frozen", filtered_count: 0, result_count: 0 });
+      continue;
+    }
+    if (isEngineJunkFrozen(engine)) {
+      attempts.push({ engine, ok: false, error: "junk_frozen", quality_status: "red", quality_reason: "junk_soft_frozen", filtered_count: 0, result_count: 0 });
       continue;
     }
     try {
@@ -1769,6 +2121,10 @@ __name2(searchBingRoute, "searchBingRoute");
 async function searchYahoo(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
+  // Helper: pipe all results through finalizeVerticalSearchResults (v2 pipeline)
+  function finalizeYahoo(results, blocked = false, block_reason = "") {
+    return finalizeVerticalSearchResults({ source: "yahoo", query, limit, results, blocked, block_reason });
+  }
   const attempts = [
     { url: `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8&nojs=1`, headers: { "User-Agent": randomGsaUA(), "Accept": "text/html,*/*", "Accept-Language": "en-US,en;q=0.9" } },
     { url: `https://search.yahoo.com/search?p=${encodeURIComponent(query)}&n=${limit}&ei=UTF-8`, headers: {} },
@@ -1786,7 +2142,7 @@ async function searchYahoo(args) {
         response = fetched.response;
         diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
         const initialResults = diagnosis.blocked ? [] : extractYahooResults(text, limit);
-        if (initialResults.length > 0) return searchResult({ source: "yahoo", query, limit, results: initialResults, blocked: false, block_reason: "" });
+        if (initialResults.length > 0) return finalizeYahoo(initialResults);
         shouldRetryWithConsentCookie = diagnosis.reason === "consent_page" || attempt.url.includes("nojs=1") && !diagnosis.blocked;
       } catch (error) {
         shouldRetryWithConsentCookie = attempt.url.includes("nojs=1") && /upstream 5\d\d/i.test(String(error?.message || error || ""));
@@ -1816,7 +2172,7 @@ async function searchYahoo(args) {
       if (!diagnosis.blocked) {
         results = extractYahooResults(text, limit);
       }
-      if (results.length > 0) return searchResult({ source: "yahoo", query, limit, results, blocked: false, block_reason: "" });
+      if (results.length > 0) return finalizeYahoo(results);
       if (diagnosis.blocked || shouldRetryWithConsentCookie) {
         continue;
       }
@@ -1842,7 +2198,7 @@ async function searchYahoo(args) {
       diagnosis = diagnoseSearchHtml("yahoo", text, response.url);
       const initialResults = diagnosis.blocked ? [] : extractYahooResults(text, limit);
       if (initialResults.length > 0) {
-        return searchResult({ source: "yahoo", query, limit, results: initialResults, blocked: false, block_reason: "" });
+        return finalizeYahoo(initialResults);
       }
       shouldRetryWithConsentCookie = diagnosis.reason === "consent_page" || !diagnosis.blocked;
     } catch (error) {
@@ -1871,16 +2227,16 @@ async function searchYahoo(args) {
     if (!diagnosis.blocked) {
       const results = extractYahooResults(text, limit);
       if (results.length > 0) {
-        return searchResult({ source: "yahoo", query, limit, results, blocked: false, block_reason: "" });
+        return finalizeYahoo(results);
       }
       if (shouldRetryWithConsentCookie) {
-        return searchResult({ source: "yahoo", query, limit, results: [], blocked: true, block_reason: "consent_page" });
+        return finalizeYahoo([], true, "consent_page");
       }
-      return searchResult({ source: "yahoo", query, limit, results: [], blocked: false, block_reason: "" });
+      return finalizeYahoo([]);
     }
   } catch (e) {
   }
-  return searchResult({ source: "yahoo", query, limit, results: [], blocked: true, block_reason: "consent_page" });
+  return finalizeYahoo([], true, "consent_page");
 }
 __name(searchYahoo, "searchYahoo");
 __name2(searchYahoo, "searchYahoo");
@@ -2224,6 +2580,59 @@ async function searchArchive(args) {
 }
 __name(searchArchive, "searchArchive");
 __name2(searchArchive, "searchArchive");
+
+// ── Semantic Scholar — academic paper search (covers IEEE, ACM, Springer, etc) ──
+async function searchSemanticScholar(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const fields = "title,url,year,abstract,citationCount,journal,authors";
+  const cfg = getProviderConfig("semantic_scholar");
+  const baseUrl = cfg?.baseUrl || "https://api.semanticscholar.org";
+  const apiKey = cfg?.apiKey || "";
+  const apiUrl = `${baseUrl}/graph/v1/paper/search?query=${encodeURIComponent(query)}&limit=${limit}&fields=${fields}`;
+  try {
+    const headers = { "User-Agent": "search-mcp-worker/1.0", "Accept": "application/json" };
+    if (apiKey) headers["x-api-key"] = apiKey;
+    const resp = await fetch(apiUrl, { headers, signal: AbortSignal.timeout(15000) });
+    if (resp.status === 429) {
+      // Rate limited — retry with exponential backoff (max 1 retry)
+      await new Promise((r) => setTimeout(r, 1500));
+      const resp2 = await fetch(apiUrl, { headers, signal: AbortSignal.timeout(15000) });
+      if (!resp2.ok) throw new Error(`HTTP ${resp2.status} (after 429 retry)`);
+      const data = await resp2.json();
+      return finalizeSemanticScholarResults(data, query, limit);
+    }
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    return finalizeSemanticScholarResults(data, query, limit);
+  } catch (e) {
+    // Rate-limited? Fall back to arXiv as academic backup
+    try {
+      const fallback = await searchArxiv({ query, limit });
+      if (fallback?.results?.length) return fallback;
+    } catch { /* arxiv also failed */ }
+    return searchError("semantic_scholar", query, limit, e, { fetch_path: "api.semanticscholar.org" });
+  }
+}
+function finalizeSemanticScholarResults(data, query, limit) {
+  const results = (data?.data || []).slice(0, limit).map((p) => {
+    const journal = p.journal || {};
+    const journalName = journal.name || journal.displayName || "";
+    const authors = (p.authors || []).map((a) => a.name || "").filter(Boolean).slice(0, 3).join(", ");
+    const snippet = cleanText(p.abstract || "").substring(0, 300) || (journalName ? `${journalName}` : "");
+    const yearStr = p.year ? `${p.year}` : "";
+    return {
+      title: cleanText(p.title || "").substring(0, 160),
+      url: p.url || `https://www.semanticscholar.org/paper/${p.paperId}`,
+      snippet,
+      authors: authors || undefined,
+      year: yearStr || undefined,
+      citations: p.citationCount || 0
+    };
+  });
+  return finalizeVerticalSearchResults({ source: "semantic_scholar", query, limit, results, fetch_path: "api.semanticscholar.org" });
+}
+
 async function searchArxiv(args) {
   const query = requireString(args.query, "query");
   const limit = clampLimit(args.limit);
@@ -2381,49 +2790,209 @@ function shouldDropVerticalResultType(resultType, source, hasPreferred) {
 }
 __name(shouldDropVerticalResultType, "shouldDropVerticalResultType");
 __name2(shouldDropVerticalResultType, "shouldDropVerticalResultType");
-function scoreVerticalResult(item, query, source) {
+// ════════════════════════════════════════════════════════════════
+// SINGLE-ENGINE RANKING v2 — replaces scoreVerticalResult
+// Three cascade levels + confidence-based truncation
+// ════════════════════════════════════════════════════════════════
+
+// ── Engine-level confidence assessment (before per-item filtering) ──
+// Returns: "HIGH" | "MEDIUM" | "LOW" | "JUNK"
+function assessEngineConfidence(results, source) {
+  const n = results.length;
+  if (n === 0) return "JUNK";
+
+  // Count unique 2nd-level domains
+  const domains = results.map(r => {
+    try { return new URL(r.url || "").hostname.split(".").slice(-2).join("."); } catch { return ""; }
+  }).filter(Boolean);
+  const uniqueDomains = new Set(domains).size;
+  const domainConcentration = n > 0 ? (domains.length - uniqueDomains) / n : 0;
+
+  // Title diversity: how many unique titles (ignoring trailing numbers)
+  const titleSet = new Set(results.map(r => String(r.title || "").replace(/\s*\d+\s*$/g, "").trim().toLowerCase()).filter(Boolean));
+
+  // Snippet empty rate
+  const emptySnippet = results.filter(r => !r.snippet || r.snippet.length < 20).length;
+  const emptyRate = emptySnippet / n;
+
+  // Ad/sponsor ratio
+  const adPattern = /sponsored|advertisement|ads?\b|推广|广告|赞助/i;
+  const adCount = results.filter(r => adPattern.test(r.title || "") || adPattern.test(r.snippet || "")).length;
+  const adRate = adCount / n;
+
+  // Signal checks
+  let junkSignals = 0;
+  if (domainConcentration >= 0.5) junkSignals++;
+  if (titleSet.size <= n * 0.6 && n >= 5) junkSignals++;
+  if (emptyRate >= 0.6) junkSignals++;
+  if (adRate >= 0.3) junkSignals++;
+
+  if (junkSignals >= 3) return "JUNK";
+  if (junkSignals >= 2) return "LOW";
+  if (junkSignals >= 1) return "MEDIUM";
+  return "HIGH";
+}
+__name(assessEngineConfidence, "assessEngineConfidence");
+__name2(assessEngineConfidence, "assessEngineConfidence");
+
+// ── New hard-drop signals (additional to existing 4 gates) ──
+function isEngineSelfPage(item, source) {
+  const url = String(item?.url || "").toLowerCase();
+  const host = (() => { try { return new URL(url).hostname; } catch { return ""; } })();
+  const path = (() => { try { return new URL(url).pathname; } catch { return ""; } })();
+
+  // Engine-specific domain blacklist
+  const blacklist = ENGINE_DOMAIN_BLACKLIST[source] || [];
+  for (const blocked of blacklist) {
+    if (host === blocked || host.endsWith("." + blocked)) return true;
+    // baidu.com/link style path matching
+    if (blocked.includes("/") && path.startsWith(blocked.substring(blocked.indexOf("/")))) return true;
+  }
+
+  // Help/support/advertising/feedback pages (catches Yahoo Chinese garbage)
+  if (/^(help|support|advertising|feedback|login|privacy|legal|info|about)\./i.test(host)) return true;
+  if (/^\/(help|support|contact|advertise|feedback|about|privacy|terms|legal)/i.test(path)) return true;
+
+  // Captcha / JS-required pages
   const title = String(item?.title || "");
   const snippet = String(item?.snippet || "");
-  const content = `${title} ${snippet}`.toLowerCase();
-  const resultType = String(item?.result_type || "");
-  const rank = Number(item?.rank_within_engine) || 99;
-  let score = Math.max(0, 40 - rank * 3);
-  const typeWeights = {
-    article: 90,
-    note: 95,
-    question: 90,
-    thread: 90,
-    result: 20,
-    topic_page: -40,
-    channel_page: -70,
-    homepage: -80,
-    landing_page: -80,
-    tag_page: -70,
-    user_profile: -90,
-    disambiguation: -85,
-    profile: -90,
-    search_page: -80,
-    listing_page: -70,
-    community_home: -80
-  };
-  score += typeWeights[resultType] || 0;
-  const tokens = tokenizeSearchText(query).filter((token) => token.length >= 2);
-  for (const token of tokens) {
-    if (title.toLowerCase().includes(token)) score += 14;
-    else if (content.includes(token)) score += 6;
-  }
-  if (hasCjkText(query)) {
-    const normalizedQuery = normalizeCjkQuery(query);
-    const normalizedTitle = normalizeCjkQuery(title);
-    const normalizedSnippet = normalizeCjkQuery(snippet);
-    if (normalizedQuery && normalizedTitle.includes(normalizedQuery)) score += 60;
-    else if (normalizedQuery && normalizedSnippet.includes(normalizedQuery)) score += 24;
-  }
-  if (source === "wikipedia" && /\([^)]*\)/.test(title)) score += 12;
-  return score;
+  if (/please enable javascript|captcha|recaptcha|verify you are human|access denied|blocked/i.test(snippet)) return true;
+
+  // Snippet == title (SEO template)
+  const t = title.trim().toLowerCase();
+  const s = snippet.trim().toLowerCase();
+  if (t && s && t.length > 10 && t === s) return true;
+
+  return false;
 }
-__name(scoreVerticalResult, "scoreVerticalResult");
-__name2(scoreVerticalResult, "scoreVerticalResult");
+__name(isEngineSelfPage, "isEngineSelfPage");
+__name2(isEngineSelfPage, "isEngineSelfPage");
+
+// ── Type B: API source cascade (name match → API order → anomaly sink) ──
+function cascadeSortTypeB(results, query, source) {
+  const queryLower = String(query || "").toLowerCase().trim();
+  const nameFields = {
+    npm: "name", github_repos: "name", crates: "name", pypi: "name",
+    arxiv: "title", semantic_scholar: "title", pubmed: "title",
+    paperswithcode: "title", stackoverflow: "title",
+    devto: "title", hackernews: "title", wikipedia: "title",
+    wikidata: "title", sec_edgar: "title"
+  };
+  const nameField = nameFields[source] || "title";
+
+  // Split into: exact-match, normal, anomaly
+  const exactMatch = [];
+  const normal = [];
+  const anomaly = [];
+
+  for (const r of results) {
+    const name = String(r[nameField] || r.title || r.name || "").toLowerCase().trim();
+    const desc = String(r.snippet || r.description || r.abstract || "");
+    // Anomaly: title > 300 chars, desc == title, or gibberish
+    if ((r.title || "").length > 300 || (desc && name && desc.trim() === name)) {
+      anomaly.push(r);
+    } else if (queryLower.length >= 3 && name === queryLower) {
+      exactMatch.push(r);
+    } else {
+      normal.push(r);
+    }
+  }
+  return [...exactMatch, ...normal, ...anomaly];
+}
+
+// ── Type C: News cascade (time → title match within same time bucket) ──
+function cascadeSortTypeC(results, query, source) {
+  const tokens = tokenizeSearchText(query).filter(t => t.length >= 2);
+  const now = Date.now();
+
+  // Classify freshness
+  function timeBucket(r) {
+    const dateStr = r.date || r.published_at || r.pub_date || r.created_at || "";
+    if (!dateStr) return 3; // old / unknown
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return 3;
+      const age = (now - d.getTime()) / 1000;
+      if (age <= 86400) return 0; // 24h
+      if (age <= 604800) return 1; // 7d
+      if (age <= 2592000) return 2; // 30d
+      return 3;
+    } catch { return 3; }
+  }
+
+  function titleMatchScore(r) {
+    const title = String(r.title || "").toLowerCase();
+    let hits = 0;
+    for (const t of tokens) if (title.includes(t)) hits++;
+    return hits;
+  }
+
+  return [...results].sort((a, b) => {
+    const ta = timeBucket(a), tb = timeBucket(b);
+    if (ta !== tb) return ta - tb;
+    const ma = titleMatchScore(a), mb = titleMatchScore(b);
+    if (ma !== mb) return mb - ma;
+    return (a.rank_within_engine || 99) - (b.rank_within_engine || 99);
+  });
+}
+
+// ── Type A: Web search cascade (title match → time decay → content info → original position) ──
+function cascadeSortTypeA(results, query, source) {
+  const tokens = tokenizeSearchText(query).filter(t => t.length >= 2);
+  const totalTokens = tokens.length || 1;
+
+  function titleTier(r) {
+    const title = String(r.title || "").toLowerCase();
+    let hits = 0;
+    for (const t of tokens) if (title.includes(t)) hits++;
+    const ratio = hits / totalTokens;
+    if (ratio >= 1.0) return 0;   // all tokens hit
+    if (ratio >= 0.8) return 1;   // ≥80% tokens
+    if (ratio >= 0.5) return 2;   // ≥50% tokens
+    return 3;                      // <50%
+  }
+
+  // L2a: Time decay — newer results rank higher within same title tier
+  // 0 = ≤2yr, 1 = 2-5yr, 2 = >5yr, 1.5 = no date (center, not bottom)
+  function timeDecayTier(r) {
+    const dateStr = r.date || r.publishedDate || r.publish_date || r.published_at || "";
+    if (!dateStr) return 1.5; // no date → center
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return 1.5;
+      const ageYr = (Date.now() - d.getTime()) / (365.25 * 86400 * 1000);
+      if (ageYr <= 2) return 0;
+      if (ageYr <= 5) return 1;
+      return 2;
+    } catch { return 1.5; }
+  }
+
+  function contentInfoTier(r) {
+    const snippet = String(r.snippet || "");
+    if (snippet.length >= 200) return 0;
+    if (snippet.length >= 100) return 1;
+    return 2;
+  }
+
+  return [...results].sort((a, b) => {
+    const ta = titleTier(a), tb = titleTier(b);
+    if (ta !== tb) return ta - tb;
+    // L2a: time decay (between title match and content info)
+    const da = timeDecayTier(a), db = timeDecayTier(b);
+    if (da !== db) return da - db;
+    // L2b: content info
+    const ca = contentInfoTier(a), cb = contentInfoTier(b);
+    if (ca !== cb) return ca - cb;
+    return (a.rank_within_engine || 99) - (b.rank_within_engine || 99);
+  });
+}
+
+// ── Confidence-based truncation limits ──
+var CONFIDENCE_LIMITS = { HIGH: 15, MEDIUM: 8, LOW: 3, JUNK: 0 };
+
+// ════════════════════════════════════════════════════════════════
+// FINALIZE v2 — replaces old scoreVerticalResult + finalizeVerticalSearchResults
+// ════════════════════════════════════════════════════════════════
 function finalizeVerticalSearchResults({ source, query, limit, results, blocked, block_reason, ...extra }) {
   const normalized = (Array.isArray(results) ? results : []).map((item, index) => {
     const resultType = classifyVerticalResultType(item, source);
@@ -2435,54 +3004,85 @@ function finalizeVerticalSearchResults({ source, query, limit, results, blocked,
       result_type: resultType
     };
   });
-  const hasPreferred = normalized.some((item) => isPreferredVerticalResultType(item.result_type, source));
-  let genericCount = 0;
-  let mismatchCount = 0;
-  let lowTrustCount = 0;
-  let typeDropCount = 0;
-  const filteredResults = normalized.filter((item) => {
-    if (isGenericWrapperResult(item, query, source)) {
-      genericCount++;
-      return false;
-    }
-    if (isHardIntentMismatchResult(item, query, source)) {
-      mismatchCount++;
-      return false;
-    }
-    if (isLowTrustResult(item, query, source)) {
-      lowTrustCount++;
-      return false;
-    }
-    if (shouldDropVerticalResultType(item.result_type, source, hasPreferred)) {
-      typeDropCount++;
-      return false;
-    }
+
+  // ── Phase 0: Engine-level confidence assessment ──
+  const confidence = assessEngineConfidence(normalized, source);
+  const truncLimit = CONFIDENCE_LIMITS[confidence] || 15;
+
+  // JUNK → record for soft-freeze, return immediately
+  if (confidence === "JUNK") {
+    recordEngineJunk(source);
+    return searchResult({
+      source, query, limit, results: [],
+      blocked: false, block_reason: "",
+      ...extra,
+      filtered_count: normalized.length,
+      filtered_reason: "engine_confidence_junk",
+      quality_status: "junk",
+      quality_reason: `confidence=JUNK (domain concentration / low title diversity / high empty rate / high ad rate)`
+    });
+  }
+  // Non-JUNK result → reset junk counter
+  resetEngineJunk(source);
+
+  // ── Phase 1: Hard-drop filters (sequential, any match = drop) ──
+  let genericCount = 0, mismatchCount = 0, lowTrustCount = 0, typeDropCount = 0, selfPageCount = 0;
+  const hasPreferred = normalized.some(item => isPreferredVerticalResultType(item.result_type, source));
+
+  const filteredResults = normalized.filter(item => {
+    // Gate 1: Generic wrapper (existing)
+    if (isGenericWrapperResult(item, query, source)) { genericCount++; return false; }
+    // Gate 2: Hard intent mismatch (existing)
+    if (isHardIntentMismatchResult(item, query, source)) { mismatchCount++; return false; }
+    // Gate 3: Low trust SEO (existing, CJK only)
+    if (isLowTrustResult(item, query, source)) { lowTrustCount++; return false; }
+    // Gate 4: Type downgrade (existing)
+    if (shouldDropVerticalResultType(item.result_type, source, hasPreferred)) { typeDropCount++; return false; }
+    // Gate 5: Engine self-pages / help/support/captcha (NEW)
+    if (isEngineSelfPage(item, source)) { selfPageCount++; return false; }
     return true;
-  }).sort((a, b) => scoreVerticalResult(b, query, source) - scoreVerticalResult(a, query, source) || a.rank_within_engine - b.rank_within_engine).slice(0, limit);
-  const filteredCount = Math.max(0, normalized.length - filteredResults.length);
+  });
+
+  // ── Phase 2: Cascade sort based on engine type ──
+  const engineType = ENGINE_TYPE[source] || "A";
+  let sorted;
+  if (engineType === "B") {
+    sorted = cascadeSortTypeB(filteredResults, query, source);
+  } else if (engineType === "C") {
+    sorted = cascadeSortTypeC(filteredResults, query, source);
+  } else {
+    sorted = cascadeSortTypeA(filteredResults, query, source);
+  }
+
+  // ── Phase 3: Confidence-based truncation ──
+  const finalResults = sorted.slice(0, truncLimit);
+
+  const filteredCount = normalized.length - finalResults.length;
   let filteredReason = "";
-  if (filteredCount > 0) {
+  if (filteredCount > 0 || confidence !== "HIGH") {
     const reasons = [
       ["generic_wrapper_results", genericCount],
       ["intent_mismatch", mismatchCount],
       ["low_trust_results", lowTrustCount],
-      ["vertical_result_type", typeDropCount]
-    ].filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1]);
+      ["vertical_result_type", typeDropCount],
+      ["engine_self_pages", selfPageCount],
+      ["confidence_truncated", confidence !== "HIGH" ? 1 : 0]
+    ].filter(([, c]) => c > 0).sort((a, b) => b[1] - a[1]);
     filteredReason = reasons.length === 1 ? reasons[0][0] : reasons[0]?.[0] || "vertical_precision_filter";
   }
-  const quality = evaluateSearchQuality({ results: filteredResults, filtered_count: filteredCount, filtered_reason: filteredReason }, query, source);
+
+  const quality = evaluateSearchQuality({ results: finalResults, filtered_count: filteredCount, filtered_reason: filteredReason }, query, source);
+
   return searchResult({
-    source,
-    query,
-    limit,
-    results: filteredResults,
-    blocked,
-    block_reason,
+    source, query, limit,
+    results: finalResults,
+    blocked, block_reason,
     ...extra,
     filtered_count: filteredCount,
     filtered_reason: filteredReason,
     quality_status: quality.quality_status,
-    quality_reason: quality.quality_reason
+    quality_reason: quality.quality_reason,
+    _engine_confidence: confidence
   });
 }
 __name(finalizeVerticalSearchResults, "finalizeVerticalSearchResults");
@@ -3114,6 +3714,212 @@ async function findRss(args) {
 }
 __name(findRss, "findRss");
 __name2(findRss, "findRss");
+
+// ── New independent search engines ──────────────────────
+async function searchMojeek(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const url = `https://www.mojeek.com/search?q=${encodeURIComponent(query)}`;
+  try {
+    const { text, response } = await fetchWithUA(url, {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "text/html,*/*",
+      "Accept-Language": "en-US,en;q=0.9"
+    }, { retries: 1, retryDelay: 300 });
+    const fetchPath = safeHostname(response.url) || safeHostname(url);
+    const diagnosis = diagnoseSearchHtml("mojeek", text, response.url);
+    if (diagnosis.blocked) return searchResult({ source: "mojeek", query, limit, results: [], blocked: true, block_reason: diagnosis.reason || "", fetch_path: fetchPath });
+    let results = [];
+    const liRe = /<li\s+class="r(\d+)[^"]*"[^>]*>([\s\S]*?)<\/li>/gi;
+    let liMatch;
+    while ((liMatch = liRe.exec(text)) !== null && results.length < limit) {
+      const block = liMatch[2];
+      const hrefMatch = block.match(/<a[^>]+class="title"[^>]+href="(https?:\/\/[^"]+)"/i) || block.match(/<a[^>]+class="ob"[^>]+href="(https?:\/\/[^"]+)"/i);
+      const titleMatch = block.match(/<a[^>]+class="title"[^>]+>([\s\S]*?)<\/a>/i);
+      const snippetMatch = block.match(/<p\s+class="s"[^>]*>([\s\S]*?)<\/p>/i);
+      if (!hrefMatch) continue;
+      const href = hrefMatch[1];
+      if (isNoiseUrl(href)) continue;
+      results.push({ title: cleanText(titleMatch ? titleMatch[1] : ""), url: href, snippet: cleanText(snippetMatch ? snippetMatch[1] : "") });
+    }
+    if (!results.length) results = extractGenericLinks(text, limit, "https://www.mojeek.com");
+    return finalizeVerticalSearchResults({ source: "mojeek", query, limit, results, fetch_path: fetchPath });
+  } catch (e) {
+    return searchError("mojeek", query, limit, e, { fetch_path: "www.mojeek.com" });
+  }
+}
+__name(searchMojeek, "searchMojeek");
+__name2(searchMojeek, "searchMojeek");
+
+async function searchStartpage(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const url = `https://www.startpage.com/sp/search?query=${encodeURIComponent(query)}`;
+  try {
+    const { text, response } = await fetchWithUA(url, {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "text/html,*/*",
+      "Accept-Language": "en-US,en;q=0.9",
+      "DNT": "1"
+    });
+    const fetchPath = safeHostname(response.url) || safeHostname(url);
+    const diagnosis = diagnoseSearchHtml("startpage", text, response.url);
+    if (diagnosis.blocked) return searchResult({ source: "startpage", query, limit, results: [], blocked: true, block_reason: diagnosis.reason || "", fetch_path: fetchPath });
+    let results = [];
+    const urlRe = /<a[^>]+class="[^"]*result-link[^"]*"[^>]+href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = urlRe.exec(text)) !== null && results.length < limit) {
+      if (isNoiseUrl(m[1])) continue;
+      results.push({ title: cleanText(m[2]), url: m[1], snippet: "" });
+    }
+    if (!results.length) results = extractGenericLinks(text, limit, "https://www.startpage.com");
+    return finalizeVerticalSearchResults({ source: "startpage", query, limit, results, fetch_path: fetchPath });
+  } catch (e) {
+    return searchError("startpage", query, limit, e, { fetch_path: "www.startpage.com" });
+  }
+}
+__name(searchStartpage, "searchStartpage");
+__name2(searchStartpage, "searchStartpage");
+
+async function searchSearchmysite(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const url = `https://searchmysite.net/search/?q=${encodeURIComponent(query)}`;
+  try {
+    const { text, response } = await fetchWithUA(url, {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "text/html,*/*",
+      "Accept-Language": "en-US,en;q=0.9"
+    });
+    const fetchPath = safeHostname(response.url) || safeHostname(url);
+    let results = extractGenericLinks(text, limit * 3, "https://searchmysite.net");
+    results = results.filter((r) => !/searchmysite\.net|^\/search|^\/add|^\/manage|^\/browse/i.test(r.url)).slice(0, limit);
+    return finalizeVerticalSearchResults({ source: "searchmysite", query, limit, results, fetch_path: fetchPath });
+  } catch (e) {
+    return searchError("searchmysite", query, limit, e, { fetch_path: "searchmysite.net" });
+  }
+}
+__name(searchSearchmysite, "searchSearchmysite");
+__name2(searchSearchmysite, "searchSearchmysite");
+
+// ── Marginalia — indie/non-commercial web search ──────────
+// Uses the official JSON API (api.marginalia.nu) with HTML fallback.
+async function searchMarginalia(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  try {
+    // Primary: JSON API — fast, structured, no rate-limit issues
+    const apiUrl = `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}?count=${limit}`;
+    const resp = await fetch(apiUrl, {
+      headers: { "User-Agent": "search-mcp-worker/1.0", "Accept": "application/json" },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const items = (data?.results || []).slice(0, limit).map((r) => ({
+        title: r.title || "",
+        url: r.url || "",
+        snippet: cleanText(r.description || "").substring(0, 300)
+      }));
+      if (items.length) return finalizeVerticalSearchResults({ source: "marginalia", query, limit, results: items, fetch_path: "api.marginalia.nu" });
+    }
+  } catch { /* API failed, fall through to HTML */ }
+  // Fallback: HTML scraping
+  try {
+    const url = `https://search.marginalia.nu/search?query=${encodeURIComponent(query)}`;
+    const { text, response } = await fetchWithUA(url, {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "text/html,*/*",
+      "Accept-Language": "en-US,en;q=0.9"
+    });
+    const fetchPath = safeHostname(response.url) || safeHostname(url);
+    let results = extractGenericLinks(text, limit * 2, "https://search.marginalia.nu");
+    results = results.filter((r) => !/marginalia\.nu|marginalia-search\.com|search\.marginalia|old-search/i.test(r.url)).slice(0, limit);
+    return finalizeVerticalSearchResults({ source: "marginalia", query, limit, results, fetch_path: fetchPath });
+  } catch (e) {
+    return searchError("marginalia", query, limit, e, { fetch_path: "search.marginalia.nu" });
+  }
+}
+__name(searchMarginalia, "searchMarginalia");
+__name2(searchMarginalia, "searchMarginalia");
+
+// ── Wiby — indie/personal web search engine ────────────────
+async function searchWiby(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const url = `https://wiby.me/?q=${encodeURIComponent(query)}`;
+  try {
+    const { text, response } = await fetchWithUA(url, {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "text/html,*/*",
+      "Accept-Language": "en-US,en;q=0.9"
+    });
+    const fetchPath = safeHostname(response.url) || safeHostname(url);
+    let results = extractGenericLinks(text, limit * 2, "https://wiby.me");
+    results = results
+      .filter((r) => !/[?&]q=|wiby\.me|settings|javascript:/i.test(r.url))
+      .slice(0, limit);
+    return finalizeVerticalSearchResults({ source: "wiby", query, limit, results, fetch_path: fetchPath });
+  } catch (e) {
+    return searchError("wiby", query, limit, e, { fetch_path: "wiby.me" });
+  }
+}
+__name(searchWiby, "searchWiby");
+__name2(searchWiby, "searchWiby");
+
+// ── Reddit search via startpage proxy ──────────────────────
+// Reddit blocks all CF Worker IPs (403 / "blocked by network security").
+// Strategy: search startpage with "reddit" keyword, filter to reddit.com URLs.
+// Startpage returns Google-quality results and reliably surfaces reddit discussions.
+async function searchRedditRss(args) {
+  const query = requireString(args.query, "query");
+  const limit = clampLimit(args.limit);
+  const redditQuery = `reddit ${query}`;
+  const url = `https://www.startpage.com/sp/search?query=${encodeURIComponent(redditQuery)}`;
+  try {
+    const { text, response } = await fetchWithUA(url, {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "text/html,*/*",
+      "Accept-Language": "en-US,en;q=0.9",
+      "DNT": "1"
+    });
+    // Parse startpage results
+    let allResults = [];
+    const urlRe = /<a[^>]+class="[^"]*result-link[^"]*"[^>]+href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = urlRe.exec(text)) !== null && allResults.length < limit * 5) {
+      allResults.push({ title: cleanText(m[2]), url: m[1], snippet: "" });
+    }
+    if (!allResults.length) allResults = extractGenericLinks(text, limit * 5, "https://www.startpage.com");
+    // Filter to only reddit.com/r/ discussion URLs
+    let results = allResults
+      .filter((r) => /reddit\.com\/r\//i.test(r.url))
+      .map((r) => {
+        const subMatch = r.url.match(/reddit\.com\/(r\/[^\/]+)/i);
+        const snippet = r.snippet || `${subMatch ? subMatch[1] : "reddit.com"}`;
+        return {
+          title: r.title || "",
+          url: r.url,
+          snippet: snippet.substring(0, 300),
+          subreddit: subMatch ? subMatch[1] : void 0
+        };
+      })
+      .slice(0, limit);
+    return finalizeVerticalSearchResults({
+      source: "reddit_rss",
+      query,
+      limit,
+      results,
+      fetch_path: "reddit via startpage proxy",
+      proxied_via: "startpage"
+    });
+  } catch (e) {
+    return searchError("reddit_rss", query, limit, e, { fetch_path: "startpage.com (reddit proxy)" });
+  }
+}
+__name(searchRedditRss, "searchRedditRss");
+__name2(searchRedditRss, "searchRedditRss");
+
 async function searchWiktionary(args) {
   const query = requireString(args.query, "query");
   const lang = /^[a-z]{2,12}$/i.test(args.language || "") ? String(args.language).toLowerCase() : "en";
@@ -5270,6 +6076,10 @@ var CACHE_TTL_MS = 5 * 60 * 1e3;
 var CIRCUIT_BREAKER = /* @__PURE__ */ new Map();
 var CIRCUIT_THRESHOLD = 3;
 var CIRCUIT_FREEZE_MS = 5 * 60 * 1e3;
+// ── JUNK soft-freeze: 2 consecutive JUNK → 1 min freeze ──
+var JUNK_FREEZE_THRESHOLD = 2;
+var JUNK_FREEZE_MS = 60 * 1e3;
+var JUNK_TRACKER = /* @__PURE__ */ new Map();
 var ENGINE_HEALTH = /* @__PURE__ */ new Map();
 var ENGINE_HEALTH_WINDOW_MS = 60 * 60 * 1e3;
 function recordEngineHealthEvent(engine, event) {
@@ -5304,6 +6114,32 @@ function isEngineCircuitBroken(engine) {
 }
 __name(isEngineCircuitBroken, "isEngineCircuitBroken");
 __name2(isEngineCircuitBroken, "isEngineCircuitBroken");
+// ── JUNK soft-freeze: check + record + reset ──
+function isEngineJunkFrozen(engine) {
+  const rec = JUNK_TRACKER.get(engine);
+  if (!rec || !rec.frozenUntil) return false;
+  if (Date.now() > rec.frozenUntil) { JUNK_TRACKER.delete(engine); return false; }
+  return true;
+}
+__name(isEngineJunkFrozen, "isEngineJunkFrozen");
+__name2(isEngineJunkFrozen, "isEngineJunkFrozen");
+function recordEngineJunk(engine) {
+  const rec = JUNK_TRACKER.get(engine) || { count: 0, frozenUntil: 0 };
+  rec.count++;
+  if (rec.count >= JUNK_FREEZE_THRESHOLD) {
+    rec.frozenUntil = Date.now() + JUNK_FREEZE_MS;
+    rec.count = 0;
+  }
+  JUNK_TRACKER.set(engine, rec);
+  recordEngineHealthEvent(engine, "junk");
+}
+__name(recordEngineJunk, "recordEngineJunk");
+__name2(recordEngineJunk, "recordEngineJunk");
+function resetEngineJunk(engine) {
+  JUNK_TRACKER.delete(engine);
+}
+__name(resetEngineJunk, "resetEngineJunk");
+__name2(resetEngineJunk, "resetEngineJunk");
 function recordEngineBlocked(engine) {
   const record = CIRCUIT_BREAKER.get(engine) || { failures: 0, frozenUntil: 0 };
   record.failures++;
