@@ -1,4 +1,0 @@
-f617591 docs: add incident report for main branch divergence and recovery
-27ba39f docs: add OpenLibrary fallback-source design
-721c338 docs: remove private MCP endpoint from readmes
-538e9be fix: stabilize search auto aggregation and docs
