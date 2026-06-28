@@ -11,6 +11,8 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Kerry1020/search-mcp-worker)
 
+> **提示：** 如果部署时报 *"Unable to fetch repository contents"*，说明你的 Cloudflare 账号还没绑定 GitHub。先去 **[Workers & Pages → 创建 → 连接 Git](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create)** 授权 **Cloudflare Workers & Pages** GitHub App，然后回来重新点按钮即可。
+
 ## 适合谁 / 不适合谁
 
 | ✅ 你想要这个，如果你 | ❌ 你不想要这个，如果你 |

@@ -11,6 +11,8 @@ Your AI shouldn't trust black-box search results from Tavily, Exa, or Brave. Her
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Kerry1020/search-mcp-worker)
 
+> **Heads up:** If you see *"Unable to fetch repository contents"*, it means your Cloudflare account isn't linked to GitHub yet. Go to **[Workers & Pages → Create → Connect to Git](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create)** and authorize the **Cloudflare Workers & Pages** GitHub App first, then come back and click the button again.
+
 ## Who is this for
 
 | ✅ You want this if | ❌ You don't want this if |
