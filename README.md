@@ -555,6 +555,14 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 - PDF parser verified on a real arXiv paper (23 pages, LaTeX-heavy) → clean body text extraction
 - See `tests/smoke_layer1_4.mjs` for the 39-assertion extended smoke suite covering Layers 1-4
 
+## Intended Use
+
+This worker is designed as a **lightweight discovery surface for conversational clients** — small LLM-driven tools, chat assistants, and on-the-fly research where a few good results beat a deep crawl.
+
+For serious **crawling / archival / high-volume extraction** workloads, a dedicated scraper running on physical hardware (or a containerized cluster) will outperform this worker on every axis: requests per second, JS execution, IP diversity, captcha handling, and storage. Reach for scrapy / playwright / colly / crawl4ai before reaching for `crawl_*` here.
+
+**In short**: this is a discovery entry point, not a crawling backend. The `crawl_*` tools exist for convenience, not for production-scale extraction.
+
 ## License
 
 This project is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International** (CC BY-NC-SA 4.0) — see the [LICENSE](LICENSE) file for the full text.

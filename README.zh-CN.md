@@ -554,6 +554,14 @@ LLM Agent（Claude、Cursor 等）使用这些工具时注意以下信号：
 - PDF 解析器在真实 arXiv 论文（23 页，LaTeX 重）上验证 → 干净正文文本提取
 - 见 `tests/smoke_layer1_4.mjs` 的 39 断言扩展冒烟套件覆盖第 1-4 层
 
+## 使用定位
+
+本 worker 是为**轻量化对话客户端**设计的一个轻量级发现入口——小模型驱动的工具、聊天助手、即时调研场景。少量高质量结果优于深度爬取。
+
+如果要做严肃的**爬取 / 归档 / 高并发抽取**任务，跑在物理机（或容器化集群）上的专用爬虫在每个维度都会更强：每秒请求数、JS 执行能力、IP 多样性、captcha 处理、存储。先用 scrapy / playwright / colly / crawl4ai，不要用这里的 `crawl_*`。
+
+**简单说**：这是一个发现入口，不是爬取后端。`crawl_*` 系列工具是为便利性存在，不是为生产级抽取。
+
 ## 许可证
 
 本项目采用 **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International**（CC BY-NC-SA 4.0）许可——见 [LICENSE](LICENSE) 文件了解全文。
