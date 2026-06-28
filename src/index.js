@@ -6881,14 +6881,52 @@ function extractYahooResults(html, limit) {
   const seen = /* @__PURE__ */ new Set();
   const baseUrl = "https://search.yahoo.com";
   const narrowedHtml = extractSectionAroundMarker(html, ['id="web"', "id='web'", 'class="searchCenterMiddle"', "class='searchCenterMiddle'"], 18e4) || html;
+  // Yahoo 2026 block class patterns. The "algo" class is the stable marker for
+  // a search-result block; other classes on the same element have varied over
+  // time (algo-sr, algo-sr relsrch richAlgo, dd algo, etc.).
+  //
+  // IMPORTANT: Yahoo's result blocks are deeply nested <div>s (compTitle +
+  // compText). Using a lazy `[\s\S]*?<\/div>` regex on the outer div cuts the
+  // block at the FIRST inner </div> — leaving the <a href> link truncated
+  // and the parser unable to extract the result URL. The stable outer
+  // container is the <li> element directly inside the <ol class="reg ...">
+  // searchCenterMiddle list; each <li> wraps one full result.
+  //
+  // CRITICAL: Yahoo pages contain MULTIPLE <ol class="reg searchCenterMiddle">
+  // elements — the left-sidebar navigation (related searches, time filters,
+  // vertical tabs) also uses this class. The narrowedHtml region (anchored
+  // to id="web") often INCLUDES the navigation ol that appears BEFORE the
+  // actual results ol. A naive lazy `[\s\S]*?<\/ol>` regex on the whole
+  // narrowedHtml matches the FIRST `</ol>` — i.e. the navigation ol — and
+  // the parser sees zero h3/algo results. Fix: anchor the ol search to the
+  // substring AFTER the first `id="web"` marker, then find the FIRST
+  // searchCenterMiddle ol within that anchor region.
   const blockPatterns = [
-    /<div[^>]+class=(?:"[^"]*algo[^"]*sr[^"]*"|'[^']*algo[^']*sr[^']*')[^>]*>[\s\S]*?<\/div>/gi,
-    /<li[^>]+class=(?:"[^"]*algo[^"]*sr[^"]*"|'[^']*algo[^']*sr[^']*')[^>]*>[\s\S]*?<\/li>/gi,
-    /<div[^>]+class=(?:"[^"]*dd\s+algo[^"]*"|'[^']*dd\s+algo[^']*')[^>]*>[\s\S]*?<\/div>/gi
+    // Each <li> inside the search-result <ol>. The (?!<\/li>) lookahead
+    // prevents the lazy match from crossing into a sibling <li>.
+    /<li\b[^>]*>(?:(?!<\/li>)[\s\S])*?<\/li>/gi
   ];
+  // Anchor the ol search to the part of narrowedHtml that comes AFTER
+  // `id="web"`. If `id="web"` is not present in narrowedHtml, fall back
+  // to searching the whole region. We do this because the navigation
+  // <ol class="reg searchCenterMiddle"> appears BEFORE id="web" in
+  // Yahoo's HTML, and a non-anchored lazy match would hit that ol
+  // first and miss the real results ol.
+  const webAnchorIdx = (() => {
+    const lower = narrowedHtml.toLowerCase();
+    let i = lower.indexOf('id="web"');
+    if (i < 0) i = lower.indexOf("id='web'");
+    if (i < 0) return 0;
+    // Skip past the id="web" attribute (8 chars) so the ol search
+    // starts AFTER the web results container, not inside it.
+    return i + 'id="web"'.length;
+  })();
+  const anchoredRegion = narrowedHtml.slice(webAnchorIdx);
+  const olMatch = anchoredRegion.match(/<ol\b[^>]*class=(?:"[^"]*\breg\b[^"]*"|'[^']*\breg\b[^']*')[^>]*>[\s\S]*?<\/ol>/i);
+  const searchRegion = olMatch ? olMatch[0] : anchoredRegion;
   const blocks = [];
   for (const pattern of blockPatterns) {
-    for (const match of narrowedHtml.matchAll(pattern)) blocks.push(match[0]);
+    for (const match of searchRegion.matchAll(pattern)) blocks.push(match[0]);
   }
   for (const block of blocks) {
     if (results.length >= limit) break;
@@ -6910,26 +6948,40 @@ function extractYahooResults(html, limit) {
 __name(extractYahooResults, "extractYahooResults");
 __name2(extractYahooResults, "extractYahooResults");
 function parseYahooBlock(block, baseUrl) {
-  const headerMatch = block.match(/<(?:h3|h4)[^>]*>[\s\S]*?<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>[\s\S]*?<\/(?:h3|h4)>/i);
-  const candidates = headerMatch ? [headerMatch] : [...block.matchAll(/<a\b([^>]*)href=("([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>/gi)];
-  for (const match of candidates) {
-    const attrs = `${match[1] || ""} ${match[6] || ""}`;
-    if (/(?:favicon|img|icon|next|prev|pagination|more-res|sch-res-header|advertisement)/i.test(attrs)) continue;
-    const rawHref = decodeHtml(match[3] || match[4] || match[5] || "");
-    if (!rawHref || /^(?:javascript:|#)/i.test(rawHref)) continue;
-    let url;
-    try {
-      url = decodeYahooUrl(new URL(rawHref, baseUrl).toString());
-    } catch {
-      url = decodeYahooUrl(rawHref);
-    }
-    if (isNoiseUrl(url) || isYahooNoiseUrl(url) || !looksLikeSearchResultUrl(url)) continue;
-    const title = cleanText(match[7]);
-    if (!title || title.length < 2) continue;
-    const snippet = extractYahooSnippet(block, title);
-    return { title, url, snippet };
+  // Yahoo 2026 structure: <a href="...r.search.yahoo.com/.../RU=.../..."> wraps
+  // a <div>favicon</div> + <h3><span>title</span></h3> directly. The h3
+  // contains only the title text, NOT a link. We must find the title's <a>
+  // wrapper by walking up from the <h3>: the closest enclosing <a> is the
+  // result link. If the h3-link pattern isn't present (older Yahoo), fall
+  // back to scanning for an a-tag with an /RU= redirect inside the block.
+  const titleEl = block.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i);
+  let rawTitle = "";
+  if (titleEl) {
+    rawTitle = cleanText(titleEl[1]);
   }
-  return null;
+  // Try h3 -> parent <a>: find <a ...> ... <h3 ...>...</h3> ... </a>
+  // by lazily matching the smallest <a> wrapper that contains an <h3>.
+  let rawHref = "";
+  const h3LinkMatch = block.match(/<a\b([^>]*)href=(?:"([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>(?:(?!<\/a>)[\s\S])*?<h3\b[\s\S]*?<\/h3>(?:(?!<\/a>)[\s\S])*?<\/a>/i);
+  if (h3LinkMatch) {
+    rawHref = h3LinkMatch[2] || h3LinkMatch[3] || h3LinkMatch[4] || "";
+  }
+  // Fallback: find any a with r.search.yahoo.com /RU= redirect
+  if (!rawHref) {
+    const ruMatch = block.match(/<a\b[^>]*href=(?:"([^"]*\/RU=[^"]+)"|'([^']*\/RU=[^']+)'|([^\s>]+\/RU=[^\s>]+))/i);
+    if (ruMatch) rawHref = ruMatch[1] || ruMatch[2] || ruMatch[3] || "";
+  }
+  if (!rawTitle || !rawHref) return null;
+  if (/^(?:javascript:|#)/i.test(rawHref)) return null;
+  let url;
+  try {
+    url = decodeYahooUrl(new URL(decodeHtml(rawHref), baseUrl).toString());
+  } catch {
+    url = decodeYahooUrl(rawHref);
+  }
+  if (isNoiseUrl(url) || isYahooNoiseUrl(url) || !looksLikeSearchResultUrl(url)) return null;
+  const snippet = extractYahooSnippet(block, rawTitle);
+  return { title: rawTitle, url, snippet };
 }
 __name(parseYahooBlock, "parseYahooBlock");
 __name2(parseYahooBlock, "parseYahooBlock");
