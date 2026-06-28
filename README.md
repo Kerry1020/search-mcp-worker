@@ -6,14 +6,10 @@ English | [简体中文](./README.zh-CN.md)
 
 Your AI shouldn't trust black-box search results from Tavily, Exa, or Brave. Here, you can see **why** result #1 beat result #2 — every ranking decision is in `src/index.js`.
 
-> **Zero per-query API costs.** Runs on a Cloudflare Worker (free tier: 100k req/day).
+> **Zero per-query API costs.** Deploy once to your own Cloudflare account (free tier: 100k req/day).
 > **Not a wrapper.** 20 search engines merged via RRF — what 3 engines agree on gets multiplicative weight, not 3× additive.
 
-**Try it now** (no deploy, no signup):
-```
-https://search-mcp.qdp.qzz.io/mcp
-```
-Wire it into Claude Desktop / Cursor as an MCP server with that URL and start searching. Self-hosting instructions at the bottom of this README.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Kerry1020/search-mcp-worker)
 
 ## Who is this for
 
