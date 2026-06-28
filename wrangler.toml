@@ -2,6 +2,9 @@ name = "search-mcp-worker"
 main = "src/index.js"
 compatibility_date = "2026-04-08"
 
-[[routes]]
-pattern = "search-mcp.qdp.qzz.io/*"
-zone_name = "qdp.qzz.io"
+# The custom-domain route block is intentionally commented out so that
+# the "Deploy to Cloudflare" button can clone-and-deploy this repository
+# without trying to bind a private route that lives outside the
+# deployer's Cloudflare account. To restore local deploys to a private
+# domain, uncomment the block below or pass --keep-vars to
+# `wrangler deploy`.
