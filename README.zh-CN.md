@@ -6,10 +6,14 @@
 
 你的 AI 不该信任 Tavily、Exa、Brave 的黑盒结果。在这里，你可以看到**为什么**第 1 条结果排在第 2 条前面——每个排序决策都在 `src/index.js` 里。
 
-> **零每次查询的 API 费。** 一次部署到你自己的 Cloudflare 账号（免费额度：每天 10 万请求）。
+> **零每次查询的 API 费。** 跑在 Cloudflare Worker 上（免费额度：每天 10 万请求）。
 > **不是包装器。** 20 个搜索引擎通过 RRF 合并——3 个引擎同时认可的结果获得**乘性**权重，不是简单的 3× 加法。
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Kerry1020/search-mcp-worker)
+**立即试用**（免部署，免注册）：
+```
+https://search-mcp.qdp.qzz.io/mcp
+```
+把上面 URL 配进 Claude Desktop / Cursor 的 MCP 服务器，即可开始搜索。自托管说明在本文档底部。
 
 ## 适合谁 / 不适合谁
 
