@@ -558,5 +558,3 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 ## License
 
 This project is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International** (CC BY-NC-SA 4.0) — see the [LICENSE](LICENSE) file for the full text.
-
-> ⚠️ **License history note**: This repo briefly switched to MIT (commit `1e955f6`) and GPL-3.0 (commit `0f7d68b`) before reverting back to CC BY-NC-SA 4.0 (commit `04938da`). The `LICENSE` file on `main` is authoritative. `package.json` still declares `"license": "GPL-3.0"` as a stale field — the `LICENSE` file wins.

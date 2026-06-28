@@ -557,5 +557,3 @@ LLM Agent（Claude、Cursor 等）使用这些工具时注意以下信号：
 ## 许可证
 
 本项目采用 **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International**（CC BY-NC-SA 4.0）许可——见 [LICENSE](LICENSE) 文件了解全文。
-
-> ⚠️ **许可证历史备注**：本仓库曾短暂切换到 MIT（提交 `1e955f6`）和 GPL-3.0（提交 `0f7d68b`），最终回退到 CC BY-NC-SA 4.0（提交 `04938da`）。`main` 分支上的 `LICENSE` 文件为权威依据。`package.json` 仍声明 `"license": "GPL-3.0"`，那是过时字段——以 `LICENSE` 文件为准。
