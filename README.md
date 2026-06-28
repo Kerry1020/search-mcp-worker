@@ -2,7 +2,7 @@
 
 English | [简体中文](./README.zh-CN.md)
 
-A single-file Cloudflare Worker that exposes **52 MCP tools** for web search, page fetching, PDF parsing, and dynamic crawling through one JSON-RPC endpoint. Zero npm dependencies, zero database, zero browser cluster.
+A single-file Cloudflare Worker that exposes **76 MCP tools** for web search, page fetching, PDF parsing, dynamic crawling, and provider configuration through one JSON-RPC endpoint. Zero npm dependencies, zero database, zero browser cluster.
 
 Designed for LLM agents and automation that need one stable search/work surface instead of stitching together many providers.
 
@@ -14,8 +14,10 @@ Designed for LLM agents and automation that need one stable search/work surface 
 ├──────────────┬───────────────┬──────────────┬──────────────┬─────────────┤
 │  General     │  Vertical     │  Fetch       │  PDF         │  Crawl      │
 │  Search      │  Sources      │  Tools       │  Parser      │  Tools      │
-│  (12)        │  (27)         │  (7)         │  (2)         │  (4)        │
+│  (20)        │  (29)         │  (7)         │  (2)         │  (4)        │
 ├──────────────┴───────────────┴──────────────┴──────────────┴─────────────┤
+│  Provider Admin (10) — runtime config of API-key engines                 │
+├──────────────────────────────────────────────────────────────────────────┤
 │  Ranking Pipeline                                                       │
 │  Engine-confidence → 5 hard drops → 3-type cascade → RRF(k=60) →        │
 │  Tiebreaker chain → Domain diversity (window 8, max 2/domain)            │
@@ -26,6 +28,10 @@ Designed for LLM agents and automation that need one stable search/work surface 
 ```
 
 Plus 1 orchestrator: `search_and_scrape` — wires search results → parallel full-text fetch.
+
+Plus 3 utility tools: `instant_answer`, `find_rss`, `debug_capture_search_html`.
+
+Plus 2 MCP protocol tools: `initialize`, `ping`.
 
 Everything lives in `src/index.js`. No build step.
 
@@ -41,6 +47,22 @@ The ranking pipeline was rewritten from first principles in 2026-06-27 to remove
 | Result types | Classified but used as additive scores | Hard-pre-filter (engine-specific drop rules) + no scoring influence |
 
 The full reasoning is documented in the project changelog (PR #27+). The TL;DR: an additive scoring model cannot represent the fact that "3 engines all rank this in the top 5" is multiplicative evidence, not 3× additive.
+
+## Recent Fixes
+
+### 2026-06-28 — Yahoo `id="web"` ol anchor (commit `dfdf485`)
+
+Yahoo's result page contains **multiple** `<ol class="reg searchCenterMiddle">` elements: a left-sidebar nav (time filters, related searches) and the actual search results inside `<div id="web">`. The `extractSectionAroundMarker` anchor (180KB window around `id="web"`) includes both, so a naive lazy `<ol…>[\s\S]*?<\/ol>` regex matched the **navigation** ol first — leaving the parser to see zero `<h3>` / `algo` results and fall through to the generic-link extractor.
+
+The fix anchors the ol search to the substring **after** `id="web"`, so the lazy match lands on the real results ol. `parseYahooBlock` (also rewritten in this commit) walks `<a …>…<h3>…</h3>…</a>` from the title outward, then falls back to a `r.search.yahoo.com/_ylt=…/RU=…` redirect if needed.
+
+**Verification (post-deploy, query=`python list comprehension`, limit=3):**
+
+| Metric | Before | After |
+|---|---|---|
+| Result count | 0 (fallback rescue) | 3 |
+| Parser | `skeleton_fallback` or undefined | `exact` |
+| First result | n/a | `List Comprehension in Python - GeeksforGeeks → geeksforgeeks.org/python-list-comprehension/` |
 
 ## Quick Start
 
@@ -80,11 +102,13 @@ curl https://your-worker.example.com/health
 # → {"ok":true,"build":{"sha":"...","time":"..."}}
 ```
 
-## Tool Surface (52 tools)
+## Tool Surface (76 tools)
 
-The 52 tools are grouped into **6 functional layers** plus a small utility bucket. All share the same defense layer (circuit breaker, JUNK soft-freeze, exponential backoff, intent mismatch detection).
+The 76 public tools are grouped into **6 functional layers** plus a utility bucket and a runtime provider-admin bucket. All share the same defense layer (circuit breaker, JUNK soft-freeze, exponential backoff, intent mismatch detection).
 
-### Layer 1 — General Web Search (12 tools)
+**Public tool breakdown**: Layer 1 (20 general web search) + Layer 2 (29 vertical sources) + Layer 3 (7 fetch) + Layer 4 (2 PDF) + Layer 5 (4 crawl) + Layer 6 (1 orchestrator) + 3 utility tools. Plus 10 non-public `provider_*` admin tools for runtime engine configuration (see [Provider Admin](#provider-admin-10-tools) below). Plus 2 MCP protocol tools (`initialize`, `ping`).
+
+### Layer 1 — General Web Search (20 tools)
 
 Parse HTML search result pages. Each engine has a multi-attempt fallback chain with rotating User-Agents. Engines marked **(indie)** use specialized small-web or alternative indexes; engines marked **(api)** return JSON.
 
@@ -104,12 +128,18 @@ Parse HTML search result pages. Each engine has a multi-attempt fallback chain w
 | `search_brave` | Brave | `search.brave.com/search?q=` | Single attempt, HTML parse |
 | `search_qwant` | Qwant | `qwant.com/?q=` | Single attempt, HTML parse |
 | `search_ecosia` | Ecosia | `ecosia.org/search?q=` | Single attempt, HTML parse |
+| `search_archive` | Archive.org | `archive.org/wayback/available?url=` + `advancedsearch.php?q=` | Wayback Machine lookup + advanced search; **currently limited** by CF Workers IP timeout |
+| `search_startpage` | Startpage | `startpage.com/sp/search?q=` | Single attempt, HTML parse; primary fallback for Reddit due to CF-IP 403 |
+| `search_mojeek` | Mojeek | `mojeek.com/search?q=` | Single attempt, HTML parse |
+| `search_searchmysite` | searchmysite | `searchmysite.net/search?q=` | Single attempt, indie index |
+| `search_marginalia` | Marginalia **(indie)** | `search.marginalia.nu/search?query=` | Indie/non-commercial web index |
+| `search_wiby` | Wiby.me **(indie)** | `wiby.me/?q=` | Old-school independent web search. Pure HTML, no JS |
 
-### Layer 2 — Vertical Sources (27 tools)
+### Layer 2 — Vertical Sources (29 tools)
 
-Structured JSON APIs (20) and HTML-scrape sources (7). All results pass through the v3 finalize pipeline (engine-confidence → 5 hard drops → type-specific cascade).
+Structured JSON APIs (23) and HTML-scrape sources (6). All results pass through the v3 finalize pipeline (engine-confidence → 5 hard drops → type-specific cascade).
 
-#### 2a. JSON API (20 tools)
+#### 2a. JSON API (23 tools)
 
 | Tool | Source | API | Implementation Details |
 |---|---|---|---|
@@ -117,6 +147,7 @@ Structured JSON APIs (20) and HTML-scrape sources (7). All results pass through 
 | `search_pubmed` | PubMed | `eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch` → `efetch` | Two-step: esearch gets IDs → efetch gets abstracts; **tech signal detection** prevents bio queries from returning tech noise |
 | `search_hackernews` | Hacker News | `hn.algolia.com/api/v1/search?tags=story` | Algolia API; `objectID` fallback for self-posts |
 | `search_stackoverflow` | Stack Exchange | `api.stackexchange.com/2.3/search/advanced` | Configurable `site` param (default: `stackoverflow`); body included via `filter=withbody` |
+| `search_reddit` | Reddit | `reddit.com/search.json?q=` (JSON API) | Optional `subreddit` filter; sort by `relevance|new|top|comments`. **Note**: Reddit often returns 403 to CF Worker IPs — when blocked, fall back to `search_reddit_rss` (Startpage proxy). |
 | `search_reddit_rss` | Reddit via Startpage | `search.startpage.com/sp/search?q=reddit+QUERY` | Reddit blocks all CF Worker IPs (403 across direct/RSS/JSON/redlib). Uses Startpage as a search proxy for Reddit discussions, filtered to reddit.com URLs |
 | `search_npm` | npm | `registry.npmjs.org/-/v1/search?text=` | Direct JSON → `{name}@{version}` |
 | `search_devto` | dev.to | `dev.to/api/articles?tag=` then `?q=` | **3-tier tag strategy**: compound tag (e.g. `machinelearning`) → first word tag → `?q=` fallback |
@@ -137,7 +168,7 @@ Structured JSON APIs (20) and HTML-scrape sources (7). All results pass through 
 | `search_ollama` | Ollama | `api.olloma.com/v1/web-search` (POST) | Provider-configurable endpoint; requires API key |
 | `search_parallel` | Parallel | `api.parallel.ai/v1/search` (POST) | Provider-configurable endpoint |
 
-#### 2b. HTML Scrape (7 tools)
+#### 2b. HTML Scrape (6 tools)
 
 | Tool | Source | URL Pattern | Parsing Strategy |
 |---|---|---|---|
@@ -146,16 +177,11 @@ Structured JSON APIs (20) and HTML-scrape sources (7). All results pass through 
 | `search_sina_news` | Sina News | `search.sina.com.cn/api/news?q=` (JSON) → HTML fallback | JSON API first; falls back to `searchSiteTargetVertical` with `host=sina.com.cn` |
 | `search_163_news` | 163 News | `163.com/search?keyword=` (HTML) | HTML parse → `extract163SearchResults`; fallback to site-targeted search |
 | `search_paperswithcode` | Papers With Code | `api.semanticscholar.org/graph/v1/paper/search` | Semantic Scholar API as backend |
-| `search_osm` | OpenStreetMap | `nominatim.openstreetmap.org/search?q=&format=jsonv2` | Geocoding; returns lat/lon + OSM link |
-| `search_archive` | Archive.org | `archive.org/wayback/available?url=` + `advancedsearch.php?q=` | Wayback Machine lookup + advanced search; **currently limited** by CF Workers IP timeout |
+| `search_osm` | OpenStreetMap | `nominatim.openstreet.org/search?q=&format=jsonv2` | Geocoding; returns lat/lon + OSM link |
 
-#### 2c. Indie / Small-Web (3 tools)
+#### 2c. Indie / Small-Web (0 tools)
 
-| Tool | Source | Notes |
-|---|---|---|
-| `search_wiby` | Wiby.me | Old-school independent web search. Pure HTML, no JS |
-| `search_marginalia` | Marginalia | Indie/non-commercial web. JSON API primary + HTML fallback |
-| `searchmysite` | searchmysite | Independent site search |
+> Indie / small-web engines (`search_wiby`, `search_marginalia`, `search_searchmysite`) are classified as **Layer 1 — General Web Search** above, since they expose a `search_<engine>` tool without a vertical specialization.
 
 ### Layer 3 — Fetch Tools (7 tools)
 
@@ -211,6 +237,24 @@ Pure-worker crawling with no browser dependency. The CF account has no Browser R
 | `instant_answer` | DuckDuckGo Instant Answer API (`api.duckduck.com/?format=json`) |
 | `find_rss` | Discover RSS/Atom feeds on a given URL |
 | `debug_capture_search_html` | Debug tool: returns raw HTML from a search engine for parser development |
+
+### Provider Admin (10 tools)
+
+Non-public runtime configuration tools for API-key-driven engines. Listed in `tools/list` for operators but excluded from public tool counts above. Engines configured here are automatically picked up by `search_auto` when their host matches the query type.
+
+| Tool | Purpose |
+|---|---|
+| `provider_list` | List all configured providers and their status (enabled, has key, last error) |
+| `provider_get_config` | Read current config for one or all providers |
+| `provider_set_config` | Set a generic provider's API key and endpoint via name/value params |
+| `provider_set_bing` | Set Bing Search API key |
+| `provider_set_brave` | Set Brave Search API key |
+| `provider_set_jina` | Set Jina Reader API key |
+| `provider_set_ollama` | Set Ollama endpoint and API key |
+| `provider_set_parallel` | Set Parallel AI endpoint and API key |
+| `provider_set_searxng` | Set SearXNG instance URL |
+| `provider_set_serpapi` | Set SerpAPI key |
+| `provider_set_tavily` | Set Tavily API key |
 
 ## Ranking Pipeline v3 (Detailed)
 
@@ -418,17 +462,33 @@ curl -X POST http://127.0.0.1:8789/mcp \
 
 ```
 search-mcp-worker/
-├── src/index.js              # Everything: MCP routing, 52 tools, ranking pipeline, defense layer
-├── tests/
-│   ├── smoke_trace.mjs       # Core smoke test suite (online)
-│   ├── smoke_layer1_4.mjs    # Extended smoke — 11 Layer 1-4 tools, 39 assertions
-│   ├── parser_harness.mjs    # Parser unit tests (offline, 25 assertions)
-│   └── provider_sweep.mjs    # Full provider audit
+├── src/
+│   ├── index.js              # Everything: MCP routing, 76 tools, ranking pipeline, defense layer (worker entry point)
+│   ├── mcp/                  # Source modules bundled into index.js (kept for re-bundle / inspection)
+│   │   ├── protocol.js       # JSON-RPC 2.0 envelope helpers (rpcResult, json, jsonRpcError, handleJsonRpc)
+│   │   └── tool-schemas.js   # Shared input schema generator (querySchema)
+│   └── core/                 # Source modules bundled into index.js (kept for re-bundle / inspection)
+│       ├── provider-config.js    # Provider API-key resolution (env → PROVIDER_CONFIG → runtime)
+│       ├── provider-defaults.js  # Default per-provider config table (brave, jina, ollama, parallel, …)
+│       └── request-context.js    # Per-request context for the JSON-RPC handler
+├── __tests__/                # Node `node:test` unit tests (offline, no network)
+│   ├── core/provider-config.test.js
+│   ├── mcp/protocol.test.js
+│   └── search/{public-tool-fixes,public-tool-surface,search-auto,vertical-tool-precision}.test.js
+├── tests/                    # Online smoke + provider-sweep tests (require network)
+│   ├── smoke_trace.mjs       # Core smoke test suite (run in CI against the deployed worker)
+│   ├── smoke_layer1_4.mjs    # Extended smoke — Layer 1-4 tools end-to-end
+│   ├── parser_harness.mjs    # Parser unit tests (offline)
+│   ├── provider_sweep.mjs    # Full provider audit
+│   └── regression_20domain.mjs  # 20-domain regression sweep
+├── scripts-smoke-mcp.mjs     # One-shot smoke for a freshly-deployed worker (used post-deploy verification)
 ├── .github/workflows/
-│   ├── smoke.yml             # PR smoke CI
-│   └── deploy.yml            # Auto-deploy on merge
+│   ├── smoke.yml             # PR smoke CI — runs `node --check src/index.js` + `tests/smoke_trace.mjs` against the live worker
+│   └── deploy.yml            # Auto-deploy on merge to main
+├── dict_synonyms.json        # Engine-health synonym table used by Health-Log + RRF engine weighting
 ├── wrangler.toml
 ├── package.json
+├── LICENSE
 └── README.md
 ```
 
@@ -488,7 +548,7 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 
 ## Deployment Verification
 
-- 52 tools verified end-to-end against a CF Workers edge deployment
+- 76 tools verified end-to-end against a CF Workers edge deployment
 - Ranking pipeline v3 verified across 4 query intents (default / developer / CJK / academic / news)
 - RRF cross-engine consensus verified producing top-3 multi-source agreement on academic and English queries
 - Engine confidence assessment verified correctly identifying Yahoo garbage pages via 4-signal detection
@@ -497,4 +557,6 @@ When `fetch_url` encounters anti-bot protection (WAF/JS challenge/IP block):
 
 ## License
 
-This project is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International** (CC BY-NC-SA 4.0) — see the [LICENSE](LICENSE) file for the full text.
+
+> ⚠️ **License history note**: This repo briefly switched to MIT (commit `1e955f6`) and GPL-3.0 (commit `0f7d68b`) before reverting back to CC BY-NC-SA 4.0 (commit `04938da`). The `LICENSE` file on `main` is authoritative. `package.json` still declares `"license": "GPL-3.0"` as a stale field — the `LICENSE` file wins.

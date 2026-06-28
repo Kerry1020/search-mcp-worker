@@ -2,7 +2,7 @@
 
 [English](./README.md) | 简体中文
 
-一个单文件 Cloudflare Worker，通过一个 JSON-RPC 端点暴露 **52 个 MCP 工具**，覆盖网页搜索、页面抓取、PDF 解析、动态爬虫。零 npm 依赖、零数据库、零浏览器集群。
+一个单文件 Cloudflare Worker，通过一个 JSON-RPC 端点暴露 **76 个 MCP 工具**，覆盖网页搜索、页面抓取、PDF 解析、动态爬虫和 provider 运行时配置。零 npm 依赖、零数据库、零浏览器集群。
 
 专为 LLM Agent 和自动化设计——一个稳定的搜索+工作接口，替代拼凑多个外部服务。
 
@@ -13,8 +13,10 @@
 │                       POST /mcp  (JSON-RPC 2.0)                          │
 ├──────────────┬───────────────┬──────────────┬──────────────┬─────────────┤
 │  通用搜索    │  垂直源       │  抓取工具    │  PDF 解析    │  动态       │
-│  (12)        │  (27)         │  (7)         │  (2)         │  爬虫 (4)   │
+│  (20)        │  (29)         │  (7)         │  (2)         │  爬虫 (4)   │
 ├──────────────┴───────────────┴──────────────┴──────────────┴─────────────┤
+│  Provider 管理 (10) —— API-key 引擎的运行时配置                          │
+├──────────────────────────────────────────────────────────────────────────┤
 │  排序管道                                                            │
 │  引擎置信度 → 5 道硬丢弃 → 3-type 级联 → RRF(k=60) →               │
 │  Tiebreaker 链 → 域名多样性（窗口 8，每域最多 2）                    │
@@ -25,6 +27,10 @@
 ```
 
 外加 1 个编排器：`search_and_scrape` —— 把搜索结果接入并行全文抓取。
+
+外加 3 个工具：`instant_answer`、`find_rss`、`debug_capture_search_html`。
+
+外加 2 个 MCP 协议工具：`initialize`、`ping`。
 
 全部代码在 `src/index.js`，无构建步骤。
 
@@ -40,6 +46,22 @@
 | 结果类型 | 分类后用作加法分数 | 硬预过滤（引擎特定丢弃规则）+ 不影响打分 |
 
 核心论点：加法打分模型无法表达「3 个引擎都把它排前 5」是**乘性证据**而非 3 倍加法。详细推理见项目变更日志（PR #27+）。
+
+## 最近修复
+
+### 2026-06-28 — Yahoo `id="web"` ol anchor（提交 `dfdf485`）
+
+Yahoo 页面含**多个** `<ol class="reg searchCenterMiddle">`：侧栏导航（时间过滤、相关搜索）和 `<div id="web">` 内的真实结果区。`extractSectionAroundMarker` 取的 180KB 窗口（围绕 `id="web"`）把两者都包了，于是朴素的 lazy `<ol…>[\s\S]*?<\/ol>` 先匹配到**导航** ol——解析器看到 0 个 `<h3>` / `algo`，fallback 到通用链接抽取。
+
+修复：把 ol 搜索锚定到 `id="web"` **之后**的子串，让 lazy 匹配落在真正的结果 ol。`parseYahooBlock`（本提交一并重写）从 `<h3>` 反向走到最近的 `<a>` 父元素，找不到则 fallback 到 `r.search.yahoo.com/_ylt=…/RU=…` 重定向链接。
+
+**部署后实测（query=`python list comprehension`，limit=3）：**
+
+| 指标 | 改前 | 改后 |
+|---|---|---|
+| 结果数 | 0（fallback 救场） | 3 |
+| Parser | `skeleton_fallback` 或 undefined | `exact` |
+| 首条结果 | n/a | `List Comprehension in Python - GeeksforGeeks → geeksforgeeks.org/python-list-comprehension/` |
 
 ## 快速开始
 
@@ -79,82 +101,86 @@ curl https://your-worker.example.com/health
 # → {"ok":true,"build":{"sha":"...","time":"..."}}
 ```
 
-## 工具列表（52 个）
+## 工具矩阵（76 个）
 
-52 个工具分为 **6 个功能层** + 1 个小工具桶。全部共享同一套防御层（熔断器、JUNK 软冻结、指数退避、意图偏移检测）。
+76 个公开工具分为 **6 个功能层** + 工具桶 + Provider 管理桶。所有工具共享同一防御层（熔断器、JUNK 软冻结、指数退避、意图失配检测）。
 
-### 第 1 层 —— 通用网页搜索（12 个）
+**公开工具明细**：Layer 1（20 个通用搜索）+ Layer 2（29 个垂直源）+ Layer 3（7 个抓取）+ Layer 4（2 个 PDF）+ Layer 5（4 个爬虫）+ Layer 6（1 个编排器）+ 3 个工具。另含 10 个非公开 `provider_*` 管理工具（见 [Provider 管理](#provider-管理-10-个工具)）。再加 2 个 MCP 协议工具（`initialize`、`ping`）。
 
-解析 HTML 搜索结果页。每个引擎有多种回退链 + 轮换 User-Agent。**(indie)** 标记的引擎用专门的小网络/替代索引；**(api)** 标记的返回 JSON。
+### Layer 1 —— 通用网页搜索（20 个）
 
-| Tool | 引擎 | URL 模式 | 回退策略 |
+解析 HTML 搜索结果页。每个引擎有多次回退链 + 轮换 User-Agent。标 **(indie)** 的用小众/独立索引；标 **(api)** 的返回 JSON。
+
+| 工具 | 引擎 | URL 模式 | 回退策略 |
 |---|---|---|---|
-| `search_auto` | 多引擎 RRF | — | 基于意图选引擎 → 4 并发竞速 → RRF 合并 → tiebreaker → 域名多样性 |
-| `search_duckduckgo` | DuckDuckGo | `noai.duckduckgo.com/?q=` → `lite.duckduckgo.com/lite/` (POST) → `html.duckduckgo.com/html/` | 3 次尝试：noai → lite (POST 表单) → html |
-| `search_bing` | Bing (US) | `bing.com/search?q=` | 主参数 → 回退参数，2 条路由 |
-| `search_bing_global` | Bing (全球) | `bing.com/search?q=` + `cn.bing.com/search?q=` | US + CN 路由，主 → 回退参数 |
-| `search_bing_cn` | Bing (CN) | `cn.bing.com/search?q=` | CN 优化请求头 + 回退参数 |
-| `search_yahoo` | Yahoo | `search.yahoo.com/search?p=` | 3 次尝试：nojs → 标准 → 最简请求头；自动处理 consent 表单 |
-| `search_google_web` | Google | `google.com/search?q=` | 3 次尝试：GSA UA → Chrome UA + `gbv=1` → bare |
+| `search_auto` | 多引擎 RRF | — | 按意图选引擎 → 4 并发竞速 → RRF 合并 → tiebreaker → 域名多样性 |
+| `search_duckduckgo` | DuckDuckGo | `noai.duckduckgo.com/?q=` → `lite.duckduckgo.com/lite/` (POST) → `html.duckduckgo.com/html/` | 3 次：noai → lite (POST 表单) → html |
+| `search_bing` | Bing (US) | `bing.com/search?q=` | 主参数 → 回退参数，2 路由 |
+| `search_bing_global` | Bing (Global) | `bing.com/search?q=` + `cn.bing.com/search?q=` | US + CN 路由 |
+| `search_bing_cn` | Bing (CN) | `cn.bing.com/search?q=` | CN 优化 header + 回退参数 |
+| `search_yahoo` | Yahoo | `search.yahoo.com/search?p=` | 3 次：nojs → 标准 → 极简 header；自动处理 consent 表单 |
+| `search_google_web` | Google | `google.com/search?q=` | 3 次：GSA UA → Chrome UA + `gbv=1` → bare |
 | `search_baidu` | Baidu | `m.baidu.com/s?word=` → `baidu.com/s?wd=&tn=json` → `baidu.com/s?wd=` | 移动 HTML → JSON API → 桌面 HTML |
 | `search_yandex` | Yandex | `yandex.com/search/?text=` | GSA UA → bare；captcha 检测 → 返回 `blocked: true` |
-| `search_naver` | Naver | `search.naver.com/search.naver?query=` | 单次尝试，HTML 解析 |
-| `search_sogou` | Sogou | `sogou.com/web?query=` | H3+A 正则 → 通用链接提取；过滤 `sogou.com/?s_from=hint_up` 建议噪声 |
-| `search_brave` | Brave | `search.brave.com/search?q=` | 单次尝试，HTML 解析 |
-| `search_qwant` | Qwant | `qwant.com/?q=` | 单次尝试，HTML 解析 |
-| `search_ecosia` | Ecosia | `ecosia.org/search?q=` | 单次尝试，HTML 解析 |
+| `search_naver` | Naver | `search.naver.com/search.naver?query=` | 单次 HTML 解析 |
+| `search_sogou` | Sogou | `sogou.com/web?query=` | H3+A regex → 通用链接抽取；过滤 `sogou.com/?s_from=hint_up` 联想词噪声 |
+| `search_brave` | Brave | `search.brave.com/search?q=` | 单次 HTML 解析 |
+| `search_qwant` | Qwant | `qwant.com/?q=` | 单次 HTML 解析 |
+| `search_ecosia` | Ecosia | `ecosia.org/search?q=` | 单次 HTML 解析 |
+| `search_archive` | Archive.org | `archive.org/wayback/available?url=` + `advancedsearch.php?q=` | Wayback Machine 查询 + 高级搜索；**当前受限于** CF Workers IP 超时 |
+| `search_startpage` | Startpage | `startpage.com/sp/search?q=` | 单次 HTML 解析；Reddit 主回退路径（CF IP 触发 403） |
+| `search_mojeek` | Mojeek | `mojeek.com/search?q=` | 单次 HTML 解析 |
+| `search_searchmysite` | searchmysite | `searchmysite.net/search?q=` | 单次，独立索引 |
+| `search_marginalia` | Marginalia **(indie)** | `search.marginalia.nu/search?query=` | 独立/非商业网络索引 |
+| `search_wiby` | Wiby.me **(indie)** | `wiby.me/?q=` | 经典独立网页搜索，纯 HTML 无 JS |
 
-### 第 2 层 —— 垂直源（27 个）
+### Layer 2 —— 垂直源（29 个）
 
-结构化 JSON API（20 个）+ HTML 抓取源（7 个）。所有结果都经过 v3 finalize 管线（引擎置信度 → 5 道硬丢弃 → 类型特定级联）。
+JSON API（23）+ HTML scrape（6）。所有结果走 v3 finalize 管道（引擎置信度 → 5 道硬丢弃 → 类型特定级联）。
 
-#### 2a. JSON API（20 个）
+#### 2a. JSON API（23 个）
 
-| Tool | 数据源 | API | 实现细节 |
+| 工具 | 数据源 | API | 实现要点 |
 |---|---|---|---|
-| `search_arxiv` | arXiv | `export.arxiv.org/api/query?search_query=all:` (Atom XML) | XML 解析 → `{title, url, snippet}`；失败时回退到 `searchSiteTargetVertical` |
-| `search_pubmed` | PubMed | `eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch` → `efetch` | 两步：esearch 拿 ID → efetch 拿摘要；**技术信号检测**防止生物查询返回技术噪声 |
-| `search_hackernews` | Hacker News | `hn.algolia.com/api/v1/search?tags=story` | Algolia API；`objectID` 回退处理自帖 |
-| `search_stackoverflow` | Stack Exchange | `api.stackexchange.com/2.3/search/advanced` | 可配置 `site` 参数（默认 `stackoverflow`）；用 `filter=withbody` 包含正文 |
-| `search_reddit_rss` | Reddit via Startpage | `search.startpage.com/sp/search?q=reddit+QUERY` | Reddit 封禁所有 CF Worker IP（直连/RSS/JSON/redlib 全 403）。用 Startpage 做 Reddit 讨论代理，过滤到 reddit.com URL |
-| `search_npm` | npm | `registry.npmjs.org/-/v1/search?text=` | 直 JSON → `{name}@{version}` |
-| `search_devto` | dev.to | `dev.to/api/articles?tag=` 然后 `?q=` | **3 层 tag 策略**：复合 tag（如 `machinelearning`）→ 第一个词 tag → `?q=` 回退 |
-| `search_mastodon` | Mastodon | `mastodon.social/api/v2/search?q=` + `/api/v1/timelines/tag/` | 从查询提取 hashtag，搜索 tag 时间线作补充；多实例 |
+| `search_arxiv` | arXiv | `export.arxiv.org/api/query?search_query=all:` (Atom XML) | XML 解析 → `{title, url, snippet}`；失败 fallback 到 `searchSiteTargetVertical` |
+| `search_pubmed` | PubMed | `eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch` → `efetch` | 两步：esearch 拿 ID → efetch 拿摘要；**tech 信号检测** 防止 bio query 返回 tech 噪声 |
+| `search_hackernews` | Hacker News | `hn.algolia.com/api/v1/search?tags=story` | Algolia API；self-post 用 `objectID` fallback |
+| `search_stackoverflow` | Stack Exchange | `api.stackexchange.com/2.3/search/advanced` | 可配置 `site`（默认 `stackoverflow`）；用 `filter=withbody` 包含正文 |
+| `search_reddit` | Reddit | `reddit.com/search.json?q=` (JSON API) | 可选 `subreddit` 过滤；按 `relevance|new|top|comments` 排序。**注意**：Reddit 经常对 CF Worker IP 返回 403——被屏蔽时 fallback 到 `search_reddit_rss`（Startpage 代理）。 |
+| `search_reddit_rss` | Reddit via Startpage | `search.startpage.com/sp/search?q=reddit+QUERY` | Reddit 屏蔽所有 CF Worker IP（direct/RSS/JSON/redlib 都 403）。用 Startpage 作搜索代理，过滤到 reddit.com URL |
+| `search_npm` | npm | `registry.npmjs.org/-/v1/search?text=` | 直接 JSON → `{name}@{version}` |
+| `search_devto` | dev.to | `dev.to/api/articles?tag=` 后接 `?q=` | **3 级 tag 策略**：复合 tag（如 `machinelearning`）→ 首词 tag → `?q=` fallback |
+| `search_mastodon` | Mastodon | `mastodon.social/api/v2/search?q=` + `/api/v1/timelines/tag/` | 从 query 抽 hashtag，搜索 tag timeline 补充；多实例 |
 | `search_peertube` | PeerTube | `search.joinpeertube.org/api/v1/search/videos` | 全球视频搜索索引 |
-| `search_sec_edgar` | SEC EDGAR | `efts.sec.gov/LATEST/search-index?q=` | 可选 `form_type` 过滤（10-K, S-1 等） |
-| `search_lemmy` | Lemmy | `lemmy.world/api/v3/post/list?community_name=` + `/api/v3/search?sort=New` | **社区回退**：若查询匹配已知社区（linux/docker/rust 等），先取 `post/list`；3 个实例（lemmy.world, lemmy.ml, programming.dev）并发 |
-| `search_wikipedia` | Wikipedia | `{lang}.wikipedia.org/w/api.php?action=query&list=search` | 可配置 `language`；HTML 抓取回退 |
-| `search_wikidata` | Wikidata | `wikidata.org/w/api.php?action=wbsearchentities` | 返回实体 ID + 描述 |
+| `search_sec_edgar` | SEC EDGAR | `efts.sec.gov/LATEST/search-index?q=` | 可选 `form_type` 过滤（10-K、S-1 等） |
+| `search_lemmy` | Lemmy | `lemmy.world/api/v3/post/list?community_name=` + `/api/v3/search?sort=New` | **社区 fallback**：query 匹配已知社区（linux/docker/rust 等）时先抓 `post/list`；3 实例（lemmy.world、lemmy.ml、programming.dev）并发 |
+| `search_wikipedia` | Wikipedia | `{lang}.wikipedia.org/w/api.php?action=query&list=search` | 可配置 `language`；HTML scrape fallback |
+| `search_wikidata` | Wikidata | `wikidata.org/w/api.php?action=wbsearchentities` | 返回 entity ID + 描述 |
 | `search_wiktionary` | Wiktionary | `{lang}.wiktionary.org/w/api.php?action=query&list=search` | 可配置 `language` |
-| `search_openlibrary` | Open Library | `openlibrary.org/search.json?q=` | 返回作品 OLID、作者、年份 |
-| `search_musicbrainz` | MusicBrainz | `musicbrainz.org/ws/2/recording/?query=&fmt=json` | 摘要含艺术家 + 专辑 |
+| `search_openlibrary` | Open Library | `openlibrary.org/search.json?q=` | 返回 work OLID、作者、年份 |
+| `search_musicbrainz` | MusicBrainZ | `musicbrainz.org/ws/2/recording/?query=&fmt=json` | 摘要含艺术家 + 专辑 |
 | `search_crossref` | Crossref | `api.crossref.org/works?query=` | DOI 关联的学术论文 |
-| `search_pypi` | PyPI | `pypi.org/search/?q=` (HTML) → `pypi.org/pypi/{name}/json` (直查) | 先 HTML 抓；0 结果时尝试精确包名查询 |
-| `search_crates` | crates.io | `crates.io/api/v1/crates?q=` | 直 JSON API |
-| `search_github_repos` | GitHub | `api.github.com/search/repositories?q=&sort=stars` | 按 star 排序；候选超额获取再切片 |
-| `search_semantic_scholar` | Semantic Scholar | `api.semanticscholar.org/graph/v1/paper/search` | 覆盖 IEEE/ACM/Springer/Elsevier。HTTP 429 时自动 fallback 到 arXiv。可选 API key：`PROVIDER_CONFIG.semantic_scholar.apiKey` |
-| `search_ollama` | Ollama | `api.olloma.com/v1/web-search` (POST) | 可配置端点；需要 API key |
-| `search_parallel` | Parallel | `api.parallel.ai/v1/search` (POST) | 可配置端点 |
+| `search_pypi` | PyPI | `pypi.org/search/?q=` (HTML) → `pypi.org/pypi/{name}/json` (直查) | 先 HTML scrape；0 结果时试精确包名 lookup |
+| `search_crates` | crates.io | `crates.io/api/v1/crates?q=` | 直接 JSON API |
+| `search_github_repos` | GitHub | `api.github.com/search/repositories?q=&sort=stars` | 按 star 排序；候选多取后切片 |
+| `search_semantic_scholar` | Semantic Scholar | `api.semanticscholar.org/graph/v1/paper/search` | 覆盖 IEEE/ACM/Springer/Elsevier。HTTP 429 触发 arXiv fallback。API key 可选（`PROVIDER_CONFIG.semantic_scholar.apiKey`） |
+| `search_ollama` | Ollama | `api.olloma.com/v1/web-search` (POST) | Provider 可配置 endpoint；需要 API key |
+| `search_parallel` | Parallel | `api.parallel.ai/v1/search` (POST) | Provider 可配置 endpoint |
 
-#### 2b. HTML 抓取（7 个）
+#### 2b. HTML Scrape（6 个）
 
-| Tool | 数据源 | URL 模式 | 解析策略 |
+| 工具 | 数据源 | URL 模式 | 解析策略 |
 |---|---|---|---|
 | `search_bbc` | BBC | `bbc.co.uk/search?q=` | HTML 解析 |
-| `search_bing_news` | Bing News | `bing.com/news/search?q=&format=rss` | 先 RSS，HTML 回退 |
-| `search_sina_news` | Sina News | `search.sina.com.cn/api/news?q=` (JSON) → HTML 回退 | 先 JSON API；回退到 `searchSiteTargetVertical`（`host=sina.com.cn`） |
-| `search_163_news` | 163 News | `163.com/search?keyword=` (HTML) | HTML 解析 → `extract163SearchResults`；回退到 site-targeted 搜索 |
+| `search_bing_news` | Bing News | `bing.com/news/search?q=&format=rss` | 先 RSS，HTML fallback |
+| `search_sina_news` | Sina News | `search.sina.com.cn/api/news?q=` (JSON) → HTML fallback | 先 JSON API；失败 fallback 到 `searchSiteTargetVertical` 限定 `host=sina.com.cn` |
+| `search_163_news` | 163 News | `163.com/search?keyword=` (HTML) | HTML 解析 → `extract163SearchResults`；fallback 到 site-targeted search |
 | `search_paperswithcode` | Papers With Code | `api.semanticscholar.org/graph/v1/paper/search` | Semantic Scholar API 作后端 |
-| `search_osm` | OpenStreetMap | `nominatim.openstreetmap.org/search?q=&format=jsonv2` | 地理编码；返回 lat/lon + OSM 链接 |
-| `search_archive` | Archive.org | `archive.org/wayback/available?url=` + `advancedsearch.php?q=` | Wayback Machine 查询 + 高级搜索；**受限**于 CF Workers IP 超时 |
+| `search_osm` | OpenStreetMap | `nominatim.openstreet.org/search?q=&format=jsonv2` | 地理编码；返回 lat/lon + OSM 链接 |
 
-#### 2c. 独立 / 小网络（3 个）
+#### 2c. 独立/小众（0 个）
 
-| Tool | 数据源 | 备注 |
-|---|---|---|
-| `search_wiby` | Wiby.me | 老式独立网页搜索。纯 HTML，无 JS |
-| `search_marginalia` | Marginalia | 独立/非商业网页。JSON API 优先 + HTML 回退 |
-| `searchmysite` | searchmysite | 独立站点搜索 |
+> 独立/小众引擎（`search_wiby`、`search_marginalia`、`search_searchmysite`）已归类到上面的 **Layer 1 —— 通用网页搜索**，因为它们是 `search_<engine>` 形式且无垂直专精。
 
 ### 第 3 层 —— 抓取工具（7 个）
 
@@ -210,6 +236,24 @@ curl https://your-worker.example.com/health
 | `instant_answer` | DuckDuckGo Instant Answer API（`api.duckduckgo.com/?format=json`） |
 | `find_rss` | 发现指定 URL 的 RSS/Atom feed |
 | `debug_capture_search_html` | 调试工具：返回搜索引擎原始 HTML 用于解析器开发 |
+
+### Provider 管理（10 个）
+
+非公开的 API-key 引擎运行时配置工具。在 `tools/list` 中向操作员暴露，但不计入上面的公开工具数。这里配置的引擎，当其 host 匹配 query 类型时，会被 `search_auto` 自动纳入。
+
+| Tool | 用途 |
+|---|---|
+| `provider_list` | 列出所有已配置的 provider 和状态（enabled、has key、last error） |
+| `provider_get_config` | 读取单个或全部 provider 的当前配置 |
+| `provider_set_config` | 通过 name/value 参数设置通用 provider 的 API key 和 endpoint |
+| `provider_set_bing` | 设置 Bing Search API key |
+| `provider_set_brave` | 设置 Brave Search API key |
+| `provider_set_jina` | 设置 Jina Reader API key |
+| `provider_set_ollama` | 设置 Ollama endpoint 和 API key |
+| `provider_set_parallel` | 设置 Parallel AI endpoint 和 API key |
+| `provider_set_searxng` | 设置 SearXNG 实例 URL |
+| `provider_set_serpapi` | 设置 SerpAPI key |
+| `provider_set_tavily` | 设置 Tavily API key |
 
 ## 排序管道 v3（详细）
 
@@ -417,17 +461,33 @@ curl -X POST http://127.0.0.1:8789/mcp \
 
 ```
 search-mcp-worker/
-├── src/index.js              # 全部：MCP 路由、52 工具、排序管道、防御层
-├── tests/
-│   ├── smoke_trace.mjs       # 核心冒烟测试套件（在线）
-│   ├── smoke_layer1_4.mjs    # 扩展冒烟——11 个 1-4 层工具，39 个断言
-│   ├── parser_harness.mjs    # 解析器单元测试（离线，25 个断言）
-│   └── provider_sweep.mjs    # 全 provider 审计
+├── src/
+│   ├── index.js              # 全部：MCP 路由、76 工具、排序管道、防御层（worker 入口）
+│   ├── mcp/                  # 源模块（已 bundle 进 index.js，保留以便重新 bundle / 阅读源码）
+│   │   ├── protocol.js       # JSON-RPC 2.0 信封辅助（rpcResult, json, jsonRpcError, handleJsonRpc）
+│   │   └── tool-schemas.js   # 共享 input schema 生成器（querySchema）
+│   └── core/                 # 源模块（已 bundle 进 index.js，保留以便重新 bundle / 阅读源码）
+│       ├── provider-config.js    # Provider API-key 解析（env → PROVIDER_CONFIG → runtime）
+│       ├── provider-defaults.js  # 每 provider 默认配置表（brave, jina, ollama, parallel, …）
+│       └── request-context.js    # JSON-RPC handler 的 per-request 上下文
+├── __tests__/                # Node `node:test` 单元测试（离线，不联网）
+│   ├── core/provider-config.test.js
+│   ├── mcp/protocol.test.js
+│   └── search/{public-tool-fixes,public-tool-surface,search-auto,vertical-tool-precision}.test.js
+├── tests/                    # 在线冒烟 + provider-sweep 测试（需联网）
+│   ├── smoke_trace.mjs       # 核心冒烟测试套件（CI 跑，对已部署 worker）
+│   ├── smoke_layer1_4.mjs    # 扩展冒烟——1-4 层工具端到端
+│   ├── parser_harness.mjs    # 解析器单元测试（离线）
+│   ├── provider_sweep.mjs    # 全 provider 审计
+│   └── regression_20domain.mjs  # 20-domain 回归扫描
+├── scripts-smoke-mcp.mjs     # 新部署 worker 的一次性冒烟（部署后验证用）
 ├── .github/workflows/
-│   ├── smoke.yml             # PR 冒烟 CI
-│   └── deploy.yml            # merge 自动部署
+│   ├── smoke.yml             # PR 冒烟 CI——跑 `node --check src/index.js` + `tests/smoke_trace.mjs` 对真实 worker
+│   └── deploy.yml            # merge 到 main 自动部署
+├── dict_synonyms.json        # 健康日志 + RRF 引擎权重用的同义词表
 ├── wrangler.toml
 ├── package.json
+├── LICENSE
 └── README.md
 ```
 
@@ -487,7 +547,7 @@ LLM Agent（Claude、Cursor 等）使用这些工具时注意以下信号：
 
 ## 部署验证
 
-- 52 个工具对 CF Workers 边缘部署端到端验证
+- 76 个工具对 CF Workers 边缘部署端到端验证
 - v3 排序管道在 4 种查询意图（默认 / 开发者 / CJK / 学术 / 新闻）上验证
 - RRF 跨引擎共识验证：学术和英文查询产出前 3 多源一致结果
 - 引擎置信度评估验证：4 信号正确识别 Yahoo 垃圾页
@@ -496,4 +556,6 @@ LLM Agent（Claude、Cursor 等）使用这些工具时注意以下信号：
 
 ## 许可证
 
-本项目采用 Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International 许可——见 [LICENSE](LICENSE) 文件了解详情。
+本项目采用 **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International**（CC BY-NC-SA 4.0）许可——见 [LICENSE](LICENSE) 文件了解全文。
+
+> ⚠️ **许可证历史备注**：本仓库曾短暂切换到 MIT（提交 `1e955f6`）和 GPL-3.0（提交 `0f7d68b`），最终回退到 CC BY-NC-SA 4.0（提交 `04938da`）。`main` 分支上的 `LICENSE` 文件为权威依据。`package.json` 仍声明 `"license": "GPL-3.0"`，那是过时字段——以 `LICENSE` 文件为准。
