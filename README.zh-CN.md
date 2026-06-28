@@ -2,9 +2,35 @@
 
 [English](./README.md) | 简体中文
 
-一个单文件 Cloudflare Worker，通过一个 JSON-RPC 端点暴露 **76 个 MCP 工具**，覆盖网页搜索、页面抓取、PDF 解析、动态爬虫和 provider 运行时配置。零 npm 依赖、零数据库、零浏览器集群。
+**唯一一个排序逻辑开源、可审计的 MCP 搜索引擎。**
 
-专为 LLM Agent 和自动化设计——一个稳定的搜索+工作接口，替代拼凑多个外部服务。
+你的 AI 不该信任 Tavily、Exa、Brave 的黑盒结果。在这里，你可以看到**为什么**第 1 条结果排在第 2 条前面——每个排序决策都在 `src/index.js` 里。
+
+> **零每次查询的 API 费。** 一次部署到你自己的 Cloudflare 账号（免费额度：每天 10 万请求）。
+> **不是包装器。** 20 个搜索引擎通过 RRF 合并——3 个引擎同时认可的结果获得**乘性**权重，不是简单的 3× 加法。
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Kerry1020/search-mcp-worker)
+
+## 适合谁 / 不适合谁
+
+| ✅ 你想要这个，如果你 | ❌ 你不想要这个，如果你 |
+|---|---|
+| 你希望 AI 的搜索排序逻辑是开源、可审计的 | "别跟我说怎么排，给我结果就行" → 用 **Tavily MCP** |
+| 你自托管、关心搜索质量胜过便利性 | 你没有（或不想注册）Cloudflare 账号 |
+| 你希望除 CF 免费额度外零 API 费 | 你需要企业级 SLA、技术支持、合规保证 |
+| 你好奇为什么"3 个引擎都把它排进前 5"比"3× 分数"是更强的信号 | 你想要单引擎代理 → 用 **Brave Search MCP** |
+
+## 它有什么不一样
+
+| 你 AI 现在的搜索 | 问题 | 用 search-mcp-worker |
+|---|---|---|
+| 单引擎 MCP（Brave、Google） | 单一视角。继承某一个索引的算法盲区。 | 20 个引擎。通过 RRF 实现多视角共识。 |
+| 黑盒 API（Tavily、Exa） | 你看不到也修不了排序——为什么这条 SEO 垃圾排在第 3？ | 排序代码完全开源。`assessEngineConfidence` → 5 道硬丢弃 → RRF → tiebreaker——全在 `src/index.js`。 |
+| 加法打分（"3 个引擎喜欢 = 3× 分"） | 区分不出"3 个引擎都排第 1"还是"1 个排第 1 + 2 个排第 50" | **RRF(k=60)：** 3 个引擎排进前 5 = **乘性证据**，不是 3×。数学上更强。 |
+
+## 它实际做什么
+
+一个单文件 Cloudflare Worker，通过一个 JSON-RPC 端点暴露 **76 个 MCP 工具**——网页搜索（20 个引擎）、垂直 API（29 个数据源）、页面抓取、PDF 解析、SPA 感知爬虫、provider 管理。零 npm 依赖、零数据库、零浏览器集群。
 
 ## 架构总览
 

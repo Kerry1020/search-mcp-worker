@@ -2,9 +2,35 @@
 
 English | [简体中文](./README.zh-CN.md)
 
-A single-file Cloudflare Worker that exposes **76 MCP tools** for web search, page fetching, PDF parsing, dynamic crawling, and provider configuration through one JSON-RPC endpoint. Zero npm dependencies, zero database, zero browser cluster.
+**The only MCP search server where the ranking is open-source and auditable.**
 
-Designed for LLM agents and automation that need one stable search/work surface instead of stitching together many providers.
+Your AI shouldn't trust black-box search results from Tavily, Exa, or Brave. Here, you can see **why** result #1 beat result #2 — every ranking decision is in `src/index.js`.
+
+> **Zero per-query API costs.** Deploy once to your own Cloudflare account (free tier: 100k req/day).
+> **Not a wrapper.** 20 search engines merged via RRF — what 3 engines agree on gets multiplicative weight, not 3× additive.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Kerry1020/search-mcp-worker)
+
+## Who is this for
+
+| ✅ You want this if | ❌ You don't want this if |
+|---|---|
+| You want auditable, open-source ranking for your AI's search | "Just give me results, I don't care how" → use **Tavily MCP** |
+| You self-host and care about search quality over convenience | You don't have (or want) a Cloudflare account |
+| You want zero per-query API costs beyond CF free tier | You need enterprise SLA, support, or compliance guarantees |
+| You're curious why 3 engines agreeing on top-5 is a stronger signal than 3× score | You want a single-engine proxy — use **Brave Search MCP** |
+
+## What makes this different
+
+| Your AI's search today | The problem | With search-mcp-worker |
+|---|---|---|
+| Single-engine MCPs (Brave, Google) | One perspective. Algorithmic blind spots inherited from one index. | 20 engines. Multi-perspective consensus via RRF. |
+| Black-box APIs (Tavily, Exa) | You can't see or fix ranking. Why is this SEO spam at #3? | Ranking code is open. `assessEngineConfidence` → 5 hard-drop filters → RRF → tiebreaker — all in `src/index.js`. |
+| Additive scoring ("3 engines like this = 3× score") | Can't distinguish "3 engines all rank it #1" from "one engine at #1 + two at #50" | **RRF(k=60):** 3 engines ranking it top-5 = multiplicative evidence. Not 3×. Mathematically stronger. |
+
+## What it actually does
+
+A single-file Cloudflare Worker that exposes **76 MCP tools** through one JSON-RPC endpoint — web search (20 engines), vertical APIs (29 sources), page fetching, PDF parsing, SPA-aware crawling, and provider management. Zero npm dependencies, zero database, zero browser cluster.
 
 ## Architecture at a Glance
 
