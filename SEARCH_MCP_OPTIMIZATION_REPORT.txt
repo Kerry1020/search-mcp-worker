@@ -1,0 +1,263 @@
+===============================================================================
+  search-mcp-worker 优化与扩展调研报告
+  生成时间：2026-06-04 19:10 CST
+  目标：为现有 search-mcp-worker 评估新 provider 接入和优化方案
+===============================================================================
+
+当前 Provider 清单（37 个工具）:
+  通用: duckduckgo, bing, bing_global, bing_cn, yahoo, google_web, baidu,
+        yandex, naver, sogou
+  垂直: archive, arxiv, pubmed, hackernews, stackoverflow, reddit, npm,
+        devto, mastodon, peertube, bbc, bing_news, sina_news, 163_news,
+        paperswithcode, sec_edgar, osm, lemmy, wikidata, crates, pypi,
+        wiktionary, openlibrary, musicbrainz, crossref, find_rss
+  辅助: instant_answer, debug_capture_search_html, search_wikipedia,
+        search_github_repos, fetch_github_file, fetch_metadata, fetch_url
+
+当前痛点:
+  1. 百度被 CF Workers 共享 IP captcha 拦截（20/25 blocked）
+  2. Bing 中文质量差（15% 有用率）
+  3. Google 无官方 API，HTML 抓取不稳定
+  4. sogou 首页噪声漏网
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+一、新 Provider 评估
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. SearXNG（元搜索引擎，自部署）
+   ─────────────────────────────────
+   网址: https://github.com/searxng/searxng
+   Stars: 15k+
+   场景: 一次查询聚合 Google/Bing/DuckDuckGo/Qwant 等 246 个引擎
+   鉴权: 自部署无 key
+   限制: 需要自己的服务器（Docker 部署，最低 512MB RAM）
+   CF Workers: ❌ 无法部署（Python Flask 应用）
+                但可以作为外部 API 被 Workers fetch 调用
+   接入难度: ★★★☆☆（需一台 VPS 自部署，部署后 REST API 调用简单）
+   
+   🔥 核心价值:
+   - 一次请求自动聚合多个引擎，结果去重排序
+   - 自部署无请求限制、无 captcha（因为是你自己的 IP）
+   - 支持 JSON 格式输出: /search?q=xxx&format=json
+   - 可以替代现有的 bing/yahoo/google_web 等多个 HTML 抓取 provider
+   
+   接入方案:
+   - 在 VPS 上 Docker 部署 SearXNG
+   - 在 search-mcp-worker 增加 search_searxng 工具
+   - 或者直接在 search_auto 中作为"优先聚合引擎"调用
+   
+   评估: ⭐⭐⭐⭐⭐ 强烈推荐
+         一次部署解决所有"HTML 抓取不稳定"问题
+         自己的 IP 不被 captcha 拦截
+         246 个引擎自动聚合，结果质量远超单引擎
+
+2. Tavily（AI 专用搜索 API）
+   ─────────────────────────
+   网址: https://tavily.com
+   场景: 专为 AI Agent 设计的搜索 API，返回结构化结果
+   鉴权: 需免费 API key
+   限制: 免费 1000 次/月
+   CF Workers: ✅ REST API
+   接入难度: ★☆☆☆☆
+   
+   优点:
+   - 返回结果已经过 AI 清洗，无需 HTML 解析
+   - 支持搜索+提取+爬取一体化
+   - 结果质量高（专为 LLM 优化）
+   
+   缺点:
+   - 1000 次/月太少（search-mcp 一天就可能超）
+   - 需要 API key
+   - 中文覆盖不如英文
+   
+   评估: ⭐⭐☆☆☆ 免费额度太低，仅适合补充
+
+3. Serper.dev（Google 搜索 API）
+   ──────────────────────────────
+   网址: https://serper.dev
+   场景: Google 搜索结果 API（结构化 JSON）
+   鉴权: 需免费 API key
+   限制: 免费 2500 次（一次性赠送，非每月）
+   CF Workers: ✅ REST API
+   接入难度: ★☆☆☆☆
+   
+   优点:
+   - 直接获取 Google 结构化结果，无需 HTML 解析
+   - 速度快、稳定
+   - 支持图片/视频/新闻/学术
+   
+   缺点:
+   - 2500 次是一次性额度，用完需付费
+   - 需要 API key
+   
+   评估: ⭐⭐☆☆☆ 一次性额度，不适合长期使用
+
+4. Google Programmable Search Engine
+   ──────────────────────────────────
+   网址: https://developers.google.com/custom-search
+   场景: Google 官方搜索 API
+   鉴权: 需免费 API key
+   限制: 100 次/天（免费）
+   CF Workers: ✅ REST API
+   接入难度: ★★☆☆☆
+   
+   评估: ⭐⭐☆☆☆ 100次/天太少
+
+5. Exa.ai（语义搜索 API）
+   ───────────────────────
+   网址: https://exa.ai
+   场景: 基于语义理解的搜索，非关键词匹配
+   鉴权: 需免费 API key
+   限制: 免费 1000 次/月 + $10 starter credit
+   CF Workers: ✅ REST API
+   接入难度: ★★☆☆☆
+   
+   优点:
+   - 语义搜索，找"类似内容"而非关键词匹配
+   - 适合做"深入研究"类型的搜索
+   - 结果质量高
+   
+   缺点:
+   - 1000 次/月额度有限
+   - 需要 API key
+   - 中文支持不如英文
+   
+   评估: ⭐⭐⭐☆☆ 适合做高级补充引擎（search_semantic）
+
+6. Mojeek（英国独立搜索引擎）
+   ────────────────────────────
+   网址: https://www.mojeek.com/services/search/web-search-api/
+   场景: 独立搜索引擎 API，无偏见排序
+   鉴权: 需 API key（有免费层）
+   限制: 免费层有限
+   CF Workers: ✅ REST API
+   接入难度: ★★☆☆☆
+   
+   优点:
+   - 自己的爬虫索引，不依赖 Google/Bing
+   - 隐私友好
+   
+   缺点:
+   - 覆盖以英文为主
+   - 中文质量差
+   
+   评估: ⭐⭐☆☆☆ 英文补充，中文无用
+
+7. Whoogle（Google 代理）
+   ──────────────────────
+   网址: https://github.com/benbusby/whoogle-search
+   场景: 自部署 Google 搜索代理，去除广告/追踪
+   鉴权: 自部署无 key
+   限制: 自部署无限制
+   CF Workers: ❌ 需自部署（Docker），但可被 Workers fetch
+   接入难度: ★★★☆☆
+   
+   优点:
+   - 获取 Google 结果但无 captcha
+   - 轻量（Docker 部署）
+   
+   缺点:
+   - 仍然是抓取 Google HTML，Google 改版可能失效
+   - 需要自己的 IP
+   
+   评估: ⭐⭐⭐☆☆ SearXNG 的弱化版，不如直接用 SearXNG
+
+8. Brave Search API
+   ──────────────────
+   网址: https://brave.com/search/api/
+   场景: 独立搜索引擎 API
+   鉴权: 需 API key
+   限制: 无免费层，仅有 14-30 天试用期
+   CF Workers: ✅ REST API
+   接入难度: ★★☆☆☆
+   
+   评估: ⭐☆☆☆☆ 无免费层，排除
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+二、内部优化方案（不改 provider，改逻辑）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+9. 百度 Captcha 绕过策略优化
+   ──────────────────────────
+   现状: CF Workers 共享 IP 被百度 captcha 拦截，20/25 blocked
+   方案:
+   a) 通过自部署 SearXNG 转发百度请求（自建 IP 不被拦截）
+   b) 降级百度为"非核心引擎"——search_auto 中百度权重降低
+   c) 当百度连续被 block 时，circuit_breaker 自动冻结百度 30 分钟
+   
+   推荐: a + c 组合
+   接入难度: ★★★☆☆
+
+10. search_auto 智能调度优化
+    ────────────────────────
+    现状: search_auto 固定引擎顺序，无法根据 query 类型动态调整
+    方案:
+    a) 检测中文 query → 优先 sogou > yahoo > bing_cn > duckduckgo
+    b) 检测英文 query → 优先 duckduckgo > yahoo > bing
+    c) 检测技术 query（含 github/stackoverflow/npm）→ 优先对应垂直引擎
+    d) 检测学术 query（含 paper/research/arxiv）→ 优先 pubmed/arxiv/paperswithcode
+    
+    接入难度: ★★☆☆☆（改 search_auto 的 engine 优先级逻辑）
+
+11. 结果缓存层（单次请求级）
+    ─────────────────────────
+    现状: 同一 query 多次调用重复抓取
+    方案: 在 Worker 内存中加一个 LRU cache（Map + TTL）
+    限制: CF Workers 单次请求生命周期，无法跨请求缓存
+         但同一个 search_auto 内部调用多引擎时可以避免重复
+    
+    评估: 收益有限，暂不需要
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+三、综合优先级排序
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+优先级 1 — 自部署 SearXNG（⭐⭐⭐⭐⭐ 强烈推荐）
+  - 收益: 一次解决 Google/Bing/百度 captcha + HTML 解析不稳定问题
+  - 成本: 需一台 VPS（最低 $3-5/月，或用现有服务器）
+  - 工作量: Docker 部署 + search_searxng 工具开发（1-2 天）
+  - 风险: 低（成熟项目，15k stars）
+
+优先级 2 — search_auto 智能调度（⭐⭐⭐⭐☆）
+  - 收益: 中文/英文/技术/学术 query 自动匹配最优引擎
+  - 成本: 零
+  - 工作量: 改 search_auto 的引擎排序逻辑（半天）
+  - 风险: 低
+
+优先级 3 — Exa.ai 语义搜索补充（⭐⭐⭐☆☆）
+  - 收益: 语义搜索能力（找"类似内容"而非关键词匹配）
+  - 成本: 免费 1000 次/月
+  - 工作量: 新增 search_semantic 工具（半天）
+  - 风险: 低，但额度有限
+
+优先级 4 — Tavily 补充（⭐⭐☆☆☆）
+  - 收益: AI 清洗过的结构化结果
+  - 成本: 免费 1000 次/月
+  - 风险: 额度太少
+
+优先级 5 — Google PSE / Serper（⭐⭐☆☆☆）
+  - 收益: 直接获取 Google 结果
+  - 成本: 额度太低
+  - 风险: 一次性额度用完即止
+
+===============================================================================
+                           最 终 建 议
+===============================================================================
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 最优路线: 自部署 SearXNG                                                 │
+│                                                                         │
+│ 1. 在 VPS 上 Docker 部署 SearXNG（30 分钟）                              │
+│ 2. 在 search-mcp-worker 增加 search_searxng 工具                        │
+│ 3. 在 search_auto 中将 SearXNG 作为"首选聚合引擎"                       │
+│ 4. 保留现有 duckduckgo/yahoo 等作为 fallback                            │
+│                                                                         │
+│ 效果:                                                                   │
+│ - 百度 captcha 问题消失（自己的 IP）                                     │
+│ - Google 结果质量 + 可用性大幅提升                                      │
+│ - 一次查询聚合多引擎，结果质量远超单引擎                                  │
+│ - HTML 解析不稳定问题消失（SearXNG 内部处理）                             │
+│ - 246 个引擎自动聚合，无需逐个接入                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+===============================================================================

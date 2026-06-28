@@ -1,0 +1,9 @@
+A	CODE_ANALYSIS.md
+A	ENGINE_STABILITY.md
+D	INCIDENT_REPORT.md
+A	PROJECT_STATUS.md
+D	docs/superpowers/specs/2026-05-26-openlibrary-fallback-design.md
+M	src/index.js
+A	tests/provider_sweep.mjs
+A	tests/smoke_trace.mjs
+A	tests/sweep_report.json
