@@ -6,11 +6,23 @@ on:
   workflow_dispatch:
   repository_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    # workflow_dispatch can be started from any branch; only ever deploy main.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: node --check src/index.js
 
       - name: Inject build metadata
         run: |

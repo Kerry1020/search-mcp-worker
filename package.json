@@ -2,6 +2,10 @@
   "name": "search-mcp-worker",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test \"__tests__/**/*.test.js\"",
+    "check": "node --check src/index.js"
+  },
   "devDependencies": {
     "wrangler": "^4.81.0"
   },
