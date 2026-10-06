@@ -1194,9 +1194,19 @@ function isGenericWrapperResult(item, query, engine) {
 }
 __name(isGenericWrapperResult, "isGenericWrapperResult");
 __name2(isGenericWrapperResult, "isGenericWrapperResult");
+// Search operators such as `site:anthropic.com` are filters, not content terms;
+// counting their tokens makes relevant results look like intent mismatches.
+function stripSearchOperators(query) {
+  return String(query || "").replace(/(?:^|\s)-?(?:site|inurl|intitle|intext|filetype|ext|lang|before|after):\S+/gi, " ").replace(/\s+/g, " ").trim();
+}
+__name(stripSearchOperators, "stripSearchOperators");
+__name2(stripSearchOperators, "stripSearchOperators");
 function isIntentMismatchResult(item, query, engine = "") {
+  query = stripSearchOperators(query);
   const queryText = String(query || "").trim().toLowerCase();
-  const contentText = `${item?.title || ""} ${item?.snippet || ""}`.toLowerCase();
+  // Separate CJK runs from adjacent Latin/digits so that e.g. "让Claude Code自己来"
+  // still yields the standalone tokens "claude" and "code".
+  const contentText = `${item?.title || ""} ${item?.snippet || ""}`.toLowerCase().replace(/([\u3400-\u9fff])(?=[a-z0-9])|([a-z0-9])(?=[\u3400-\u9fff])/g, "$1$2 ");
   const host = safeHostname(item?.url || "");
   if (/[㐀-鿿]/.test(queryText)) {
     const queryTokens = tokenizeSearchText(queryText);
@@ -1341,6 +1351,7 @@ function isClearCjkMismatchResult(item, query, engine = "") {
 __name(isClearCjkMismatchResult, "isClearCjkMismatchResult");
 __name2(isClearCjkMismatchResult, "isClearCjkMismatchResult");
 function isHardIntentMismatchResult(item, query, engine = "") {
+  query = stripSearchOperators(query);
   if (hasCjkText(query)) {
     if (isClearCjkMismatchResult(item, query, engine)) return true;
     const queryTokens = tokenizeSearchText(query).filter((t) => t.length >= 2);
@@ -1866,16 +1877,25 @@ async function searchAuto(args) {
       return { engine, ok: false, error: error?.message || "failed" };
     }
   });
-  const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), RACE_TIMEOUT_MS));
-  const raceSettled = await Promise.allSettled([...racePromises.map((p) => p.then((r) => {
+  // Wait for the first batch to finish OR the race timeout, whichever comes
+  // first. (Previously the timeout promise was passed to Promise.allSettled,
+  // which made every search_auto call wait the full RACE_TIMEOUT_MS.)
+  let raceTimer;
+  const timeoutPromise = new Promise((resolve) => {
+    raceTimer = setTimeout(() => resolve(null), RACE_TIMEOUT_MS);
+  });
+  const raceEntries = new Array(racePromises.length);
+  const trackedRace = racePromises.map((p, index) => p.then((r) => {
     if (r?.quality && (r.quality.quality_status === "green" || r.quality.quality_status === "yellow") && !raceWon) {
       raceWon = true;
     }
+    raceEntries[index] = r;
     return r;
-  })), timeoutPromise]);
-  for (const settled of raceSettled) {
-    if (settled.status !== "fulfilled" || !settled.value || settled.value === null) continue;
-    const entry = settled.value;
+  }));
+  await Promise.race([Promise.allSettled(trackedRace), timeoutPromise]);
+  clearTimeout(raceTimer);
+  for (let index = 0; index < firstBatch.length; index++) {
+    const entry = raceEntries[index] || { engine: firstBatch[index], ok: false, error: "race_timeout" };
     if (!entry?.result) {
       if (entry.engine) recordEngineHealthEvent(entry.engine, "empty");
       attempts.push({ engine: entry.engine, ok: false, error: entry.error || "failed", quality_status: "red", quality_reason: entry.error || "failed", filtered_count: 0, result_count: 0 });
@@ -3004,6 +3024,13 @@ function finalizeVerticalSearchResults({ source, query, limit, results, blocked,
       result_type: resultType
     };
   });
+
+  // Nothing to assess: preserve upstream blocked/block_reason instead of
+  // reporting an empty (often blocked/consent) page as engine-level JUNK,
+  // and do not count it toward the JUNK soft-freeze.
+  if (!normalized.length) {
+    return searchResult({ source, query, limit, results: [], blocked, block_reason, ...extra });
+  }
 
   // ── Phase 0: Engine-level confidence assessment ──
   const confidence = assessEngineConfidence(normalized, source);
@@ -4380,6 +4407,21 @@ async function fetchUrl(args) {
         });
         const rawHtml = await rawRes.text();
         const challengeSignals = /probe\.js|g_captcha|cf-challenge|challenge-form|__cf_bm|challenge-platform/i.test(rawHtml);
+        if (!rawRes.ok && !challengeSignals) {
+          // Plain HTTP error page (no anti-bot challenge): report the failure
+          // instead of returning the error body as successful content.
+          return {
+            ok: false,
+            url: url.toString(),
+            finalUrl: rawRes.url || url.toString(),
+            title: url.toString(),
+            text: "",
+            maxChars,
+            contentType: rawRes.headers.get("content-type") || "",
+            status: statusCode,
+            error: `upstream ${statusCode}`
+          };
+        }
         return {
           ok: true,
           url: url.toString(),
