@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 import worker from '../../src/index.js';
 
-const README_TOOL_NAMES = [
+// Public MCP tool surface as exposed by /health and tools/list.
+// Update deliberately when adding/removing a public tool.
+const PUBLIC_TOOL_NAMES = [
   'search_auto',
   'search_duckduckgo',
   'search_bing',
@@ -16,6 +18,7 @@ const README_TOOL_NAMES = [
   'search_naver',
   'search_sogou',
   'search_archive',
+  'search_semantic_scholar',
   'search_arxiv',
   'search_pubmed',
   'search_hackernews',
@@ -39,15 +42,32 @@ const README_TOOL_NAMES = [
   'search_wiktionary',
   'search_openlibrary',
   'search_musicbrainz',
+  'instant_answer',
   'search_crossref',
+  'find_rss',
+  'debug_capture_search_html',
   'search_wikipedia',
   'search_github_repos',
   'fetch_github_file',
   'fetch_metadata',
   'fetch_url',
-  'instant_answer',
-  'find_rss',
-  'debug_capture_search_html'
+  'pdf_parse',
+  'pdf_to_markdown',
+  'fetch_robots',
+  'fetch_sitemap',
+  'fetch_html_to_markdown',
+  'fetch_html_extract',
+  'crawl_scrape',
+  'crawl_screenshot',
+  'crawl_pdf',
+  'crawl_extract',
+  'search_and_scrape',
+  'search_mojeek',
+  'search_startpage',
+  'search_searchmysite',
+  'search_marginalia',
+  'search_wiby',
+  'search_reddit_rss'
 ];
 
 const NON_PUBLIC_TOOL_NAMES = [
@@ -74,10 +94,10 @@ async function fetchJson(url, options) {
   return response.json();
 }
 
-test('health and tools/list expose only the README public 40-tool surface', async () => {
+test('health and tools/list expose exactly the public tool surface', async () => {
   const health = await fetchJson('https://worker.test/health');
-  assert.equal(health.tools.length, README_TOOL_NAMES.length);
-  assert.deepEqual([...health.tools].sort(), [...README_TOOL_NAMES].sort());
+  assert.equal(health.tools.length, PUBLIC_TOOL_NAMES.length);
+  assert.deepEqual([...health.tools].sort(), [...PUBLIC_TOOL_NAMES].sort());
 
   const rpc = await fetchJson('https://worker.test/mcp', {
     method: 'POST',
@@ -86,8 +106,8 @@ test('health and tools/list expose only the README public 40-tool surface', asyn
   });
 
   const toolNames = rpc.result.tools.map((tool) => tool.name);
-  assert.equal(toolNames.length, README_TOOL_NAMES.length);
-  assert.deepEqual([...toolNames].sort(), [...README_TOOL_NAMES].sort());
+  assert.equal(toolNames.length, PUBLIC_TOOL_NAMES.length);
+  assert.deepEqual([...toolNames].sort(), [...PUBLIC_TOOL_NAMES].sort());
   for (const name of NON_PUBLIC_TOOL_NAMES) {
     assert.equal(toolNames.includes(name), false, `${name} should not be publicly listed`);
   }

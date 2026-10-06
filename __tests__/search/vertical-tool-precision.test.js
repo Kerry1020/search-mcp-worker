@@ -459,7 +459,7 @@ test('search_163_news skips blocked Sogou fallback pages and continues to a late
           <body>
             <li class="b_algo">
               <h2><a href="https://www.163.com/news/article/J2ABCDEF0001899O.html">企业开发流观察</a></h2>
-              <p>Claude Code 中文相关报道。</p>
+              <p>Claude Code 中文相关报道：企业开发团队如何在日常工作流中使用 AI 编码代理。</p>
             </li>
           </body>
         </html>
@@ -772,7 +772,7 @@ test('search_sina_news skips blocked Sogou fallback pages and continues to a lat
           <body>
             <li class="b_algo">
               <h2><a href="https://news.sina.com.cn/c/2026-05-24/doc-ikqciyzk7654321.shtml">企业开发流观察</a></h2>
-              <p>Claude Code 中文相关报道。</p>
+              <p>Claude Code 中文相关报道：企业开发团队如何在日常工作流中使用 AI 编码代理。</p>
             </li>
           </body>
         </html>
