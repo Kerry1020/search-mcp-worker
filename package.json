@@ -1,5 +1,6 @@
 {
   "name": "search-mcp-worker",
+  "description": "Multi-engine web search MCP server on Cloudflare Workers with open, auditable RRF ranking",
   "private": true,
   "type": "module",
   "scripts": {
